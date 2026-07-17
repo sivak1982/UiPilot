@@ -97,7 +97,34 @@ public static class WpfPilotHost
 
             _started = true;
             Log($"WpfPilot started. pipe={pipeName} discovery={_discoveryPath}");
+
+            if (ResolveStartMinimized(options))
+                ScheduleMinimize(app, dispatcher);
         }
+    }
+
+    private static bool ResolveStartMinimized(WpfPilotOptions options)
+    {
+        if (options.StartMinimized.HasValue) return options.StartMinimized.Value;
+        return string.Equals(
+            Environment.GetEnvironmentVariable(WpfPilotOptions.StartMinimizedEnvVar), "1", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Minimize the main window once, at idle priority, so it has rendered at least one frame first
+    /// (keeping offscreen screenshots valid). Never throws into the host app.
+    /// </summary>
+    private static void ScheduleMinimize(Application app, Dispatcher dispatcher)
+    {
+        dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
+        {
+            try
+            {
+                var window = app.MainWindow;
+                if (window != null) window.WindowState = WindowState.Minimized;
+            }
+            catch { /* ignore - minimizing is best-effort */ }
+        }));
     }
 
     /// <summary>Tear down the server and remove the discovery file. Safe to call repeatedly.</summary>

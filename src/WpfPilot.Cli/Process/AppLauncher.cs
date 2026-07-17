@@ -10,11 +10,17 @@ namespace WpfPilot.Cli.Process;
 public static class AppLauncher
 {
     /// <summary>Build the project and return its output assembly path (TargetPath).</summary>
-    public static async Task<string> BuildAsync(string project, string configuration, CancellationToken ct)
+    public static async Task<string> BuildAsync(string project, string configuration, string? platform, CancellationToken ct)
     {
+        var args = new List<string> { "build", project, "-c", configuration };
+        if (!string.IsNullOrWhiteSpace(platform))
+            args.Add($"-p:Platform={platform}");
+        args.Add("--nologo");
+        args.Add("--getProperty:TargetPath");
+
         var (exit, stdout, stderr) = await RunAsync(
             "dotnet",
-            new[] { "build", project, "-c", configuration, "--nologo", "--getProperty:TargetPath" },
+            args,
             workingDirectory: null,
             ct).ConfigureAwait(false);
 
@@ -39,6 +45,9 @@ public static class AppLauncher
             WorkingDirectory = Path.GetDirectoryName(targetAssemblyPath),
         };
         psi.Environment["WPFPILOT_ENABLE"] = "1";
+        // Keep the driven app out of the way so the agent/IDE stays visible. Offscreen screenshots
+        // still work while minimized; use the bring_to_front tool to show it on demand.
+        psi.Environment["WPFPILOT_START_MINIMIZED"] = "1";
 
         if (File.Exists(exePath))
         {
@@ -93,6 +102,24 @@ public static class AppLauncher
         catch
         {
             // ignore
+        }
+    }
+
+    /// <summary>
+    /// Kill a process (and its tree) by pid. Used to stop apps that were attached to rather than
+    /// launched by this CLI. Killing an elevated target requires this CLI to also be elevated.
+    /// </summary>
+    public static void KillByPid(int pid)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+        }
+        catch
+        {
+            // ignore: already exited, or access denied (CLI not elevated for an elevated target)
         }
     }
 }

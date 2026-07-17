@@ -71,14 +71,36 @@ public static class VisualTreeQuery
 
     public static IEnumerable<DependencyObject> EnumerateDescendants(DependencyObject root, bool includeSelf)
     {
-        if (includeSelf) yield return root;
-        if (!IsVisual(root)) yield break;
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
+        return Walk(root, includeSelf, new HashSet<DependencyObject>());
+    }
+
+    /// <summary>
+    /// Depth-first walk over both the visual and logical trees (deduped). Traversing the logical
+    /// tree surfaces elements that aren't visually realized yet - most importantly submenu
+    /// <see cref="System.Windows.Controls.MenuItem"/>s and unselected tab/content - so agents can
+    /// find and drive menu-based navigation without first opening every popup.
+    /// </summary>
+    private static IEnumerable<DependencyObject> Walk(DependencyObject node, bool includeSelf, HashSet<DependencyObject> seen)
+    {
+        if (!seen.Add(node)) yield break;
+        if (includeSelf) yield return node;
+
+        if (IsVisual(node))
         {
-            var child = VisualTreeHelper.GetChild(root, i);
-            foreach (var d in EnumerateDescendants(child, includeSelf: true))
-                yield return d;
+            var count = VisualTreeHelper.GetChildrenCount(node);
+            for (var i = 0; i < count; i++)
+            {
+                var child = VisualTreeHelper.GetChild(node, i);
+                foreach (var d in Walk(child, includeSelf: true, seen))
+                    yield return d;
+            }
+        }
+
+        foreach (var logical in LogicalTreeHelper.GetChildren(node))
+        {
+            if (logical is DependencyObject dob && !seen.Contains(dob))
+                foreach (var d in Walk(dob, includeSelf: true, seen))
+                    yield return d;
         }
     }
 
@@ -168,6 +190,8 @@ public static class VisualTreeQuery
                 return tb.Text;
             case TextBox txt:
                 return txt.Text;
+            case HeaderedItemsControl hic when hic.Header is string his:
+                return his;
             case ContentControl cc when cc.Content is string s:
                 return s;
             case HeaderedContentControl hcc when hcc.Header is string hs:

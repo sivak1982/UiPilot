@@ -42,9 +42,10 @@ public sealed class LifecycleTools
     public async Task<string> BuildAndStart(
         [Description("Path to the .csproj (or a directory/solution the SDK can build) of the WPF app.")] string project,
         [Description("Build configuration.")] string configuration = "Debug",
+        [Description("Optional MSBuild platform (e.g. 'x64') for projects that require an explicit platform.")] string? platform = null,
         CancellationToken ct = default)
     {
-        var info = await _connection.BuildAndStartAsync(project, configuration, ct).ConfigureAwait(false);
+        var info = await _connection.BuildAndStartAsync(project, configuration, platform, ct).ConfigureAwait(false);
         return JsonSerializer.Serialize(new { started = true, info.Pid, info.ProcessName, info.MainWindowTitle }, Json);
     }
 
@@ -57,7 +58,7 @@ public sealed class LifecycleTools
     }
 
     [McpServerTool(Name = "stop_app")]
-    [Description("Stop the app started via build_and_start and detach.")]
+    [Description("Stop the currently driven app (launched via build_and_start or attached to) and detach. Terminating an elevated app requires this CLI to run elevated.")]
     public string StopApp()
     {
         _connection.StopApp();

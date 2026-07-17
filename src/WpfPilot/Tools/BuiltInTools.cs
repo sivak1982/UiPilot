@@ -95,6 +95,36 @@ internal static class BuiltInTools
                 });
             });
 
+        registry.Register("set_window_state",
+            "Minimize/restore/maximize a window and optionally bring it to the foreground. Screenshots still work while minimized. Args: id (optional, defaults to main window), state (minimized|normal|maximized), activate=false.",
+            (ctx, args) =>
+            {
+                var id = args.GetString("id");
+                var state = args.GetString("state") ?? "normal";
+                var activate = args.GetBool("activate", false);
+                return ctx.OnUi<object>(() =>
+                {
+                    var target = id == null ? null : Require(ctx, id);
+                    var window = WindowControl.ResolveWindow(target)
+                        ?? throw new InvalidOperationException("No window to control.");
+                    return new { state = WindowControl.SetState(window, state, activate) };
+                });
+            });
+
+        registry.Register("bring_to_front",
+            "Restore (if minimized) and pull a window to the foreground so a human can see it. Args: id (optional, defaults to main window).",
+            (ctx, args) =>
+            {
+                var id = args.GetString("id");
+                return ctx.OnUi<object>(() =>
+                {
+                    var target = id == null ? null : Require(ctx, id);
+                    var window = WindowControl.ResolveWindow(target)
+                        ?? throw new InvalidOperationException("No window to bring to front.");
+                    return new { state = WindowControl.Foreground(window) };
+                });
+            });
+
         registry.Register("get_binding_errors",
             "Return captured WPF data-binding errors/warnings. Args: clear=false.",
             (ctx, args) =>

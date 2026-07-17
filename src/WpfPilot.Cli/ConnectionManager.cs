@@ -19,6 +19,8 @@ public sealed class ConnectionManager : IDisposable
     private System.Diagnostics.Process? _launched;
     private string? _lastProject;
     private string? _lastConfiguration;
+    private string? _lastPlatform;
+    private int? _attachedPid;
 
     public IReadOnlyList<DiscoveryInfo> ListAlive() => _discovery.ListAlive();
 
@@ -50,19 +52,18 @@ public sealed class ConnectionManager : IDisposable
         }
     }
 
-    public async Task<DiscoveryInfo> BuildAndStartAsync(string project, string configuration, CancellationToken ct = default)
+    public async Task<DiscoveryInfo> BuildAndStartAsync(string project, string configuration, string? platform, CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            ResetConnection();
-            AppLauncher.KillTree(_launched);
-            _launched = null;
+            KillCurrentLocked();
 
-            var targetPath = await AppLauncher.BuildAsync(project, configuration, ct).ConfigureAwait(false);
+            var targetPath = await AppLauncher.BuildAsync(project, configuration, platform, ct).ConfigureAwait(false);
             _launched = AppLauncher.Start(targetPath);
             _lastProject = project;
             _lastConfiguration = configuration;
+            _lastPlatform = platform;
 
             var info = await WaitForDiscoveryAsync(_launched.Id, TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
             await ConnectLocked(info, ct).ConfigureAwait(false);
@@ -75,14 +76,28 @@ public sealed class ConnectionManager : IDisposable
     {
         if (_lastProject == null || _lastConfiguration == null)
             throw new InvalidOperationException("Nothing to restart. Use build_and_start first.");
-        return await BuildAndStartAsync(_lastProject, _lastConfiguration, ct).ConfigureAwait(false);
+        return await BuildAndStartAsync(_lastProject, _lastConfiguration, _lastPlatform, ct).ConfigureAwait(false);
     }
 
     public void StopApp()
     {
+        _gate.Wait();
+        try { KillCurrentLocked(); }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>
+    /// Detach and terminate whatever app we're driving: the process we launched, and/or the app we
+    /// attached to (by pid, so externally-started elevated apps can be stopped too).
+    /// </summary>
+    private void KillCurrentLocked()
+    {
+        var attachedPid = _attachedPid ?? _current?.Pid;
         ResetConnection();
         AppLauncher.KillTree(_launched);
         _launched = null;
+        if (attachedPid.HasValue)
+            AppLauncher.KillByPid(attachedPid.Value);
     }
 
     private async Task<PipeClient> EnsureConnectedAsync(CancellationToken ct)
@@ -120,6 +135,7 @@ public sealed class ConnectionManager : IDisposable
         ResetConnection();
         _client = await PipeClient.ConnectAsync(target.PipeName, target.Token, 5000, ct).ConfigureAwait(false);
         _current = target;
+        _attachedPid = target.Pid;
     }
 
     private async Task<DiscoveryInfo> WaitForDiscoveryAsync(int pid, TimeSpan timeout, CancellationToken ct)
@@ -142,6 +158,7 @@ public sealed class ConnectionManager : IDisposable
         try { _client?.Dispose(); } catch { /* ignore */ }
         _client = null;
         _current = null;
+        _attachedPid = null;
     }
 
     public void Dispose()

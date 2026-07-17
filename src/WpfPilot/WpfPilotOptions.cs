@@ -32,7 +32,20 @@ public sealed class WpfPilotOptions
     public string? DiscoveryDirectory { get; set; }
 
     /// <summary>
+    /// Minimize the main window shortly after it first renders, so an agent driving the app keeps
+    /// the app out of the way (the agent/IDE stays visible). Screenshots still work while minimized
+    /// because they render the visual tree offscreen; use <c>bring_to_front</c> to show it on demand.
+    /// Null (default) means "use the <c>WPFPILOT_START_MINIMIZED</c> env var"; set true/false to override.
+    /// </summary>
+    public bool? StartMinimized { get; set; }
+
+    /// <summary>
     /// Environment variable that force-enables WpfPilot regardless of build configuration.
     /// </summary>
     public const string EnableEnvVar = "WPFPILOT_ENABLE";
+
+    /// <summary>
+    /// Environment variable that requests the app start minimized (set by the CLI edit loop).
+    /// </summary>
+    public const string StartMinimizedEnvVar = "WPFPILOT_START_MINIMIZED";
 }

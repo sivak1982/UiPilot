@@ -20,6 +20,23 @@ public static class SyntheticInput
         if (obj is not UIElement element)
             throw new InvalidOperationException("Target is not a UIElement.");
 
+        // Menus are special: submenu items live in popups and top-level items only expose
+        // ExpandCollapse, so the generic Invoke path can't drive menu navigation. Handle them
+        // directly (works even for items whose popup has never been opened / realized).
+        if (obj is System.Windows.Controls.MenuItem menuItem)
+        {
+            if (menuItem.HasItems)
+            {
+                menuItem.IsSubmenuOpen = true;
+                return "synthetic:menuitem-expand";
+            }
+
+            if (menuItem.Command != null && menuItem.Command.CanExecute(menuItem.CommandParameter))
+                menuItem.Command.Execute(menuItem.CommandParameter);
+            menuItem.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.MenuItem.ClickEvent));
+            return "synthetic:menuitem-click";
+        }
+
         var peer = UIElementAutomationPeer.CreatePeerForElement(element);
         if (peer?.GetPattern(PatternInterface.Invoke) is IInvokeProvider invoke)
         {
@@ -31,6 +48,12 @@ public static class SyntheticInput
         {
             toggle.Toggle();
             return "synthetic:automation-toggle";
+        }
+
+        if (peer?.GetPattern(PatternInterface.ExpandCollapse) is IExpandCollapseProvider expand)
+        {
+            expand.Expand();
+            return "synthetic:automation-expand";
         }
 
         if (obj is ButtonBase button)
