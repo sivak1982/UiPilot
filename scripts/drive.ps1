@@ -17,6 +17,8 @@ param(
     [string[]]$ClickText,
     [string]$ShotPath,
     [string]$ShotId,
+    [string]$SnapshotPath,
+    [int]$SnapshotLimit = 5000,
     [string]$FindQuery,
     [int]$FindLimit = 60,
     [switch]$Bindings,
@@ -112,6 +114,14 @@ try {
         if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
         [IO.File]::WriteAllBytes($ShotPath, [Convert]::FromBase64String($shot.base64))
         "SHOT -> $ShotPath ($($shot.width)x$($shot.height))"
+    }
+
+    if ($SnapshotPath) {
+        $snapshot = Send-Rpc $writer $reader "find_elements" $token @{ query = ""; limit = $SnapshotLimit }
+        $dir = Split-Path $SnapshotPath -Parent
+        if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        $snapshot | ConvertTo-Json -Depth 8 | Set-Content -Path $SnapshotPath -Encoding utf8
+        "SNAPSHOT -> $SnapshotPath ($($snapshot.count) elements)"
     }
 
     if ($Layout) {
