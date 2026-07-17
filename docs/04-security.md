@@ -39,6 +39,21 @@ regardless of build configuration.
 - The discovery file lives in `%TEMP%\wpfpilot\<pid>.json`, readable by the current user. Treat
   the token like any local dev secret; it is scoped to a single app run and removed on shutdown.
 
+## Elevated (requireAdministrator) apps
+
+Many enterprise WPF apps run elevated (High integrity), while an MCP agent launched by the editor
+runs at Medium integrity. Windows' default "no-write-up" policy would block the agent from
+connecting to the elevated app's pipe. To support this common case, the pipe is created
+(`CreateNamedPipe` with an explicit security descriptor) with a **Low mandatory integrity label**
+plus a DACL granting Authenticated Users / Administrators
+([Server/PipeIntegrity.cs](../src/WpfPilot/Server/PipeIntegrity.cs)). Lower-integrity clients can
+then connect; the per-run token still authenticates every request. If the native path fails, the
+library falls back to a default pipe (same-integrity clients only).
+
+Note: a Medium-integrity agent still cannot *launch* or *kill* an elevated app, so
+`build_and_start` / `restart_app` / `stop_app` do not apply to elevated targets - run the app
+yourself and use `attach`.
+
 ## Threat notes / non-goals
 
 - WpfPilot is a **local developer tool**. There is no authentication beyond the local token and

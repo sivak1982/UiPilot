@@ -57,7 +57,7 @@ internal sealed class NamedPipeServer
             NamedPipeServerStream? server = null;
             try
             {
-                server = CreateServerStream();
+                server = PipeIntegrity.CreateServer(_pipeName, _log);
                 _current = server;
                 server.WaitForConnection();
                 HandleClient(server);
@@ -71,54 +71,6 @@ internal sealed class NamedPipeServer
                 try { server?.Dispose(); } catch { /* ignore */ }
                 if (ReferenceEquals(_current, server)) _current = null;
             }
-        }
-    }
-
-    private NamedPipeServerStream CreateServerStream()
-    {
-        var security = TryCreatePipeSecurity();
-        if (security != null)
-        {
-            try
-            {
-#if NETFRAMEWORK
-                return new NamedPipeServerStream(
-                    _pipeName, PipeDirection.InOut, 1,
-                    PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 0, 0, security);
-#else
-                return NamedPipeServerStreamAcl.Create(
-                    _pipeName, PipeDirection.InOut, 1,
-                    PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 0, 0, security);
-#endif
-            }
-            catch (Exception ex)
-            {
-                _log("WpfPilot: falling back to default pipe security: " + ex.Message);
-            }
-        }
-
-        return new NamedPipeServerStream(
-            _pipeName, PipeDirection.InOut, 1,
-            PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-    }
-
-    /// <summary>
-    /// Build a pipe security descriptor that lets a lower-integrity agent (e.g. a Medium-IL MCP
-    /// CLI) connect to an elevated app: grant Authenticated Users + Administrators access via the
-    /// DACL, and lower the mandatory integrity label to Low via the SACL. Requests are still
-    /// gated by the per-run token. Returns null if the descriptor cannot be built.
-    /// </summary>
-    private static PipeSecurity? TryCreatePipeSecurity()
-    {
-        try
-        {
-            var security = new PipeSecurity();
-            security.SetSecurityDescriptorSddlForm("D:(A;;FA;;;AU)(A;;FA;;;BA)S:(ML;;NW;;;LW)");
-            return security;
-        }
-        catch
-        {
-            return null;
         }
     }
 
