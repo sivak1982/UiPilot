@@ -1,0 +1,13 @@
+<Project>
+
+  <ItemGroup Label="Shared">
+    <!-- In-box on net8.0; required as a package on net472. -->
+    <PackageVersion Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
+
+  <ItemGroup Label="CLI (modern .NET only)">
+    <PackageVersion Include="ModelContextProtocol" Version="1.4.1" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

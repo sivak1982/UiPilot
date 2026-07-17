@@ -1,0 +1,42 @@
+<Window x:Class="SampleApp.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        Title="WpfPilot Sample" Height="360" Width="480">
+    <StackPanel Margin="16">
+        <TextBlock Text="WpfPilot sample app" FontSize="18" FontWeight="Bold" Margin="0,0,0,12" />
+
+        <TextBlock Text="Your name:" />
+        <TextBox x:Name="NameBox"
+                 AutomationProperties.AutomationId="NameBox"
+                 Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                 Margin="0,4,0,8" />
+
+        <Button x:Name="GreetButton"
+                AutomationProperties.AutomationId="GreetButton"
+                Content="Greet"
+                Command="{Binding GreetCommand}"
+                HorizontalAlignment="Left"
+                Padding="16,4" />
+
+        <TextBlock x:Name="GreetingText"
+                   AutomationProperties.AutomationId="GreetingText"
+                   Text="{Binding Greeting}"
+                   FontSize="16"
+                   Margin="0,12,0,0" />
+
+        <!-- Deliberate binding error: MissingProperty does not exist on the ViewModel.
+             It surfaces via the get_binding_errors tool. -->
+        <TextBlock x:Name="BrokenText"
+                   AutomationProperties.AutomationId="BrokenText"
+                   Text="{Binding MissingProperty}"
+                   Foreground="Gray"
+                   Margin="0,8,0,0" />
+
+        <TextBlock Text="Recent greetings:" Margin="0,12,0,4" />
+        <ListBox x:Name="HistoryList"
+                 AutomationProperties.AutomationId="HistoryList"
+                 ItemsSource="{Binding History}"
+                 Height="100" />
+    </StackPanel>
+</Window>
