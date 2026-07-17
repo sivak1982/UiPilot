@@ -3,6 +3,8 @@
   <ItemGroup Label="Shared">
     <!-- In-box on net8.0; required as a package on net472. -->
     <PackageVersion Include="System.Text.Json" Version="8.0.5" />
+    <!-- Named-pipe ACLs on modern .NET (in-box on net472). -->
+    <PackageVersion Include="System.IO.Pipes.AccessControl" Version="5.0.0" />
   </ItemGroup>
 
   <ItemGroup Label="CLI (modern .NET only)">
