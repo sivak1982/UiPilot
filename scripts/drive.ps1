@@ -84,8 +84,10 @@ try {
     foreach ($text in $ClickText) {
         $found = Send-Rpc $writer $reader "find_elements" $token @{ query = $text; limit = 80 }
         # prefer an exact MenuItem/Button header match
-        $target = $found.elements | Where-Object { $_.text -eq $text } | Select-Object -First 1
+        $target = $found.elements | Where-Object { $_.text -eq $text -and ($_.type -like '*MenuItem*' -or $_.type -like '*Button*') } | Select-Object -First 1
+        if (-not $target) { $target = $found.elements | Where-Object { $_.text -eq $text } | Select-Object -First 1 }
         if (-not $target) { $target = $found.elements | Where-Object { $_.type -like '*MenuItem*' } | Select-Object -First 1 }
+        if (-not $target) { $target = $found.elements | Where-Object { $_.type -like '*Button*' } | Select-Object -First 1 }
         if (-not $target) { $target = $found.elements | Select-Object -First 1 }
         if (-not $target) { throw "No element found for click text '$text'." }
         $click = Send-Rpc $writer $reader "click" $token @{ id = $target.id }

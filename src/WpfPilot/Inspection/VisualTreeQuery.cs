@@ -122,7 +122,13 @@ public static class VisualTreeQuery
     internal static bool Matches(DependencyObject obj, string query)
     {
         if (Contains(obj.GetType().Name, query)) return true;
-        if (obj is FrameworkElement fe && Contains(fe.Name, query)) return true;
+        if (obj is FrameworkElement fe)
+        {
+            if (Contains(fe.Name, query)) return true;
+            // Icon-only toolbar buttons often expose their label only via ToolTip.
+            if (Contains(fe.ToolTip as string, query)) return true;
+            if (fe.ToolTip is FrameworkElement tipFe && Contains(GetText(tipFe), query)) return true;
+        }
         if (Contains(AutomationProperties.GetAutomationId(obj), query)) return true;
         if (Contains(GetText(obj), query)) return true;
         return false;
@@ -143,6 +149,11 @@ public static class VisualTreeQuery
 
         if (obj is FrameworkElement fe)
             info.Name = NullIfEmpty(fe.Name);
+
+        // Prefer explicit content/header text; fall back to ToolTip so icon-only buttons
+        // are discoverable by their label (e.g. ToolTip="New Script").
+        if (string.IsNullOrEmpty(info.Text) && obj is FrameworkElement tipSource)
+            info.Text = NullIfEmpty(tipSource.ToolTip as string);
 
         if (obj is UIElement ui)
         {
