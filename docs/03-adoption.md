@@ -49,7 +49,7 @@ Configure the CLI as an MCP server. Example MCP config entry:
 }
 ```
 
-For a published tool you would point `command` at the built `wpfpilot.exe` instead.
+Once packaged as a `dotnet tool` the command is simply `wpfpilot` (see `ToolCommandName`).
 
 Then, from the agent:
 

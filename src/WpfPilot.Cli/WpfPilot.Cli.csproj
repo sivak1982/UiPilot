@@ -4,7 +4,9 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>WpfPilot.Cli</RootNamespace>
-    <AssemblyName>wpfpilot</AssemblyName>
+    <AssemblyName>WpfPilot.Cli</AssemblyName>
+    <!-- When packaged as a dotnet tool the invocable command is still 'wpfpilot'. -->
+    <ToolCommandName>wpfpilot</ToolCommandName>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
