@@ -45,6 +45,25 @@ public sealed class ForwardingTools
         CancellationToken ct = default) =>
         Forward("click", new { id }, ct);
 
+    [McpServerTool(Name = "drag")]
+    [Description("Drag with the real OS mouse (press, glide, release) so hit-testing, mouse capture and Preview* handlers run. Use this for tiles, thumbs and drag/drop, which synthetic click cannot reach. Give a start (element id, or fromX/fromY screen pixels) and a destination (toId, toX/toY screen pixels, or dx/dy offset from the start).")]
+    public Task<string> Drag(
+        [Description("Element handle id to grab; its centre is the press point. Omit when using fromX/fromY.")] string? id = null,
+        [Description("Press point X in screen pixels. Used when id is omitted.")] double? fromX = null,
+        [Description("Press point Y in screen pixels. Used when id is omitted.")] double? fromY = null,
+        [Description("Nudge the press point horizontally off the element centre, in pixels.")] double? grabOffsetX = null,
+        [Description("Nudge the press point vertically off the element centre, in pixels.")] double? grabOffsetY = null,
+        [Description("Element handle id to drop onto; its centre is the release point.")] string? toId = null,
+        [Description("Release point X in screen pixels.")] double? toX = null,
+        [Description("Release point Y in screen pixels.")] double? toY = null,
+        [Description("Horizontal offset from the press point, in pixels. Alternative to toX/toId.")] double? dx = null,
+        [Description("Vertical offset from the press point, in pixels. Alternative to toY/toId.")] double? dy = null,
+        [Description("How many intermediate mouse moves to send between press and release.")] int steps = 24,
+        [Description("Pause between intermediate moves, in milliseconds. Raise it if the app misses moves.")] int stepDelayMs = 12,
+        [Description("Pause after release so the app can finish animating, in milliseconds.")] int settleMs = 250,
+        CancellationToken ct = default) =>
+        Forward("drag", new { id, fromX, fromY, grabOffsetX, grabOffsetY, toId, toX, toY, dx, dy, steps, stepDelayMs, settleMs }, ct);
+
     [McpServerTool(Name = "type_text")]
     [Description("Set text on a focusable input (UI Automation Value pattern or TextBox).")]
     public Task<string> TypeText(

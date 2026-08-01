@@ -9,8 +9,9 @@ namespace WpfPilot.Server;
 
 /// <summary>
 /// Accepts named-pipe connections and dispatches newline-delimited JSON-RPC requests to the
-/// tool registry. Single client at a time, requests handled sequentially. Auth token required
-/// on every request. Runs its accept loop on a dedicated background thread.
+/// tool registry. Several clients may be connected at once (an MCP session alongside ad-hoc
+/// scripts); tool invocations are serialised so they never interleave. Auth token required on
+/// every request. Runs its accept loop on a dedicated background thread.
 /// </summary>
 internal sealed class NamedPipeServer
 {
@@ -18,10 +19,11 @@ internal sealed class NamedPipeServer
     private readonly string _token;
     private readonly ToolRegistry _registry;
     private readonly Action<string> _log;
+    private readonly object _invokeGate = new object();
 
     private Thread? _thread;
     private volatile bool _running;
-    private NamedPipeServerStream? _current;
+    private NamedPipeServerStream? _pendingAccept;
 
     public NamedPipeServer(string pipeName, string token, ToolRegistry registry, Action<string> log)
     {
@@ -46,7 +48,8 @@ internal sealed class NamedPipeServer
     public void Stop()
     {
         _running = false;
-        try { _current?.Dispose(); }
+        // Unblocks WaitForConnection so the accept loop can exit.
+        try { _pendingAccept?.Dispose(); }
         catch { /* ignore */ }
     }
 
@@ -58,18 +61,32 @@ internal sealed class NamedPipeServer
             try
             {
                 server = PipeIntegrity.CreateServer(_pipeName, _log);
-                _current = server;
+                _pendingAccept = server;
                 server.WaitForConnection();
-                HandleClient(server);
+                _pendingAccept = null;
+
+                // Hand the connection to its own thread and immediately create the next pipe
+                // instance, so a second client never has to wait for the first to disconnect.
+                var connection = server;
+                server = null;
+                var worker = new Thread(() =>
+                {
+                    try { HandleClient(connection); }
+                    catch (Exception ex) { if (_running) _log("WpfPilot pipe client error: " + ex.Message); }
+                    finally { try { connection.Dispose(); } catch { /* ignore */ } }
+                })
+                {
+                    IsBackground = true,
+                    Name = "WpfPilot.PipeClient",
+                };
+                worker.Start();
             }
             catch (Exception ex)
             {
                 if (_running) _log("WpfPilot pipe error: " + ex.Message);
-            }
-            finally
-            {
                 try { server?.Dispose(); } catch { /* ignore */ }
-                if (ReferenceEquals(_current, server)) _current = null;
+                // Back off so a persistent failure cannot spin the CPU.
+                if (_running) Thread.Sleep(100);
             }
         }
     }
@@ -113,7 +130,9 @@ internal sealed class NamedPipeServer
                 default:
                     if (!_registry.Contains(request.Method))
                         return Rpc.Error(request.Id, RpcCodes.MethodNotFound, "Unknown method: " + request.Method);
-                    var result = _registry.Invoke(request.Method, request.Params);
+                    object? result;
+                    lock (_invokeGate)
+                        result = _registry.Invoke(request.Method, request.Params);
                     return Rpc.Result(request.Id, result);
             }
         }

@@ -56,6 +56,68 @@ internal static class BuiltInTools
                 });
             });
 
+        registry.Register("drag",
+            "Drag with the real OS mouse (press, glide, release) so hit-testing, mouse capture and " +
+            "Preview* handlers all run - use this for tiles, thumbs and drag/drop, which synthetic " +
+            "click cannot reach. Start point: id (element centre) or fromX/fromY (screen px). " +
+            "End point: toId (element centre), toX/toY (screen px), or dx/dy (offset from start). " +
+            "Args: id, fromX, fromY, grabOffsetX, grabOffsetY, toId, toX, toY, dx, dy, " +
+            "steps=24, stepDelayMs=12, settleMs=250.",
+            (ctx, args) =>
+            {
+                var id = args.GetString("id");
+                var toId = args.GetString("toId");
+                var fromX = args.GetDouble("fromX");
+                var fromY = args.GetDouble("fromY");
+                var toX = args.GetDouble("toX");
+                var toY = args.GetDouble("toY");
+                var dx = args.GetDouble("dx");
+                var dy = args.GetDouble("dy");
+                var grabOffsetX = args.GetDouble("grabOffsetX") ?? 0;
+                var grabOffsetY = args.GetDouble("grabOffsetY") ?? 0;
+                var steps = args.GetInt("steps", 24);
+                var stepDelayMs = args.GetInt("stepDelayMs", 12);
+                var settleMs = args.GetInt("settleMs", 250);
+
+                // Resolve geometry and raise the window on the UI thread, then inject from this
+                // background pipe thread so the app can keep pumping while the drag runs.
+                var route = ctx.OnUi(() =>
+                {
+                    var start = id != null
+                        ? Centre(Require(ctx, id))
+                        : new Point(
+                            fromX ?? throw new ArgumentException("Provide either 'id' or 'fromX'/'fromY'."),
+                            fromY ?? throw new ArgumentException("Provide either 'id' or 'fromX'/'fromY'."));
+
+                    start = new Point(start.X + grabOffsetX, start.Y + grabOffsetY);
+
+                    Point end;
+                    if (toId != null)
+                        end = Centre(Require(ctx, toId));
+                    else if (toX.HasValue || toY.HasValue)
+                        end = new Point(toX ?? start.X, toY ?? start.Y);
+                    else if (dx.HasValue || dy.HasValue)
+                        end = new Point(start.X + (dx ?? 0), start.Y + (dy ?? 0));
+                    else
+                        throw new ArgumentException("Provide a destination: 'toId', 'toX'/'toY', or 'dx'/'dy'.");
+
+                    var window = WindowControl.ResolveWindow(id != null ? Require(ctx, id) : null);
+                    if (window != null)
+                        WindowControl.Foreground(window);
+
+                    return new { start, end };
+                });
+
+                RealInput.Drag(route.start, route.end, steps, stepDelayMs, settleMs);
+
+                return new
+                {
+                    from = new { x = route.start.X, y = route.start.Y },
+                    to = new { x = route.end.X, y = route.end.Y },
+                    steps
+                };
+            });
+
         registry.Register("type_text",
             "Set text on a focusable input via automation Value pattern or TextBox. Args: id, text.",
             (ctx, args) =>
@@ -166,5 +228,19 @@ internal static class BuiltInTools
         var obj = ctx.Elements.Resolve(id);
         if (obj == null) throw new ArgumentException($"Unknown or collected element '{id}'.");
         return obj;
+    }
+
+    /// <summary>Screen-pixel centre of an element, for pointing real mouse input at it.</summary>
+    private static Point Centre(DependencyObject obj)
+    {
+        if (obj is not System.Windows.Media.Visual visual || obj is not UIElement element)
+            throw new InvalidOperationException($"Element of type '{obj.GetType().Name}' has no on-screen position.");
+        if (!element.IsVisible)
+            throw new InvalidOperationException("Element is not visible, so it cannot be pointed at.");
+
+        var frameworkElement = obj as FrameworkElement;
+        var width = frameworkElement?.ActualWidth ?? 0;
+        var height = frameworkElement?.ActualHeight ?? 0;
+        return visual.PointToScreen(new Point(width / 2, height / 2));
     }
 }

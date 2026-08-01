@@ -26,8 +26,11 @@ internal static class PipeIntegrity
     private const uint SDDL_REVISION_1 = 1;
     private static readonly IntPtr INVALID_HANDLE_VALUE = new IntPtr(-1);
 
+    /// <summary>Concurrent clients allowed on one app: an MCP session plus ad-hoc scripts.</summary>
+    public const int MaxInstances = 4;
+
     /// <summary>
-    /// Create a single-instance async server pipe with the low-integrity descriptor. Falls back to
+    /// Create an async server pipe instance with the low-integrity descriptor. Falls back to
     /// a plain managed pipe (same-integrity clients only) if the native path fails for any reason.
     /// </summary>
     public static NamedPipeServerStream CreateServer(string pipeName, Action<string> log)
@@ -43,7 +46,7 @@ internal static class PipeIntegrity
         }
 
         return new NamedPipeServerStream(
-            pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+            pipeName, PipeDirection.InOut, MaxInstances, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
     }
 
     private static NamedPipeServerStream? TryCreate(string pipeName)
@@ -65,7 +68,7 @@ internal static class PipeIntegrity
                 @"\\.\pipe\" + pipeName,
                 PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
                 PIPE_TYPE_BYTE | PIPE_WAIT,
-                nMaxInstances: 1,
+                nMaxInstances: MaxInstances,
                 nOutBufferSize: 0,
                 nInBufferSize: 0,
                 nDefaultTimeOut: 0,
