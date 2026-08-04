@@ -1,4 +1,3 @@
-using System.Windows;
 using WpfPilot.Inspection;
 using Xunit;
 
@@ -6,7 +5,7 @@ namespace WpfPilot.Tests;
 
 public class ElementRegistryTests
 {
-    private sealed class Node : DependencyObject { }
+    private sealed class Node { }
 
     [Fact]
     public void GetOrAdd_ReturnsStableIdForSameObject()

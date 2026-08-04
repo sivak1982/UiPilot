@@ -1,19 +1,11 @@
 using System;
 using System.IO;
-using System.Text.Json.Serialization;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using WpfPilot.Media;
 
 namespace WpfPilot.Media;
-
-public sealed class ScreenshotData
-{
-    [JsonPropertyName("format")] public string Format { get; set; } = "png";
-    [JsonPropertyName("width")] public int Width { get; set; }
-    [JsonPropertyName("height")] public int Height { get; set; }
-    [JsonPropertyName("base64")] public string Base64 { get; set; } = "";
-}
 
 /// <summary>
 /// Renders a window (or any element) to a PNG using <see cref="RenderTargetBitmap"/>. Because it

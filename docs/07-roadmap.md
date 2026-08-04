@@ -32,9 +32,16 @@ Priority order, following the "thin vertical slice first" principle.
 - Debug-only MSBuild props that auto-call `Start()` via a module initializer (zero-line adoption).
 - Publish `wpfpilot` CLI as a `dotnet tool`.
 
+## Phase 6 - multi-UI (in progress)
+
+- Shared `WpfPilot.Core` + `IUiBackend` contract.
+- `AvaloniaPilot` package + sample app (parity for tree/query/click/type/screenshot/layout/window).
+- Discovery `uiFramework` field; CLI enablement env aliases (`UIPILOT_*`).
+
 ## Deferred (not planned for now)
 
 - Multi-transport (REST/gRPC/TCP).
-- Multi-UI abstractions (WinUI/MAUI/Avalonia).
+- WinUI / MAUI adapters.
 - ViewModel mutation tools.
 - Full visual-tree dump.
+- Non-Windows real-input backends (macOS/Linux SendInput equivalents).

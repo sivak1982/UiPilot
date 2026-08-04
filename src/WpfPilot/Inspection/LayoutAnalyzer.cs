@@ -1,19 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Text.Json.Serialization;
 using System.Windows;
 using System.Windows.Media;
 
 namespace WpfPilot.Inspection;
-
-public sealed class LayoutIssue
-{
-    [JsonPropertyName("id")] public string Id { get; set; } = "";
-    [JsonPropertyName("type")] public string Type { get; set; } = "";
-    [JsonPropertyName("name")] public string? Name { get; set; }
-    [JsonPropertyName("issue")] public string Issue { get; set; } = "";
-    [JsonPropertyName("message")] public string Message { get; set; } = "";
-}
 
 /// <summary>
 /// Flags common layout smells that render "invisibly wrong": zero-size visible elements and

@@ -1,38 +1,32 @@
 using System;
 using System.Diagnostics;
-using System.Reflection;
 using System.Windows;
 using System.Windows.Threading;
-using WpfPilot.Inspection;
-using WpfPilot.Server;
+using WpfPilot.Abstraction;
+using WpfPilot.Hosting;
 using WpfPilot.Tools;
 
 namespace WpfPilot;
 
 /// <summary>
-/// The single public entry point. Call <see cref="Start()"/> once from your app startup.
+/// The single public entry point for WPF apps. Call <see cref="Start()"/> once from app startup.
 /// No DI, no Generic Host, no attributes required. Enabled only for Debug builds, when the
-/// <c>WPFPILOT_ENABLE=1</c> environment variable is set, or when <c>Start(force: true)</c> is
-/// used - so a shipped Release build never exposes an automation surface by accident.
+/// <c>WPFPILOT_ENABLE=1</c> / <c>UIPILOT_ENABLE=1</c> environment variable is set, or when
+/// <c>Start(force: true)</c> is used.
 /// </summary>
 public static class WpfPilotHost
 {
-    public const string ProtocolVersion = "1.0";
+    public const string ProtocolVersion = PilotRuntime.ProtocolVersion;
 
     private static readonly object Gate = new object();
-    private static bool _started;
-    private static NamedPipeServer? _server;
-    private static BindingDiagnostics? _bindings;
-    private static string? _discoveryPath;
+    private static readonly PilotRuntime Runtime = new PilotRuntime();
+    private static bool _hooksAttached;
 
     /// <summary>True once the automation surface is live.</summary>
-    public static bool IsRunning
-    {
-        get { lock (Gate) return _started; }
-    }
+    public static bool IsRunning => Runtime.IsRunning;
 
     /// <summary>The registry of tools, available after a successful <see cref="Start()"/> (else null).</summary>
-    public static ToolRegistry? Tools { get; private set; }
+    public static ToolRegistry? Tools => Runtime.Tools;
 
     /// <summary>Start with default options.</summary>
     public static void Start() => Start((WpfPilotOptions?)null);
@@ -46,14 +40,6 @@ public static class WpfPilotHost
         options ??= new WpfPilotOptions();
         lock (Gate)
         {
-            if (_started) return;
-
-            if (!IsEnabled(options))
-            {
-                Log("WpfPilot disabled (not a Debug build, WPFPILOT_ENABLE!=1, and Force=false).");
-                return;
-            }
-
             var app = Application.Current;
             if (app == null)
             {
@@ -62,53 +48,39 @@ public static class WpfPilotHost
             }
 
             var dispatcher = app.Dispatcher;
-            var elements = new ElementRegistry();
-            _bindings = new BindingDiagnostics();
-            dispatcher.Invoke(() => _bindings.Install());
+            var backend = new WpfUiBackend();
+            dispatcher.Invoke(() => backend.Install());
 
-            var context = new ToolContext(dispatcher, elements, _bindings);
-            var registry = new ToolRegistry(context);
-            BuiltInTools.RegisterAll(registry);
-            Tools = registry;
+            Func<Func<object?>, object?> invoke = func => dispatcher.Invoke(func);
 
-            var pid = Process.GetCurrentProcess().Id;
-            var token = string.IsNullOrEmpty(options.Token) ? GenerateToken() : options.Token!;
-            var pipeName = string.IsNullOrEmpty(options.PipeName)
-                ? $"wpfpilot.{pid}.{Guid.NewGuid():N}"
-                : options.PipeName!;
+            var pilotOptions = options.ToPilotOptions();
+            var started = Runtime.Start(
+                pilotOptions,
+                backend,
+                invoke,
+                () => app.MainWindow?.Title,
+                Log);
 
-            _server = new NamedPipeServer(pipeName, token, registry, Log);
-            _server.Start();
-
-            var info = new DiscoveryInfo
+            if (!started)
             {
-                Pid = pid,
-                ProcessName = SafeProcessName(),
-                PipeName = pipeName,
-                Token = token,
-                ProtocolVersion = ProtocolVersion,
-                StartedUtc = DateTime.UtcNow.ToString("o"),
-                MainWindowTitle = dispatcher.Invoke(() => app.MainWindow?.Title),
-            };
-            _discoveryPath = DiscoveryFile.Write(info, options.DiscoveryDirectory);
+                try { backend.Shutdown(); } catch { /* ignore */ }
+                return;
+            }
 
-            AppDomain.CurrentDomain.ProcessExit += (_, _) => Stop();
-            dispatcher.ShutdownStarted += (_, _) => Stop();
+            if (!_hooksAttached)
+            {
+                _hooksAttached = true;
+                AppDomain.CurrentDomain.ProcessExit += (_, _) => Stop();
+                dispatcher.ShutdownStarted += (_, _) => Stop();
+            }
 
-            _started = true;
-            Log($"WpfPilot started. pipe={pipeName} discovery={_discoveryPath}");
-
-            if (ResolveStartMinimized(options))
+            if (PilotRuntime.ResolveStartMinimized(pilotOptions))
                 ScheduleMinimize(app, dispatcher);
         }
     }
 
-    private static bool ResolveStartMinimized(WpfPilotOptions options)
-    {
-        if (options.StartMinimized.HasValue) return options.StartMinimized.Value;
-        return string.Equals(
-            Environment.GetEnvironmentVariable(WpfPilotOptions.StartMinimizedEnvVar), "1", StringComparison.Ordinal);
-    }
+    /// <summary>Tear down the server and remove the discovery file. Safe to call repeatedly.</summary>
+    public static void Stop() => Runtime.Stop(Log);
 
     /// <summary>
     /// Minimize the main window once, at idle priority, so it has rendered at least one frame first
@@ -125,55 +97,6 @@ public static class WpfPilotHost
             }
             catch { /* ignore - minimizing is best-effort */ }
         }));
-    }
-
-    /// <summary>Tear down the server and remove the discovery file. Safe to call repeatedly.</summary>
-    public static void Stop()
-    {
-        lock (Gate)
-        {
-            if (!_started) return;
-            try { _server?.Stop(); } catch { /* ignore */ }
-            try { _bindings?.Uninstall(); } catch { /* ignore */ }
-            if (_discoveryPath != null) DiscoveryFile.Delete(_discoveryPath);
-            _server = null;
-            _bindings = null;
-            _discoveryPath = null;
-            Tools = null;
-            _started = false;
-            Log("WpfPilot stopped.");
-        }
-    }
-
-    private static bool IsEnabled(WpfPilotOptions options)
-    {
-        if (options.Force) return true;
-        if (string.Equals(Environment.GetEnvironmentVariable(WpfPilotOptions.EnableEnvVar), "1", StringComparison.Ordinal))
-            return true;
-        return IsEntryAssemblyDebugBuild();
-    }
-
-    private static bool IsEntryAssemblyDebugBuild()
-    {
-        try
-        {
-            var asm = Assembly.GetEntryAssembly();
-            var attr = asm?.GetCustomAttribute<DebuggableAttribute>();
-            return attr != null && attr.IsJITOptimizerDisabled;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static string GenerateToken() =>
-        Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
-
-    private static string SafeProcessName()
-    {
-        try { return Process.GetCurrentProcess().ProcessName; }
-        catch { return "unknown"; }
     }
 
     private static void Log(string message) => Debug.WriteLine("[WpfPilot] " + message);

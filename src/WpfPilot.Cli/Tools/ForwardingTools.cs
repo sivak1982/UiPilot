@@ -16,7 +16,7 @@ public sealed class ForwardingTools
     public ForwardingTools(ConnectionManager connection) => _connection = connection;
 
     [McpServerTool(Name = "list_windows")]
-    [Description("List all top-level windows of the attached WPF app with identity and bounds.")]
+    [Description("List all top-level windows of the attached app with identity and bounds.")]
     public Task<string> ListWindows(CancellationToken ct) =>
         Forward("list_windows", new { }, ct);
 
@@ -39,7 +39,7 @@ public sealed class ForwardingTools
         Forward("inspect_element", new { id, includeChildren, depth }, ct);
 
     [McpServerTool(Name = "click")]
-    [Description("Synthetically click an element (UI Automation invoke, then ButtonBase fallback).")]
+    [Description("Synthetically click an element (automation invoke / control click fallback).")]
     public Task<string> Click(
         [Description("Element handle id.")] string id,
         CancellationToken ct = default) =>

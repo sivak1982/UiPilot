@@ -1,19 +1,20 @@
 using System;
-using System.Windows;
-using WpfPilot.Inspection;
+using WpfPilot.Abstraction;
 using WpfPilot.Interaction;
-using WpfPilot.Media;
 
 namespace WpfPilot.Tools;
 
-/// <summary>Registers the ~10 v1 built-in tools. Every UI touch is marshaled to the dispatcher.</summary>
+/// <summary>
+/// Registers the built-in agent tools against an <see cref="IUiBackend"/>. Tool names and
+/// argument contracts are identical for WPF and Avalonia.
+/// </summary>
 internal static class BuiltInTools
 {
     public static void RegisterAll(ToolRegistry registry)
     {
         registry.Register("list_windows",
             "List all top-level windows with identity and bounds.",
-            (ctx, _) => ctx.OnUi(() => new { windows = VisualTreeQuery.ListWindows(ctx.Elements) }));
+            (ctx, _) => ctx.OnUi(() => new { windows = ctx.Backend.ListWindows() }));
 
         registry.Register("find_elements",
             "Search the visual tree by name, AutomationId, type, or text. Args: query, limit=50, root(id).",
@@ -24,7 +25,7 @@ internal static class BuiltInTools
                 var root = args.GetString("root");
                 return ctx.OnUi(() =>
                 {
-                    var elements = VisualTreeQuery.Find(ctx.Elements, query, limit, root);
+                    var elements = ctx.Backend.Find(query, limit, root);
                     return new { count = elements.Count, elements };
                 });
             });
@@ -38,22 +39,18 @@ internal static class BuiltInTools
                 var depth = args.GetInt("depth", 1);
                 return ctx.OnUi<object>(() =>
                 {
-                    var info = VisualTreeQuery.Inspect(ctx.Elements, id, includeChildren, depth);
+                    var info = ctx.Backend.Inspect(id, includeChildren, depth);
                     if (info == null) throw new ArgumentException($"Unknown or collected element '{id}'.");
                     return info;
                 });
             });
 
         registry.Register("click",
-            "Synthetically click an element (automation invoke, then ButtonBase fallback). Args: id.",
+            "Synthetically click an element (automation invoke / control click fallback). Args: id.",
             (ctx, args) =>
             {
                 var id = args.GetRequiredString("id");
-                return ctx.OnUi<object>(() =>
-                {
-                    var obj = Require(ctx, id);
-                    return new { method = SyntheticInput.Click(obj) };
-                });
+                return ctx.OnUi<object>(() => new { method = ctx.Backend.Click(id) });
             });
 
         registry.Register("drag",
@@ -83,28 +80,27 @@ internal static class BuiltInTools
                 // background pipe thread so the app can keep pumping while the drag runs.
                 var route = ctx.OnUi(() =>
                 {
-                    var start = id != null
-                        ? Centre(Require(ctx, id))
-                        : new Point(
+                    ScreenPoint start;
+                    if (id != null)
+                        start = ctx.Backend.GetElementCentre(id);
+                    else
+                        start = new ScreenPoint(
                             fromX ?? throw new ArgumentException("Provide either 'id' or 'fromX'/'fromY'."),
                             fromY ?? throw new ArgumentException("Provide either 'id' or 'fromX'/'fromY'."));
 
-                    start = new Point(start.X + grabOffsetX, start.Y + grabOffsetY);
+                    start = new ScreenPoint(start.X + grabOffsetX, start.Y + grabOffsetY);
 
-                    Point end;
+                    ScreenPoint end;
                     if (toId != null)
-                        end = Centre(Require(ctx, toId));
+                        end = ctx.Backend.GetElementCentre(toId);
                     else if (toX.HasValue || toY.HasValue)
-                        end = new Point(toX ?? start.X, toY ?? start.Y);
+                        end = new ScreenPoint(toX ?? start.X, toY ?? start.Y);
                     else if (dx.HasValue || dy.HasValue)
-                        end = new Point(start.X + (dx ?? 0), start.Y + (dy ?? 0));
+                        end = new ScreenPoint(start.X + (dx ?? 0), start.Y + (dy ?? 0));
                     else
                         throw new ArgumentException("Provide a destination: 'toId', 'toX'/'toY', or 'dx'/'dy'.");
 
-                    var window = WindowControl.ResolveWindow(id != null ? Require(ctx, id) : null);
-                    if (window != null)
-                        WindowControl.Foreground(window);
-
+                    ctx.Backend.PrepareForRealInput(id);
                     return new { start, end };
                 });
 
@@ -119,16 +115,12 @@ internal static class BuiltInTools
             });
 
         registry.Register("type_text",
-            "Set text on a focusable input via automation Value pattern or TextBox. Args: id, text.",
+            "Set text on a focusable input via automation Value pattern or text control. Args: id, text.",
             (ctx, args) =>
             {
                 var id = args.GetRequiredString("id");
                 var text = args.GetString("text") ?? string.Empty;
-                return ctx.OnUi<object>(() =>
-                {
-                    var obj = Require(ctx, id);
-                    return new { method = SyntheticInput.TypeText(obj, text) };
-                });
+                return ctx.OnUi<object>(() => new { method = ctx.Backend.TypeText(id, text) });
             });
 
         registry.Register("invoke_command",
@@ -136,11 +128,7 @@ internal static class BuiltInTools
             (ctx, args) =>
             {
                 var id = args.GetRequiredString("id");
-                return ctx.OnUi<object>(() =>
-                {
-                    var obj = Require(ctx, id);
-                    return new { result = SyntheticInput.InvokeCommand(obj) };
-                });
+                return ctx.OnUi<object>(() => new { result = ctx.Backend.InvokeCommand(id) });
             });
 
         registry.Register("screenshot",
@@ -150,8 +138,7 @@ internal static class BuiltInTools
                 var id = args.GetString("id");
                 return ctx.OnUi<object>(() =>
                 {
-                    var target = id == null ? null : Require(ctx, id);
-                    var shot = Screenshot.Capture(target);
+                    var shot = ctx.Backend.Screenshot(id);
                     if (shot == null) throw new InvalidOperationException("Nothing renderable to capture.");
                     return shot;
                 });
@@ -164,13 +151,7 @@ internal static class BuiltInTools
                 var id = args.GetString("id");
                 var state = args.GetString("state") ?? "normal";
                 var activate = args.GetBool("activate", false);
-                return ctx.OnUi<object>(() =>
-                {
-                    var target = id == null ? null : Require(ctx, id);
-                    var window = WindowControl.ResolveWindow(target)
-                        ?? throw new InvalidOperationException("No window to control.");
-                    return new { state = WindowControl.SetState(window, state, activate) };
-                });
+                return ctx.OnUi<object>(() => new { state = ctx.Backend.SetWindowState(id, state, activate) });
             });
 
         registry.Register("bring_to_front",
@@ -178,22 +159,16 @@ internal static class BuiltInTools
             (ctx, args) =>
             {
                 var id = args.GetString("id");
-                return ctx.OnUi<object>(() =>
-                {
-                    var target = id == null ? null : Require(ctx, id);
-                    var window = WindowControl.ResolveWindow(target)
-                        ?? throw new InvalidOperationException("No window to bring to front.");
-                    return new { state = WindowControl.Foreground(window) };
-                });
+                return ctx.OnUi<object>(() => new { state = ctx.Backend.BringToFront(id) });
             });
 
         registry.Register("get_binding_errors",
-            "Return captured WPF data-binding errors/warnings. Args: clear=false.",
+            "Return captured data-binding errors/warnings. Args: clear=false.",
             (ctx, args) =>
             {
                 var clear = args.GetBool("clear", false);
-                var errors = ctx.Bindings.Snapshot();
-                if (clear) ctx.Bindings.Clear();
+                var errors = ctx.Backend.GetBindingErrors();
+                if (clear) ctx.Backend.ClearBindingErrors();
                 return new { count = errors.Count, errors };
             });
 
@@ -204,7 +179,7 @@ internal static class BuiltInTools
                 var root = args.GetString("root");
                 return ctx.OnUi(() =>
                 {
-                    var issues = LayoutAnalyzer.Analyze(ctx.Elements, root);
+                    var issues = ctx.Backend.AnalyzeLayout(root);
                     return new { count = issues.Count, issues };
                 });
             });
@@ -215,32 +190,7 @@ internal static class BuiltInTools
             {
                 var id = args.GetRequiredString("id");
                 var durationMs = args.GetInt("durationMs", 1500);
-                return ctx.OnUi<object>(() =>
-                {
-                    var obj = Require(ctx, id);
-                    return new { highlighted = HighlightOverlay.Highlight(obj, durationMs) };
-                });
+                return ctx.OnUi<object>(() => new { highlighted = ctx.Backend.Highlight(id, durationMs) });
             });
-    }
-
-    private static DependencyObject Require(ToolContext ctx, string id)
-    {
-        var obj = ctx.Elements.Resolve(id);
-        if (obj == null) throw new ArgumentException($"Unknown or collected element '{id}'.");
-        return obj;
-    }
-
-    /// <summary>Screen-pixel centre of an element, for pointing real mouse input at it.</summary>
-    private static Point Centre(DependencyObject obj)
-    {
-        if (obj is not System.Windows.Media.Visual visual || obj is not UIElement element)
-            throw new InvalidOperationException($"Element of type '{obj.GetType().Name}' has no on-screen position.");
-        if (!element.IsVisible)
-            throw new InvalidOperationException("Element is not visible, so it cannot be pointed at.");
-
-        var frameworkElement = obj as FrameworkElement;
-        var width = frameworkElement?.ActualWidth ?? 0;
-        var height = frameworkElement?.ActualHeight ?? 0;
-        return visual.PointToScreen(new Point(width / 2, height / 2));
     }
 }

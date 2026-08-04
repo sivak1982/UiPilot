@@ -4,8 +4,8 @@ using System.Text;
 namespace WpfPilot.Cli.Process;
 
 /// <summary>
-/// Builds and launches a WPF app for the AI edit loop. All child process output is captured
-/// (never inherited) so it can't corrupt this process's stdout MCP stream.
+/// Builds and launches a desktop UI app (WPF or Avalonia) for the AI edit loop. All child
+/// process output is captured (never inherited) so it can't corrupt this process's stdout MCP stream.
 /// </summary>
 public static class AppLauncher
 {
@@ -45,9 +45,11 @@ public static class AppLauncher
             WorkingDirectory = Path.GetDirectoryName(targetAssemblyPath),
         };
         psi.Environment["WPFPILOT_ENABLE"] = "1";
+        psi.Environment["UIPILOT_ENABLE"] = "1";
         // Keep the driven app out of the way so the agent/IDE stays visible. Offscreen screenshots
         // still work while minimized; use the bring_to_front tool to show it on demand.
         psi.Environment["WPFPILOT_START_MINIMIZED"] = "1";
+        psi.Environment["UIPILOT_START_MINIMIZED"] = "1";
 
         if (File.Exists(exePath))
         {

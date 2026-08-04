@@ -26,3 +26,12 @@ public sealed class ElementInfo
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<ElementInfo>? Children { get; set; }
 }
+
+public sealed class LayoutIssue
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = "";
+    [JsonPropertyName("type")] public string Type { get; set; } = "";
+    [JsonPropertyName("name")] public string? Name { get; set; }
+    [JsonPropertyName("issue")] public string Issue { get; set; } = "";
+    [JsonPropertyName("message")] public string Message { get; set; } = "";
+}

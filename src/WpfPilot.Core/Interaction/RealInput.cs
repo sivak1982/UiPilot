@@ -1,24 +1,29 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Windows;
+using WpfPilot.Abstraction;
 
 namespace WpfPilot.Interaction;
 
 /// <summary>
-/// Real OS-level mouse input via SendInput. Unlike <see cref="SyntheticInput"/>, this goes through
-/// hit-testing, mouse capture and the Preview* tunnel, which is the only way to exercise drag
-/// interactions (Thumb, DragDrop, manual capture-based drags).
+/// Real OS-level mouse input via SendInput (Windows). Unlike synthetic UI Automation /
+/// RaiseEvent paths, this goes through hit-testing, mouse capture and the Preview* tunnel,
+/// which is the only way to exercise drag interactions.
 /// <para>
-/// Must be called from a background thread: the target app's UI thread has to keep pumping messages
-/// while the input is injected, so blocking it would deadlock the drag.
+/// Must be called from a background thread: the target app's UI thread has to keep pumping
+/// messages while the input is injected, so blocking it would deadlock the drag.
 /// </para>
 /// </summary>
 public static class RealInput
 {
     /// <summary>Presses at <paramref name="from"/>, glides to <paramref name="to"/>, then releases.</summary>
-    public static void Drag(Point from, Point to, int steps, int stepDelayMs, int settleMs)
+    public static void Drag(ScreenPoint from, ScreenPoint to, int steps, int stepDelayMs, int settleMs)
     {
+#if !NETFRAMEWORK
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            throw new PlatformNotSupportedException("Real mouse drag currently requires Windows (SendInput).");
+#endif
+
         steps = Math.Max(2, steps);
         stepDelayMs = Math.Max(1, stepDelayMs);
 
@@ -32,7 +37,7 @@ public static class RealInput
         for (var step = 1; step <= steps; step++)
         {
             var progress = (double)step / steps;
-            MoveTo(new Point(
+            MoveTo(new ScreenPoint(
                 from.X + (to.X - from.X) * progress,
                 from.Y + (to.Y - from.Y) * progress));
             Thread.Sleep(stepDelayMs);
@@ -43,7 +48,7 @@ public static class RealInput
         Thread.Sleep(Math.Max(0, settleMs));
     }
 
-    public static void MoveTo(Point screenPoint)
+    public static void MoveTo(ScreenPoint screenPoint)
     {
         var (x, y) = ToAbsolute(screenPoint);
         Send(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK, x, y);
@@ -54,7 +59,7 @@ public static class RealInput
     public static void LeftUp() => Send(MOUSEEVENTF_LEFTUP, 0, 0);
 
     /// <summary>Maps a screen pixel to the 0..65535 space SendInput expects across all monitors.</summary>
-    private static (int X, int Y) ToAbsolute(Point screenPoint)
+    private static (int X, int Y) ToAbsolute(ScreenPoint screenPoint)
     {
         var left = GetSystemMetrics(SM_XVIRTUALSCREEN);
         var top = GetSystemMetrics(SM_YVIRTUALSCREEN);
@@ -104,7 +109,6 @@ public static class RealInput
         public IntPtr dwExtraInfo;
     }
 
-    // INPUT is a union; MOUSEINPUT is the largest member we use, so a sequential layout matches.
     [StructLayout(LayoutKind.Sequential)]
     private struct INPUT
     {

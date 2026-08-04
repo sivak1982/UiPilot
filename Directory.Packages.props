@@ -5,6 +5,12 @@
     <PackageVersion Include="System.Text.Json" Version="8.0.5" />
   </ItemGroup>
 
+  <ItemGroup Label="Avalonia">
+    <PackageVersion Include="Avalonia" Version="11.3.0" />
+    <PackageVersion Include="Avalonia.Desktop" Version="11.3.0" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="11.3.0" />
+  </ItemGroup>
+
   <ItemGroup Label="CLI (modern .NET only)">
     <PackageVersion Include="ModelContextProtocol" Version="1.4.1" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.0" />

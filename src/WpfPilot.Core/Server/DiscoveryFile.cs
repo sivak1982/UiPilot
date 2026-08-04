@@ -19,6 +19,9 @@ public sealed class DiscoveryInfo
     [JsonPropertyName("protocolVersion")] public string ProtocolVersion { get; set; } = "";
     [JsonPropertyName("startedUtc")] public string StartedUtc { get; set; } = "";
     [JsonPropertyName("mainWindowTitle")] public string? MainWindowTitle { get; set; }
+
+    /// <summary>UI stack hosting the in-process tools (<c>wpf</c>, <c>avalonia</c>, …).</summary>
+    [JsonPropertyName("uiFramework")] public string? UiFramework { get; set; }
 }
 
 internal static class DiscoveryFile

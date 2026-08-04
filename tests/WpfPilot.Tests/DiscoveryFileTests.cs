@@ -20,6 +20,7 @@ public class DiscoveryFileTests
             ProtocolVersion = "1.0",
             StartedUtc = "2026-07-17T07:00:00.0000000Z",
             MainWindowTitle = "Title",
+            UiFramework = "wpf",
         };
 
         var path = DiscoveryFile.Write(info, dir);
@@ -36,6 +37,7 @@ public class DiscoveryFileTests
             Assert.Equal(info.Token, reloaded.Token);
             Assert.Equal(info.ProtocolVersion, reloaded.ProtocolVersion);
             Assert.Equal(info.MainWindowTitle, reloaded.MainWindowTitle);
+            Assert.Equal(info.UiFramework, reloaded.UiFramework);
 
             DiscoveryFile.Delete(path);
             Assert.False(File.Exists(path));

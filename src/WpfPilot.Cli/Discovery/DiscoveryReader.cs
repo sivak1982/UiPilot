@@ -13,9 +13,10 @@ public sealed class DiscoveryInfo
     [JsonPropertyName("protocolVersion")] public string ProtocolVersion { get; set; } = "";
     [JsonPropertyName("startedUtc")] public string StartedUtc { get; set; } = "";
     [JsonPropertyName("mainWindowTitle")] public string? MainWindowTitle { get; set; }
+    [JsonPropertyName("uiFramework")] public string? UiFramework { get; set; }
 }
 
-/// <summary>Reads WpfPilot discovery files and filters out entries whose process is gone.</summary>
+/// <summary>Reads discovery files and filters out entries whose process is gone.</summary>
 public sealed class DiscoveryReader
 {
     public string Directory { get; }

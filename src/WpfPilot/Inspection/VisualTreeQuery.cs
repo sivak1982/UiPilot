@@ -45,7 +45,7 @@ public static class VisualTreeQuery
 
     public static ElementInfo? Inspect(ElementRegistry registry, string id, bool includeChildren, int depth)
     {
-        var obj = registry.Resolve(id);
+        var obj = registry.Resolve<DependencyObject>(id);
         if (obj == null) return null;
         var info = BuildInfo(obj, registry);
         if (includeChildren)
@@ -109,7 +109,7 @@ public static class VisualTreeQuery
         var roots = new List<DependencyObject>();
         if (!string.IsNullOrEmpty(rootId))
         {
-            var obj = registry.Resolve(rootId);
+            var obj = registry.Resolve<DependencyObject>(rootId);
             if (obj != null) roots.Add(obj);
             return roots;
         }

@@ -3,22 +3,26 @@ description: Extend WpfPilot when driving target apps; test and check in before 
 alwaysApply: true
 ---
 
-# WpfPilot + target app workflow
+# WpfPilot / AvaloniaPilot + target app workflow
 
-WpfPilot is under active development. When using it to drive a target WPF app (e.g. EquipLink `EL_UI`):
+WpfPilot is under active development. When using it to drive a target desktop app (WPF via
+`WpfPilot`, Avalonia via `AvaloniaPilot`):
 
-## Extend WpfPilot when needed
+## Extend the shared stack when needed
 
-If the target app exposes a gap (menu navigation, window state, screenshots while minimized, elevated lifecycle, etc.), **add the feature to WpfPilot** rather than working around it in one-off scripts.
+If the target app exposes a gap (menu navigation, window state, screenshots while minimized,
+elevated lifecycle, etc.), **add the feature to WpfPilot.Core / the matching adapter** rather
+than working around it in one-off scripts.
 
-- Keep changes minimal and reusable for any WPF app.
+- Shared protocol/tools belong in `WpfPilot.Core`; WPF-only behavior in `WpfPilot`; Avalonia-only in `AvaloniaPilot`.
+- Keep changes minimal and reusable for any app on that UI stack.
 - Add or update unit/integration tests for new behavior.
 - Run `dotnet test` and ensure **all existing tests pass** before finishing.
-- **Check in WpfPilot** (`git commit`) when WpfPilot code changed — do not leave WpfPilot edits uncommitted.
+- **Check in** (`git commit`) when pilot code changed — do not leave edits uncommitted.
 
 ## Driving the target app
 
-- Launch with `WPFPILOT_START_MINIMIZED=1` (CLI edit loop does this) so the agent/IDE stays visible; use `bring_to_front` only when a human must see the window.
+- Launch with `WPFPILOT_START_MINIMIZED=1` / `UIPILOT_START_MINIMIZED=1` (CLI edit loop does this) so the agent/IDE stays visible; use `bring_to_front` only when a human must see the window.
 - Screenshots via `RenderTargetBitmap` work while minimized — prefer that over keeping the app foregrounded.
 - For elevated targets (`requireAdministrator`), run Cursor/CLI elevated so start/stop works without UAC prompts.
 

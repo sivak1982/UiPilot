@@ -1,8 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
-    <UseWPF>true</UseWPF>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
@@ -16,7 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\WpfPilot\WpfPilot.csproj" />
+    <ProjectReference Include="..\..\src\WpfPilot.Core\WpfPilot.Core.csproj" />
     <ProjectReference Include="..\..\src\WpfPilot.Cli\WpfPilot.Cli.csproj" />
   </ItemGroup>
 

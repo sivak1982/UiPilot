@@ -24,11 +24,13 @@ Written to `%TEMP%\wpfpilot\<pid>.json` on start, deleted on clean shutdown. Sch
   "token": "3a1b...9c",
   "protocolVersion": "1.0",
   "startedUtc": "2026-07-17T07:00:00.0000000Z",
-  "mainWindowTitle": "WpfPilot Sample"
+  "mainWindowTitle": "WpfPilot Sample",
+  "uiFramework": "wpf"
 }
 ```
 
-The CLI validates that `pid` is still alive before using an entry, and deletes stale files.
+`uiFramework` is `wpf` or `avalonia` (omitted only by older hosts). The CLI validates that `pid`
+is still alive before using an entry, and deletes stale files.
 
 ## Request
 

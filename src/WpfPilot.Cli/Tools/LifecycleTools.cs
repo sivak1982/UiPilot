@@ -18,35 +18,35 @@ public sealed class LifecycleTools
     public LifecycleTools(ConnectionManager connection) => _connection = connection;
 
     [McpServerTool(Name = "list_apps")]
-    [Description("List running WpfPilot-enabled apps discovered from %TEMP%/wpfpilot.")]
+    [Description("List running pilot-enabled apps (WPF or Avalonia) discovered from %TEMP%/wpfpilot.")]
     public string ListApps()
     {
         var apps = _connection.ListAlive()
-            .Select(a => new { a.Pid, a.ProcessName, a.MainWindowTitle, a.ProtocolVersion, a.StartedUtc })
+            .Select(a => new { a.Pid, a.ProcessName, a.MainWindowTitle, a.ProtocolVersion, a.StartedUtc, a.UiFramework })
             .ToList();
         return JsonSerializer.Serialize(new { count = apps.Count, apps }, Json);
     }
 
     [McpServerTool(Name = "attach")]
-    [Description("Attach to a running WpfPilot app. If pid is omitted and exactly one app is running, attaches to it.")]
+    [Description("Attach to a running pilot app (WPF or Avalonia). If pid is omitted and exactly one app is running, attaches to it.")]
     public async Task<string> Attach(
         [Description("Process id of the target app. Optional when only one app is running.")] int? pid = null,
         CancellationToken ct = default)
     {
         var info = await _connection.AttachAsync(pid, ct).ConfigureAwait(false);
-        return JsonSerializer.Serialize(new { attached = true, info.Pid, info.ProcessName, info.MainWindowTitle }, Json);
+        return JsonSerializer.Serialize(new { attached = true, info.Pid, info.ProcessName, info.MainWindowTitle, info.UiFramework }, Json);
     }
 
     [McpServerTool(Name = "build_and_start")]
-    [Description("Build a WPF project and launch it with WpfPilot enabled, then attach. This is the entry point of the edit loop.")]
+    [Description("Build a WPF or Avalonia project and launch it with pilot enabled, then attach. This is the entry point of the edit loop.")]
     public async Task<string> BuildAndStart(
-        [Description("Path to the .csproj (or a directory/solution the SDK can build) of the WPF app.")] string project,
+        [Description("Path to the .csproj (or a directory/solution the SDK can build) of the target app.")] string project,
         [Description("Build configuration.")] string configuration = "Debug",
         [Description("Optional MSBuild platform (e.g. 'x64') for projects that require an explicit platform.")] string? platform = null,
         CancellationToken ct = default)
     {
         var info = await _connection.BuildAndStartAsync(project, configuration, platform, ct).ConfigureAwait(false);
-        return JsonSerializer.Serialize(new { started = true, info.Pid, info.ProcessName, info.MainWindowTitle }, Json);
+        return JsonSerializer.Serialize(new { started = true, info.Pid, info.ProcessName, info.MainWindowTitle, info.UiFramework }, Json);
     }
 
     [McpServerTool(Name = "restart_app")]

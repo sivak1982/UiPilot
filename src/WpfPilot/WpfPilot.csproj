@@ -10,8 +10,8 @@
     <IsPackable>true</IsPackable>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
-    <PackageReference Include="System.Text.Json" />
+  <ItemGroup>
+    <ProjectReference Include="..\WpfPilot.Core\WpfPilot.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
