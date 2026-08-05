@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 using WpfPilot.Inspection;
 using WpfPilot.Media;
 
@@ -20,11 +21,21 @@ public interface IUiBackend
 
     IReadOnlyList<ElementInfo> Find(string? query, int limit, string? rootId);
 
-    ElementInfo? Inspect(string id, bool includeChildren, int depth);
+    FindPage FindPage(string? query, int limit, int offset, string? rootId);
+
+    ElementInfo? Inspect(string id, bool includeChildren, int depth, IReadOnlyList<string>? propertyNames);
 
     string Click(string id);
 
     string TypeText(string id, string text);
+
+    string PressKeys(string? id, string keys);
+
+    string Scroll(string id, double dx, double dy);
+
+    string Focus(string id);
+
+    string SelectItem(string id, string? text, int? index);
 
     string InvokeCommand(string id);
 
@@ -50,6 +61,24 @@ public interface IUiBackend
 
     /// <summary>Tear down framework hooks (binding listeners, etc.).</summary>
     void Shutdown();
+}
+
+public sealed class FindPage
+{
+    [JsonPropertyName("elements")]
+    public IReadOnlyList<ElementInfo> Elements { get; set; } = new List<ElementInfo>();
+
+    [JsonPropertyName("count")]
+    public int Count { get; set; }
+
+    [JsonPropertyName("hasMore")]
+    public bool HasMore { get; set; }
+
+    [JsonPropertyName("offset")]
+    public int Offset { get; set; }
+
+    [JsonPropertyName("limit")]
+    public int Limit { get; set; }
 }
 
 /// <summary>Screen coordinate in pixels (framework-agnostic stand-in for WPF/Avalonia Point).</summary>

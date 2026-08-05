@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using WpfPilot.Cli.Discovery;
+using WpfPilot.Server;
 using Xunit;
 
 namespace WpfPilot.Tests;

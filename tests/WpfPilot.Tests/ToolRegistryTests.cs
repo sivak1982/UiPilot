@@ -46,4 +46,27 @@ public class ToolRegistryTests
         var tools = doc.RootElement.GetProperty("tools");
         Assert.Equal(2, tools.GetArrayLength());
     }
+
+    [Fact]
+    public void BuiltInToolCatalog_MatchesRegisteredTools()
+    {
+        var registry = new ToolRegistry(TestSupport.CreateContext());
+
+        BuiltInTools.RegisterAll(registry);
+
+        Assert.Equal(ToolCatalog.BuiltInToolNames, registry.Names);
+    }
+
+    [Fact]
+    public void WaitForElement_TimesOutWhenNoMatchAppears()
+    {
+        var registry = new ToolRegistry(TestSupport.CreateContext());
+        BuiltInTools.RegisterAll(registry);
+
+        var ex = Assert.Throws<PilotToolException>(() =>
+            registry.Invoke(ToolCatalog.WaitForElement, TestSupport.Json("""{"query":"missing","timeoutMs":1,"pollMs":1}""")));
+
+        Assert.Equal(PilotErrorCodes.Timeout, ex.Code);
+        Assert.NotNull(ex.Hint);
+    }
 }

@@ -61,8 +61,11 @@ public sealed class PipeClient : IDisposable
             if (root.TryGetProperty("error", out var error))
             {
                 var message = error.TryGetProperty("message", out var m) ? m.GetString() : "Unknown error";
-                var code = error.TryGetProperty("code", out var c) ? c.GetInt32() : 0;
-                throw new PipeRpcException(code, message ?? "Unknown error");
+                var rpcCode = error.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.Number && c.TryGetInt32(out var parsedCode)
+                    ? parsedCode
+                    : 0;
+                var (code, hint) = ReadErrorData(error);
+                throw new PipeRpcException(rpcCode, message ?? "Unknown error", code, hint);
             }
             return root.TryGetProperty("result", out var result) ? result.Clone() : default;
         }
@@ -71,6 +74,30 @@ public sealed class PipeClient : IDisposable
             _lock.Release();
         }
     }
+
+    private static (string? Code, string? Hint) ReadErrorData(JsonElement error)
+    {
+        if (!error.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
+            return (null, null);
+
+        string? code = null;
+        string? hint = null;
+        if (data.TryGetProperty("code", out var codeElement))
+            code = ElementToString(codeElement);
+        if (data.TryGetProperty("hint", out var hintElement))
+            hint = ElementToString(hintElement);
+        return (code, hint);
+    }
+
+    private static string? ElementToString(JsonElement element) =>
+        element.ValueKind switch
+        {
+            JsonValueKind.String => element.GetString(),
+            JsonValueKind.Number => element.GetRawText(),
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            _ => null,
+        };
 
     public void Dispose()
     {
@@ -83,6 +110,14 @@ public sealed class PipeClient : IDisposable
 
 public sealed class PipeRpcException : Exception
 {
-    public int Code { get; }
-    public PipeRpcException(int code, string message) : base(message) => Code = code;
+    public int RpcCode { get; }
+    public string? Code { get; }
+    public string? Hint { get; }
+
+    public PipeRpcException(int rpcCode, string message, string? code = null, string? hint = null) : base(message)
+    {
+        RpcCode = rpcCode;
+        Code = code;
+        Hint = hint;
+    }
 }

@@ -1,20 +1,7 @@
-using System.Diagnostics;
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using WpfPilot.Server;
 
 namespace WpfPilot.Cli.Discovery;
-
-public sealed class DiscoveryInfo
-{
-    [JsonPropertyName("pid")] public int Pid { get; set; }
-    [JsonPropertyName("processName")] public string ProcessName { get; set; } = "";
-    [JsonPropertyName("pipeName")] public string PipeName { get; set; } = "";
-    [JsonPropertyName("token")] public string Token { get; set; } = "";
-    [JsonPropertyName("protocolVersion")] public string ProtocolVersion { get; set; } = "";
-    [JsonPropertyName("startedUtc")] public string StartedUtc { get; set; } = "";
-    [JsonPropertyName("mainWindowTitle")] public string? MainWindowTitle { get; set; }
-    [JsonPropertyName("uiFramework")] public string? UiFramework { get; set; }
-}
 
 /// <summary>Reads discovery files and filters out entries whose process is gone.</summary>
 public sealed class DiscoveryReader

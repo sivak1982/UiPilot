@@ -1,52 +1,76 @@
-# Tools (v1)
+# Tools
 
 Two groups: **forwarding** tools run inside the app (require an attached app);
 **lifecycle** tools run in the CLI (drive the edit loop). All are exposed to the agent over MCP.
+Built-in in-app names are catalogued in [`ToolCatalog`](../src/WpfPilot.Core/Tools/ToolCatalog.cs)
+and registered by [`BuiltInTools`](../src/WpfPilot.Core/Tools/BuiltInTools.cs).
 
-## Lifecycle tools (CLI, out-of-process)
+Protocol version: **1.1**.
 
-Defined in [Tools/LifecycleTools.cs](../src/WpfPilot.Cli/Tools/LifecycleTools.cs).
+## Lifecycle tools (CLI)
+
+Defined in [LifecycleTools.cs](../src/WpfPilot.Cli/Tools/LifecycleTools.cs).
 
 | Tool | Args | Description |
 |---|---|---|
-| `list_apps` | - | List running WpfPilot apps from the discovery directory. |
-| `attach` | `pid?` | Attach to an app (auto-selects if exactly one is running). |
-| `build_and_start` | `project`, `configuration="Debug"` | Build a WPF project, launch it with WpfPilot enabled, and attach. |
+| `list_apps` | - | List running pilot apps from `%TEMP%/wpfpilot` (includes `uiFramework`). |
+| `attach` | `pid?`, `processName?`, `uiFramework?` | Attach; filters apply when `pid` is omitted. |
+| `detach` | - | Drop the pipe connection without killing the process. |
+| `build_and_start` | `project`, `configuration="Debug"`, `platform?` | Build, launch with pilot enabled, attach. |
 | `restart_app` | - | Rebuild + relaunch the last started app and re-attach. |
-| `stop_app` | - | Stop the launched app and detach. |
+| `stop_app` | - | Kill the driven app and detach. |
 
 ## Forwarding tools (in-app)
 
-Defined in [Tools/ForwardingTools.cs](../src/WpfPilot.Cli/Tools/ForwardingTools.cs), implemented
-in [Tools/BuiltInTools.cs](../src/WpfPilot/Tools/BuiltInTools.cs).
+Defined in [ForwardingTools.cs](../src/WpfPilot.Cli/Tools/ForwardingTools.cs).
 
-| Tool | Args | Returns |
+| Tool | Args | Returns / notes |
 |---|---|---|
 | `list_windows` | - | Windows with identity + bounds. |
-| `find_elements` | `query?`, `limit=50`, `root?` | Element summaries (handle id, type, name, AutomationId, text, bounds, enabled, visible, childCount). |
-| `inspect_element` | `id`, `includeChildren=false`, `depth=1` | One element, optionally with children. |
-| `click` | `id` | `{ method }` - `synthetic:automation-invoke`, `synthetic:automation-toggle`, or `synthetic:raise-click`. |
+| `find_elements` | `query?`, `limit=50`, `offset=0`, `root?` | `{ count, hasMore, offset, limit, elements }`. |
+| `inspect_element` | `id`, `includeChildren=false`, `depth=1`, `properties?` | One element; optional comma-separated property names. |
+| `wait_for_element` | `query`, `root?`, `timeoutMs=10000`, `pollMs=200` | Polls until a match appears or times out. |
+| `click` | `id` | `{ method }` synthetic click / toggle / expand. |
+| `drag` | start: `id` **or** `fromX`/`fromY`; end: `toId` **or** `toX`/`toY` **or** `dx`/`dy`; optional `grabOffset*`, `steps`, `stepDelayMs`, `settleMs` | Real OS mouse drag (Windows SendInput). |
 | `type_text` | `id`, `text` | `{ method }`. |
-| `invoke_command` | `id` | Executes the element's bound `ICommand`. |
-| `screenshot` | `id?` | Saves a PNG to a temp file; returns `{ path, width, height }`. |
-| `get_binding_errors` | `clear=false` | Captured WPF binding errors/warnings. |
-| `analyze_layout` | `root?` | Zero-size and off-screen visible elements. |
-| `highlight_element` | `id`, `durationMs=1500` | Briefly overlays the element. |
+| `press_keys` | `keys`, `id?` | Combos (`Ctrl+S`) and specials (`Enter`, `Tab`, …). |
+| `scroll` | `id`, `dx=0`, `dy=0` | Synthetic wheel scroll. |
+| `focus` | `id` | Focus the element. |
+| `select_item` | `id`, `text?`, `index?` | Select in lists/combos/tabs. |
+| `invoke_command` | `id` | Execute bound `ICommand`. |
+| `screenshot` | `id?` | MCP **image content** + `{ path, width, height }` text. |
+| `set_window_state` | `id?`, `state`, `activate=false` | `minimized` \| `normal` \| `maximized`. |
+| `bring_to_front` | `id?` | Restore + activate for human viewing. |
+| `get_binding_errors` | `clear=false` | Captured binding warnings/errors. |
+| `analyze_layout` | `root?` | `zero_size`, `off_screen`, `overlap`. |
+| `highlight_element` | `id`, `durationMs=1500` | Brief red overlay. |
+| `describe_app_tools` | - | Pipe `describe` — built-in + any custom `Tools.Register` handlers. |
+| `invoke_app_tool` | `method`, `paramsJson?` | Generic forwarder for custom tools. |
 
 ### Element handles
 
-`find_elements` / `list_windows` return a stable `id` (e.g. `e42`) per element. Pass it to any
-tool that takes `id`. Handles are weak references; if the element is collected or the tree
-changes, the tool returns an "unknown or collected element" error and you should re-query.
+`find_elements` / `list_windows` / `wait_for_element` return stable `id`s (e.g. `e42`).
+Handles are weak; if collected, tools return structured `{ error, code: "stale_element", … }`.
 
 ### Interaction fidelity
 
-Input is **synthetic** (UI Automation patterns with a `RaiseEvent` fallback). It does not go
-through real hit-testing, mouse capture, or `Preview*` tunneling. A real-input (SendInput/FlaUI)
-mode is on the roadmap; see [07-roadmap.md](07-roadmap.md).
+- Default click/type/keys/scroll/select are **synthetic** (automation peers / routed events).
+- `drag` uses **real OS mouse input** (Windows) so hit-testing and mouse capture run.
+- Screenshots use `RenderTargetBitmap` and work while minimized.
+
+### Structured errors
+
+Failed tools return JSON like:
+
+```json
+{ "error": true, "code": "stale_element", "message": "...", "hint": "..." }
+```
+
+Common codes: `stale_element`, `not_found`, `not_attached`, `invalid_args`, `unsupported`,
+`platform_unsupported`, `timeout`.
 
 ## Custom domain tools
 
-Basic automation never needs attributes. For app-specific actions, register a handler on
-`WpfPilotHost.Tools` after `Start()`, or (post-MVP) annotate a static method with
-`[WpfPilotTool]` ([Attributes/WpfPilotToolAttribute.cs](../src/WpfPilot/Attributes/WpfPilotToolAttribute.cs)).
+Register on `WpfPilotHost.Tools` / `AvaloniaPilotHost.Tools` after `Start()`, or annotate with
+`[PilotTool]` / `[WpfPilotTool]` (discovery wiring is still post-MVP; use
+`describe_app_tools` + `invoke_app_tool` once registered manually).

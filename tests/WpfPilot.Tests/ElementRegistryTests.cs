@@ -45,4 +45,30 @@ public class ElementRegistryTests
         Assert.Null(registry.Resolve("does-not-exist"));
         Assert.Null(registry.Resolve(null));
     }
+
+    [Fact]
+    public void Prune_RemovesCollectedHandles()
+    {
+        var registry = new ElementRegistry();
+        var id = RegisterTransient(registry);
+
+        ForceGc();
+        registry.Prune();
+
+        Assert.Null(registry.Resolve(id));
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static string RegisterTransient(ElementRegistry registry)
+    {
+        var node = new Node();
+        return registry.GetOrAdd(node);
+    }
+
+    private static void ForceGc()
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+    }
 }

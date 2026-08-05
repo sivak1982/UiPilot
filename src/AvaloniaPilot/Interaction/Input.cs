@@ -2,44 +2,34 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Windows;
-using System.Windows.Automation.Peers;
-using System.Windows.Automation.Provider;
-using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
-using System.Windows.Input;
-using System.Windows.Interop;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using WpfPilot.Tools;
 
-namespace WpfPilot.Interaction;
+namespace AvaloniaPilot;
 
-/// <summary>
-/// Synthetic interaction: drives elements via UI Automation peers with a RaiseEvent fallback.
-/// This is deliberately labeled "synthetic" - it does not go through real hit-testing, mouse
-/// capture, or Preview* input the way SendInput would. Real-input mode is a post-MVP option.
-/// All methods must be called on the WPF UI thread.
-/// </summary>
-public static class SyntheticInput
+internal static class Input
 {
-    public static string Click(DependencyObject obj)
+    public static string Click(Visual obj)
     {
-        if (obj is not UIElement element)
-            throw new InvalidOperationException("Target is not a UIElement.");
+        if (obj is not Control control)
+            throw new InvalidOperationException("Target is not a Control.");
 
-        // Menus are special: submenu items live in popups and top-level items only expose
-        // ExpandCollapse, so the generic Invoke path can't drive menu navigation. Handle them
-        // directly (works even for items whose popup has never been opened / realized).
-        if (obj is System.Windows.Controls.MenuItem menuItem)
+        if (obj is MenuItem menuItem)
         {
-            if (menuItem.HasItems)
+            if (menuItem.ItemCount > 0)
             {
-                menuItem.IsSubmenuOpen = true;
+                menuItem.IsSubMenuOpen = true;
                 return "synthetic:menuitem-expand";
             }
 
             if (menuItem.Command != null && menuItem.Command.CanExecute(menuItem.CommandParameter))
                 menuItem.Command.Execute(menuItem.CommandParameter);
-            menuItem.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.MenuItem.ClickEvent));
+            menuItem.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             return "synthetic:menuitem-click";
         }
 
@@ -49,67 +39,47 @@ public static class SyntheticInput
             return "synthetic:tabitem-select";
         }
 
-        var peer = UIElementAutomationPeer.CreatePeerForElement(element);
-        if (peer?.GetPattern(PatternInterface.Invoke) is IInvokeProvider invoke)
-        {
-            invoke.Invoke();
-            return "synthetic:automation-invoke";
-        }
-
-        if (peer?.GetPattern(PatternInterface.Toggle) is IToggleProvider toggle)
-        {
-            toggle.Toggle();
-            return "synthetic:automation-toggle";
-        }
-
-        if (peer?.GetPattern(PatternInterface.ExpandCollapse) is IExpandCollapseProvider expand)
-        {
-            expand.Expand();
-            return "synthetic:automation-expand";
-        }
-
         if (obj is RadioButton radio)
         {
             radio.IsChecked = true;
-            radio.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            radio.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             return "synthetic:radio-select";
         }
 
-        if (obj is ToggleButton toggleButton)
+        if (obj is ToggleButton toggle)
         {
-            toggleButton.IsChecked = !(toggleButton.IsChecked ?? false);
-            toggleButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            toggle.IsChecked = !(toggle.IsChecked ?? false);
+            toggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             return "synthetic:toggle";
         }
 
-        if (obj is ButtonBase button)
+        if (obj is Button button)
         {
-            button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            if (button.Command != null && button.Command.CanExecute(button.CommandParameter))
+            {
+                button.Command.Execute(button.CommandParameter);
+                return "synthetic:button-command";
+            }
+
+            control.Focus();
+            button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             return "synthetic:raise-click";
         }
 
         throw new InvalidOperationException(
-            $"Element of type '{obj.GetType().Name}' does not support click via automation or ButtonBase.");
+            $"Element of type '{obj.GetType().Name}' does not support synthetic click.");
     }
 
-    public static string TypeText(DependencyObject obj, string text)
+    public static string TypeText(Visual obj, string text)
     {
-        if (obj is not UIElement element)
-            throw new InvalidOperationException("Target is not a UIElement.");
+        if (obj is not Control control)
+            throw new InvalidOperationException("Target is not a Control.");
 
-        element.Focus();
-        Keyboard.Focus(element as IInputElement);
+        control.Focus();
 
-        var peer = UIElementAutomationPeer.CreatePeerForElement(element);
-        if (peer?.GetPattern(PatternInterface.Value) is IValueProvider value && !value.IsReadOnly)
+        if (obj is TextBox textBox)
         {
-            value.SetValue(text ?? string.Empty);
-            return "synthetic:automation-setvalue";
-        }
-
-        if (obj is TextBoxBase textBox && obj is System.Windows.Controls.TextBox tb)
-        {
-            tb.Text = text ?? string.Empty;
+            textBox.Text = text ?? string.Empty;
             return "synthetic:textbox-set";
         }
 
@@ -117,57 +87,74 @@ public static class SyntheticInput
             $"Element of type '{obj.GetType().Name}' does not support text entry.");
     }
 
-    public static string PressKeys(DependencyObject? obj, string keys)
+    public static string PressKeys(Visual? obj, string keys)
     {
         if (string.IsNullOrEmpty(keys))
             throw new PilotToolException(PilotErrorCodes.InvalidArgs, "Keys cannot be empty.");
 
-        var element = ResolveInputElement(obj);
+        var input = ResolveInputElement(obj);
         if (obj != null)
-            FocusElement(element);
+            input.Focus();
 
         if (keys.IndexOf("+", StringComparison.Ordinal) < 0)
         {
             if (TryParseKey(keys, out var specialKey))
             {
-                RaiseKeyStroke(element, specialKey, ModifierKeys.None);
+                RaiseKeyStroke(input, specialKey, KeyModifiers.None);
                 return "synthetic:keys";
             }
 
-            RaiseText(element, keys);
+            RaiseText(input, keys);
             return "synthetic:keys";
         }
 
         var stroke = KeyStroke.Parse(keys);
-        RaiseKeyStroke(element, stroke.Key, stroke.Modifiers);
+        RaiseKeyStroke(input, stroke.Key, stroke.Modifiers);
         return "synthetic:keys";
     }
 
-    public static string Scroll(DependencyObject obj, double dx, double dy)
+    public static string Scroll(Visual obj, double dx, double dy)
     {
-        if (obj is not UIElement element)
-            throw new PilotToolException(PilotErrorCodes.InvalidArgs, "Target is not a UIElement.");
+        if (obj is not Control control)
+            throw new PilotToolException(PilotErrorCodes.InvalidArgs, "Target is not a Control.");
 
-        var delta = WheelDelta(dy);
-        if (delta == 0 && Math.Abs(dx) > 0)
-            delta = WheelDelta(dx);
-        if (delta == 0)
+        var delta = new Vector(dx, dy);
+        if (delta == default)
             return "synthetic:scroll";
 
-        RaiseMouseWheel(element, UIElement.PreviewMouseWheelEvent, delta);
-        RaiseMouseWheel(element, UIElement.MouseWheelEvent, delta);
+        var args = new PointerWheelEventArgs(
+            control,
+            null!,
+            control,
+            new Point(control.Bounds.Width / 2, control.Bounds.Height / 2),
+            unchecked((ulong)Environment.TickCount64),
+            default!,
+            KeyModifiers.None,
+            delta)
+        {
+            RoutedEvent = InputElement.PointerWheelChangedEvent,
+        };
+        control.RaiseEvent(args);
         return "synthetic:scroll";
     }
 
-    public static string SelectItem(DependencyObject obj, string? text, int? index)
+    public static string Focus(Visual obj)
+    {
+        if (obj is not InputElement input)
+            throw new InvalidOperationException("Target is not an InputElement.");
+        input.Focus();
+        return "synthetic:focus";
+    }
+
+    public static string SelectItem(Visual obj, string? text, int? index)
     {
         if (index == null && string.IsNullOrWhiteSpace(text))
             throw new PilotToolException(PilotErrorCodes.InvalidArgs, "Provide either 'index' or 'text'.");
 
-        if (obj is Selector selector)
-            return SelectFromSelector(selector, text, index);
+        if (obj is SelectingItemsControl selecting)
+            return SelectFromSelectingItemsControl(selecting, text, index);
 
-        if (obj is System.Windows.Controls.MenuItem menuItem && menuItem.HasItems)
+        if (obj is MenuItem menuItem && menuItem.ItemCount > 0)
             return SelectFromMenu(menuItem, text, index);
 
         throw new PilotToolException(
@@ -175,128 +162,106 @@ public static class SyntheticInput
             $"Element of type '{obj.GetType().Name}' does not support item selection.");
     }
 
-    public static string InvokeCommand(DependencyObject obj)
+    public static string InvokeCommand(Visual obj)
     {
-        if (obj is ICommandSource source && source.Command != null)
+        if (obj is Button button && button.Command != null)
         {
-            if (source.Command.CanExecute(source.CommandParameter))
+            if (button.Command.CanExecute(button.CommandParameter))
             {
-                source.Command.Execute(source.CommandParameter);
+                button.Command.Execute(button.CommandParameter);
                 return "command-executed";
             }
             return "command-cannot-execute";
         }
+
+        if (obj is MenuItem menuItem && menuItem.Command != null)
+        {
+            if (menuItem.Command.CanExecute(menuItem.CommandParameter))
+            {
+                menuItem.Command.Execute(menuItem.CommandParameter);
+                return "command-executed";
+            }
+            return "command-cannot-execute";
+        }
+
         throw new InvalidOperationException(
             $"Element of type '{obj.GetType().Name}' has no bound ICommand.");
     }
 
-    private static UIElement ResolveInputElement(DependencyObject? obj)
+    private static InputElement ResolveInputElement(Visual? obj)
     {
-        if (obj is UIElement element)
-            return element;
+        if (obj is InputElement input)
+            return input;
         if (obj != null)
-            throw new PilotToolException(PilotErrorCodes.InvalidArgs, "Target is not a UIElement.");
-        if (Keyboard.FocusedElement is UIElement focused)
+            throw new PilotToolException(PilotErrorCodes.InvalidArgs, "Target is not an InputElement.");
+        if (WindowOps.Resolve(null)?.FocusManager?.GetFocusedElement() is InputElement focused)
             return focused;
-        if (Application.Current?.MainWindow is UIElement window)
+        if (WindowOps.Resolve(null) is InputElement window)
             return window;
-        throw new PilotToolException(PilotErrorCodes.InvalidArgs, "No target element or focused WPF element is available.");
+        throw new PilotToolException(PilotErrorCodes.InvalidArgs, "No target element or focused Avalonia element is available.");
     }
 
-    private static void FocusElement(UIElement element)
+    private static void RaiseText(InputElement input, string text)
     {
-        element.Focus();
-        Keyboard.Focus(element as IInputElement);
-    }
-
-    private static void RaiseText(UIElement element, string text)
-    {
-        var composition = new TextComposition(InputManager.Current, element, text);
-        var args = new TextCompositionEventArgs(Keyboard.PrimaryDevice, composition)
+        input.RaiseEvent(new TextInputEventArgs
         {
-            RoutedEvent = TextCompositionManager.TextInputEvent,
-            Source = element,
-        };
-        element.RaiseEvent(args);
+            RoutedEvent = InputElement.TextInputEvent,
+            Source = input,
+            Text = text,
+        });
     }
 
-    private static void RaiseKeyStroke(UIElement element, Key key, ModifierKeys modifiers)
+    private static void RaiseKeyStroke(InputElement input, Key key, KeyModifiers modifiers)
     {
         var modifierKeys = ModifierKeysFor(modifiers);
         foreach (var modifierKey in modifierKeys)
-            RaiseKey(element, modifierKey, UIElement.PreviewKeyDownEvent);
-        foreach (var modifierKey in modifierKeys)
-            RaiseKey(element, modifierKey, Keyboard.KeyDownEvent);
+            RaiseKey(input, modifierKey, KeyModifiers.None, InputElement.KeyDownEvent);
 
-        RaiseKey(element, key, UIElement.PreviewKeyDownEvent);
-        RaiseKey(element, key, Keyboard.KeyDownEvent);
-        RaiseKey(element, key, UIElement.PreviewKeyUpEvent);
-        RaiseKey(element, key, Keyboard.KeyUpEvent);
+        RaiseKey(input, key, modifiers, InputElement.KeyDownEvent);
+        RaiseKey(input, key, modifiers, InputElement.KeyUpEvent);
 
         for (var i = modifierKeys.Count - 1; i >= 0; i--)
-            RaiseKey(element, modifierKeys[i], UIElement.PreviewKeyUpEvent);
-        for (var i = modifierKeys.Count - 1; i >= 0; i--)
-            RaiseKey(element, modifierKeys[i], Keyboard.KeyUpEvent);
+            RaiseKey(input, modifierKeys[i], KeyModifiers.None, InputElement.KeyUpEvent);
     }
 
-    private static void RaiseKey(UIElement element, Key key, RoutedEvent routedEvent)
+    private static void RaiseKey(InputElement input, Key key, KeyModifiers modifiers, RoutedEvent routedEvent)
     {
-        var args = new KeyEventArgs(
-            Keyboard.PrimaryDevice,
-            PresentationSource.FromDependencyObject(element),
-            Environment.TickCount,
-            key)
+        input.RaiseEvent(new KeyEventArgs
         {
             RoutedEvent = routedEvent,
-            Source = element,
-        };
-        element.RaiseEvent(args);
+            Source = input,
+            Key = key,
+            KeyModifiers = modifiers,
+        });
     }
 
-    private static void RaiseMouseWheel(UIElement element, RoutedEvent routedEvent, int delta)
-    {
-        var args = new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, delta)
-        {
-            RoutedEvent = routedEvent,
-            Source = element,
-        };
-        element.RaiseEvent(args);
-    }
-
-    private static int WheelDelta(double value)
-    {
-        if (value == 0) return 0;
-        if (Math.Abs(value) < 1) return Math.Sign(value) * 120;
-        return (int)Math.Round(value, MidpointRounding.AwayFromZero);
-    }
-
-    private static string SelectFromSelector(Selector selector, string? text, int? index)
+    private static string SelectFromSelectingItemsControl(SelectingItemsControl selecting, string? text, int? index)
     {
         if (index.HasValue)
         {
             var value = index.Value;
-            if (value < 0 || value >= selector.Items.Count)
+            if (value < 0 || value >= selecting.ItemCount)
                 throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Selection index {value} is out of range.");
-            selector.SelectedIndex = value;
+            selecting.SelectedIndex = value;
             return "synthetic:select-index";
         }
 
-        var match = FindItem(selector.Items, text!);
+        var match = FindItem(selecting.Items, text!);
         if (!match.Found)
             throw new PilotToolException(PilotErrorCodes.NotFound, $"No selectable item matching '{text}' was found.");
-        selector.SelectedItem = match.Item;
+        selecting.SelectedItem = match.Item;
         return "synthetic:select-text";
     }
 
-    private static string SelectFromMenu(System.Windows.Controls.MenuItem menuItem, string? text, int? index)
+    private static string SelectFromMenu(MenuItem menuItem, string? text, int? index)
     {
-        menuItem.IsSubmenuOpen = true;
-        var children = new List<System.Windows.Controls.MenuItem>();
+        menuItem.IsSubMenuOpen = true;
+        var children = new List<MenuItem>();
         foreach (var item in menuItem.Items)
-            if (item is System.Windows.Controls.MenuItem child)
+            if (item is MenuItem child)
                 children.Add(child);
 
-        System.Windows.Controls.MenuItem? match;
+        MenuItem match;
         if (index.HasValue)
         {
             var value = index.Value;
@@ -306,7 +271,7 @@ public static class SyntheticInput
         }
         else
         {
-            match = null;
+            match = null!;
             foreach (var child in children)
             {
                 if (TextMatches(ItemText(child.Header ?? child), text!))
@@ -339,10 +304,6 @@ public static class SyntheticInput
         {
             case null:
                 return null;
-            case ComboBoxItem combo:
-                return ItemText(combo.Content) ?? combo.ToString();
-            case ListBoxItem listBox:
-                return ItemText(listBox.Content) ?? listBox.ToString();
             case TabItem tab:
                 return ItemText(tab.Header) ?? ItemText(tab.Content) ?? tab.ToString();
             case HeaderedContentControl headered:
@@ -360,13 +321,13 @@ public static class SyntheticInput
         !string.IsNullOrWhiteSpace(candidate) &&
         string.Equals(candidate.Trim(), expected.Trim(), StringComparison.OrdinalIgnoreCase);
 
-    private static IReadOnlyList<Key> ModifierKeysFor(ModifierKeys modifiers)
+    private static IReadOnlyList<Key> ModifierKeysFor(KeyModifiers modifiers)
     {
         var keys = new List<Key>(4);
-        if ((modifiers & ModifierKeys.Control) != 0) keys.Add(Key.LeftCtrl);
-        if ((modifiers & ModifierKeys.Alt) != 0) keys.Add(Key.LeftAlt);
-        if ((modifiers & ModifierKeys.Shift) != 0) keys.Add(Key.LeftShift);
-        if ((modifiers & ModifierKeys.Windows) != 0) keys.Add(Key.LWin);
+        if ((modifiers & KeyModifiers.Control) != 0) keys.Add(Key.LeftCtrl);
+        if ((modifiers & KeyModifiers.Alt) != 0) keys.Add(Key.LeftAlt);
+        if ((modifiers & KeyModifiers.Shift) != 0) keys.Add(Key.LeftShift);
+        if ((modifiers & KeyModifiers.Meta) != 0) keys.Add(Key.LWin);
         return keys;
     }
 
@@ -391,7 +352,7 @@ public static class SyntheticInput
 
         switch (token)
         {
-            case "ENTER": key = Key.Return; return true;
+            case "ENTER": key = Key.Enter; return true;
             case "RETURN": key = Key.Return; return true;
             case "TAB": key = Key.Tab; return true;
             case "ESC":
@@ -429,7 +390,7 @@ public static class SyntheticInput
 
     private readonly struct KeyStroke
     {
-        private KeyStroke(Key key, ModifierKeys modifiers)
+        private KeyStroke(Key key, KeyModifiers modifiers)
         {
             Key = key;
             Modifiers = modifiers;
@@ -437,7 +398,7 @@ public static class SyntheticInput
 
         public Key Key { get; }
 
-        public ModifierKeys Modifiers { get; }
+        public KeyModifiers Modifiers { get; }
 
         public static KeyStroke Parse(string keys)
         {
@@ -452,25 +413,25 @@ public static class SyntheticInput
             if (parts.Count < 2)
                 throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Invalid key combination '{keys}'.");
 
-            var modifiers = ModifierKeys.None;
+            var modifiers = KeyModifiers.None;
             for (var i = 0; i < parts.Count - 1; i++)
             {
                 switch (NormalizeKeyToken(parts[i]))
                 {
                     case "CTRL":
                     case "CONTROL":
-                        modifiers |= ModifierKeys.Control;
+                        modifiers |= KeyModifiers.Control;
                         break;
                     case "ALT":
-                        modifiers |= ModifierKeys.Alt;
+                        modifiers |= KeyModifiers.Alt;
                         break;
                     case "SHIFT":
-                        modifiers |= ModifierKeys.Shift;
+                        modifiers |= KeyModifiers.Shift;
                         break;
                     case "WIN":
                     case "WINDOWS":
                     case "META":
-                        modifiers |= ModifierKeys.Windows;
+                        modifiers |= KeyModifiers.Meta;
                         break;
                     default:
                         throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Unknown modifier '{parts[i]}'.");

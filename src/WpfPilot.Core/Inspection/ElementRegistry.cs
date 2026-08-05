@@ -17,6 +17,7 @@ public sealed class ElementRegistry
     private readonly ConditionalWeakTable<object, Holder> _byObject =
         new ConditionalWeakTable<object, Holder>();
     private long _counter;
+    private int _addsSincePrune;
 
     /// <summary>Return the existing handle for <paramref name="obj"/> or assign a new one.</summary>
     public string GetOrAdd(object obj)
@@ -33,7 +34,15 @@ public sealed class ElementRegistry
             });
 
             if (createdId != null)
+            {
                 _byId[createdId] = new WeakReference<object>(obj);
+                _addsSincePrune++;
+                if (_addsSincePrune >= 64)
+                {
+                    PruneNoLock();
+                    _addsSincePrune = 0;
+                }
+            }
 
             return holder.Id;
         }
@@ -53,6 +62,26 @@ public sealed class ElementRegistry
 
     /// <summary>Resolve and cast, or null.</summary>
     public T? Resolve<T>(string? id) where T : class => Resolve(id) as T;
+
+    /// <summary>Remove handles whose weak targets have been collected.</summary>
+    public void Prune()
+    {
+        lock (_gate)
+            PruneNoLock();
+    }
+
+    private void PruneNoLock()
+    {
+        var dead = new List<string>();
+        foreach (var pair in _byId)
+        {
+            if (!pair.Value.TryGetTarget(out _))
+                dead.Add(pair.Key);
+        }
+
+        foreach (var id in dead)
+            _byId.Remove(id);
+    }
 
     private sealed class Holder
     {

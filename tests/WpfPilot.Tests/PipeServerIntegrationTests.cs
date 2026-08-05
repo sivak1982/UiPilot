@@ -19,6 +19,8 @@ public class PipeServerIntegrationTests
             new { value = args.GetProperty("value").GetString() });
         registry.Register("boom", "always throws", (_, _) =>
             throw new InvalidOperationException("kaboom"));
+        registry.Register("stale", "throws pilot error", (_, _) =>
+            throw new PilotToolException(PilotErrorCodes.StaleElement, "stale handle", "refresh handles"));
         return registry;
     }
 
@@ -61,7 +63,7 @@ public class PipeServerIntegrationTests
 
             // describe
             var describe = Send("describe", Token, null);
-            Assert.Equal(2, describe.GetProperty("result").GetProperty("tools").GetArrayLength());
+            Assert.Equal(3, describe.GetProperty("result").GetProperty("tools").GetArrayLength());
 
             // tool call
             var echo = Send("echo", Token, new { value = "hi" });
@@ -79,6 +81,13 @@ public class PipeServerIntegrationTests
             var boom = Send("boom", Token, null);
             Assert.Equal(RpcCodes.ToolError, boom.GetProperty("error").GetProperty("code").GetInt32());
             Assert.Contains("kaboom", boom.GetProperty("error").GetProperty("message").GetString());
+
+            // pilot tool errors include stable machine-readable data
+            var stale = Send("stale", Token, null);
+            var staleError = stale.GetProperty("error");
+            Assert.Equal(RpcCodes.ToolError, staleError.GetProperty("code").GetInt32());
+            Assert.Equal(PilotErrorCodes.StaleElement, staleError.GetProperty("data").GetProperty("code").GetString());
+            Assert.Equal("refresh handles", staleError.GetProperty("data").GetProperty("hint").GetString());
         }
         finally
         {

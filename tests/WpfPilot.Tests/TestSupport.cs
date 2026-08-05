@@ -28,9 +28,15 @@ internal static class TestSupport
         public ElementRegistry Elements { get; } = new ElementRegistry();
         public IReadOnlyList<ElementInfo> ListWindows() => System.Array.Empty<ElementInfo>();
         public IReadOnlyList<ElementInfo> Find(string? query, int limit, string? rootId) => System.Array.Empty<ElementInfo>();
-        public ElementInfo? Inspect(string id, bool includeChildren, int depth) => null;
+        public FindPage FindPage(string? query, int limit, int offset, string? rootId) =>
+            new FindPage { Elements = System.Array.Empty<ElementInfo>(), Count = 0, HasMore = false, Offset = offset, Limit = limit };
+        public ElementInfo? Inspect(string id, bool includeChildren, int depth, IReadOnlyList<string>? propertyNames) => null;
         public string Click(string id) => "stub";
         public string TypeText(string id, string text) => "stub";
+        public string PressKeys(string? id, string keys) => "stub";
+        public string Scroll(string id, double dx, double dy) => "stub";
+        public string Focus(string id) => "stub";
+        public string SelectItem(string id, string? text, int? index) => "stub";
         public string InvokeCommand(string id) => "stub";
         public ScreenshotData? Screenshot(string? id) => null;
         public string SetWindowState(string? id, string state, bool activate) => state;

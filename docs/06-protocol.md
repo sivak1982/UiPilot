@@ -4,17 +4,21 @@ The in-app server and the CLI communicate over a Windows named pipe using a smal
 JSON-RPC-flavored line protocol. This is intentionally *not* the MCP wire format - MCP lives only
 in the CLI, which translates between MCP and this protocol.
 
+**Protocol version: `1.1`** (discovery `uiFramework`, paged find, wait/press/scroll/focus/select,
+window tools, structured `error.data`).
+
 ## Transport
 
 - Pipe name: `wpfpilot.<pid>.<guid>` (published in the discovery file).
 - Encoding: UTF-8, no BOM.
 - Framing: **one JSON object per line**, `\n`-terminated. No embedded newlines in a frame.
-- One client at a time; requests are processed sequentially.
+- Up to **4 concurrent clients** (`PipeIntegrity.MaxInstances`); UI work is serialized by the
+  app dispatcher. Long real-input `drag` uses its own input lock.
 
 ## Discovery file
 
-Written to `%TEMP%\wpfpilot\<pid>.json` on start, deleted on clean shutdown. Schema
-([Server/DiscoveryFile.cs](../src/WpfPilot/Server/DiscoveryFile.cs)):
+Written to `%TEMP%\wpfpilot\<pid>.json` on start, deleted on clean shutdown
+([DiscoveryFile.cs](../src/WpfPilot.Core/Server/DiscoveryFile.cs)):
 
 ```json
 {
@@ -22,24 +26,23 @@ Written to `%TEMP%\wpfpilot\<pid>.json` on start, deleted on clean shutdown. Sch
   "processName": "SampleApp",
   "pipeName": "wpfpilot.12345.0f1e2d...",
   "token": "3a1b...9c",
-  "protocolVersion": "1.0",
+  "protocolVersion": "1.1",
   "startedUtc": "2026-07-17T07:00:00.0000000Z",
   "mainWindowTitle": "WpfPilot Sample",
   "uiFramework": "wpf"
 }
 ```
 
-`uiFramework` is `wpf` or `avalonia` (omitted only by older hosts). The CLI validates that `pid`
-is still alive before using an entry, and deletes stale files.
+`uiFramework` is `wpf` or `avalonia`. Treat the token as a local secret (same-user ACL on `%TEMP%`).
 
 ## Request
 
 ```json
-{ "jsonrpc": "2.0", "id": 1, "method": "find_elements", "token": "<token>", "params": { "query": "Greet", "limit": 20 } }
+{ "jsonrpc": "2.0", "id": 1, "method": "find_elements", "token": "<token>", "params": { "query": "Greet", "limit": 20, "offset": 0 } }
 ```
 
-- `method`: `ping`, `describe`, or a tool name.
-- `token`: required on every request; must match the discovery-file token.
+- `method`: `ping`, `describe`, or a tool name from [`ToolCatalog`](../src/WpfPilot.Core/Tools/ToolCatalog.cs).
+- `token`: required on every request.
 - `params`: tool-specific object (may be omitted / empty).
 
 ## Response
@@ -47,16 +50,24 @@ is still alive before using an entry, and deletes stale files.
 Success:
 
 ```json
-{ "jsonrpc": "2.0", "id": 1, "result": { "count": 1, "elements": [ /* ... */ ] } }
+{ "jsonrpc": "2.0", "id": 1, "result": { "count": 1, "hasMore": false, "elements": [ /* ... */ ] } }
 ```
 
 Error:
 
 ```json
-{ "jsonrpc": "2.0", "id": 1, "error": { "code": -32001, "message": "Invalid or missing token." } }
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32002,
+    "message": "Unknown or collected element 'e9'.",
+    "data": { "code": "stale_element", "hint": "Re-run find_elements / wait_for_element." }
+  }
+}
 ```
 
-### Error codes ([Server/JsonRpc.cs](../src/WpfPilot/Server/JsonRpc.cs))
+### Error codes ([JsonRpc.cs](../src/WpfPilot.Core/Server/JsonRpc.cs))
 
 | Code | Meaning |
 |---|---|
@@ -64,7 +75,7 @@ Error:
 | -32600 | Invalid request. |
 | -32601 | Method not found. |
 | -32001 | Unauthorized (bad/missing token). |
-| -32002 | Tool threw an exception (message included). |
+| -32002 | Tool threw (message + optional `data.code` / `data.hint`). |
 
 ## Control methods
 

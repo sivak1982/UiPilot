@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 using WpfPilot.Abstraction;
 using WpfPilot.Inspection;
 using WpfPilot.Interaction;
 using WpfPilot.Media;
+using WpfPilot.Tools;
 
 namespace WpfPilot;
 
@@ -27,12 +29,34 @@ internal sealed class WpfUiBackend : IUiBackend
     public IReadOnlyList<ElementInfo> Find(string? query, int limit, string? rootId) =>
         VisualTreeQuery.Find(Elements, query, limit, rootId);
 
-    public ElementInfo? Inspect(string id, bool includeChildren, int depth) =>
-        VisualTreeQuery.Inspect(Elements, id, includeChildren, depth);
+    public FindPage FindPage(string? query, int limit, int offset, string? rootId) =>
+        VisualTreeQuery.FindPage(Elements, query, limit, offset, rootId);
+
+    public ElementInfo? Inspect(string id, bool includeChildren, int depth, IReadOnlyList<string>? propertyNames) =>
+        VisualTreeQuery.Inspect(Elements, id, includeChildren, depth, propertyNames);
 
     public string Click(string id) => SyntheticInput.Click(Require(id));
 
     public string TypeText(string id, string text) => SyntheticInput.TypeText(Require(id), text);
+
+    public string PressKeys(string? id, string keys) =>
+        SyntheticInput.PressKeys(id == null ? null : Require(id), keys);
+
+    public string Scroll(string id, double dx, double dy) =>
+        SyntheticInput.Scroll(Require(id), dx, dy);
+
+    public string Focus(string id)
+    {
+        var obj = Require(id);
+        if (obj is not UIElement element)
+            throw new InvalidOperationException("Target is not a UIElement.");
+        element.Focus();
+        Keyboard.Focus(element as IInputElement);
+        return "synthetic:focus";
+    }
+
+    public string SelectItem(string id, string? text, int? index) =>
+        SyntheticInput.SelectItem(Require(id), text, index);
 
     public string InvokeCommand(string id) => SyntheticInput.InvokeCommand(Require(id));
 
@@ -97,7 +121,11 @@ internal sealed class WpfUiBackend : IUiBackend
     private DependencyObject Require(string id)
     {
         var obj = Elements.Resolve<DependencyObject>(id);
-        if (obj == null) throw new ArgumentException($"Unknown or collected element '{id}'.");
+        if (obj == null)
+            throw new PilotToolException(PilotErrorCodes.StaleElement, $"Unknown or collected element '{id}'.");
         return obj;
     }
+
+    private static PilotToolException Unsupported(string message) =>
+        new PilotToolException(PilotErrorCodes.Unsupported, message);
 }

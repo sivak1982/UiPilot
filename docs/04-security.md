@@ -38,6 +38,9 @@ The CLI sets both `UIPILOT_ENABLE=1` and `WPFPILOT_ENABLE=1` on apps it launches
   `Unauthorized` error. See [Server/NamedPipeServer.Process](../src/WpfPilot.Core/Server/NamedPipeServer.cs).
 - The discovery file lives in `%TEMP%\wpfpilot\<pid>.json`, readable by the current user. Treat
   the token like any local dev secret; it is scoped to a single app run and removed on shutdown.
+  Prefer a private `DiscoveryDirectory` on shared machines.
+- Low-integrity pipe labeling lets a Medium-IL agent attach to an elevated app; the token still
+  authenticates every request. See [PipeIntegrity.cs](../src/WpfPilot.Core/Server/PipeIntegrity.cs).
 
 ## Elevated (requireAdministrator) apps
 
@@ -46,7 +49,7 @@ runs at Medium integrity. Windows' default "no-write-up" policy would block the 
 connecting to the elevated app's pipe. To support this common case, the pipe is created
 (`CreateNamedPipe` with an explicit security descriptor) with a **Low mandatory integrity label**
 plus a DACL granting Authenticated Users / Administrators
-([Server/PipeIntegrity.cs](../src/WpfPilot/Server/PipeIntegrity.cs)). Lower-integrity clients can
+([PipeIntegrity.cs](../src/WpfPilot.Core/Server/PipeIntegrity.cs)). Lower-integrity clients can
 then connect; the per-run token still authenticates every request. If the native path fails, the
 library falls back to a default pipe (same-integrity clients only).
 

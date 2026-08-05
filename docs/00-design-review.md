@@ -13,7 +13,7 @@ lifecycle and security. The MVP fixes those first and defers multi-transport / m
 
 | # | Flaw | Resolution in this repo |
 |---|------|-------------------------|
-| 1 | "Few lines" vs opt-in `[Inspectable]` attributes contradict each other | Default open for Debug/automation builds; **no attributes** required for basic automation. Attributes (`[WpfPilotTool]`) are reserved for opt-in custom domain tools only. See [WpfPilotToolAttribute.cs](../src/WpfPilot/Attributes/WpfPilotToolAttribute.cs). |
+| 1 | "Few lines" vs opt-in `[Inspectable]` attributes contradict each other | Default open for Debug/automation builds; **no attributes** required for basic automation. Attributes (`[PilotTool]` / `[WpfPilotTool]`) are reserved for opt-in custom domain tools only. See [PilotToolAttribute.cs](../src/WpfPilot.Core/PilotToolAttribute.cs). |
 | 2 | Process lifecycle (`launch_app`/`restart_app` from inside the app) is backwards | Split: in-process [WpfPilot](../src/WpfPilot) inspects/interacts; out-of-process [WpfPilot.Cli](../src/WpfPilot.Cli) owns build/launch/restart/discover. The app never launches itself. |
 | 3 | Fixed TCP port 7777 is a security + collision hazard | **Named pipe only.** No TCP. Unique pipe name per process. Per-run auth token in the discovery file. See [04-security.md](04-security.md). |
 | 4 | Premature platform abstraction | v1 shipped WPF-only. Multi-UI is now introduced deliberately via a shared core (`WpfPilot.Core` + `IUiBackend`) with thin WPF/Avalonia adapters — not REST/gRPC theater. |

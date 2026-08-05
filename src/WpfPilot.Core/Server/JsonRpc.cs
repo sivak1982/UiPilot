@@ -74,13 +74,13 @@ internal static class Rpc
         return JsonSerializer.Serialize(payload, JsonOptions);
     }
 
-    public static string Error(JsonElement? id, int code, string message)
+    public static string Error(JsonElement? id, int code, string message, object? data = null)
     {
         var payload = new
         {
             jsonrpc = "2.0",
             id = IdValue(id),
-            error = new { code, message },
+            error = new { code, message, data },
         };
         return JsonSerializer.Serialize(payload, JsonOptions);
     }

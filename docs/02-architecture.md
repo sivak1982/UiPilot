@@ -8,8 +8,8 @@ flowchart TB
   end
   subgraph core [WpfPilot.Core]
     Runtime[PilotRuntime]
-    Pipe[NamedPipeServer JSON-RPC]
-    Reg[ToolRegistry + BuiltInTools]
+    Pipe[NamedPipeServer JSON-RPC 1.1]
+    Reg[ToolRegistry + BuiltInTools + ToolCatalog]
     Contract[IUiBackend]
     Disc[DiscoveryFile]
   end
@@ -18,7 +18,7 @@ flowchart TB
     AvaBack[AvaloniaUiBackend]
   end
   subgraph agentSide [Agent side]
-    CLI["WpfPilot.Cli (stdio MCP + launcher)"]
+    CLI["WpfPilot.Cli MCP + launcher"]
     Cursor[Cursor / Claude]
   end
   WpfApp --> Runtime
@@ -31,40 +31,32 @@ flowchart TB
   Runtime --> Disc
   Cursor -->|stdio MCP| CLI
   CLI -->|build / launch / restart| consumers
-  CLI -->|JSON-RPC over named pipe| Pipe
-  CLI -->|reads discovery files| Disc
+  CLI -->|JSON-RPC| Pipe
+  CLI -->|discovery| Disc
 ```
 
-## Shared core (`src/WpfPilot.Core`)
+## Core (`src/WpfPilot.Core`)
 
-| Component | Role |
+| Piece | Role |
 |---|---|
-| `Hosting/PilotRuntime` | Start/stop, enablement gate, wiring pipe + discovery + tools. |
-| `PilotOptions` / `UiFrameworks` | Shared options + `wpf` / `avalonia` labels. |
-| `Abstraction/IUiBackend` | Framework-neutral automation contract used by built-in tools. |
-| `Server/*` | Named pipe, JSON-RPC, discovery file, pipe integrity (Windows). |
-| `Tools/*` | `ToolRegistry`, `ToolContext`, `BuiltInTools` (identical tool names for every backend). |
-| `Inspection/ElementInfo`, `ElementRegistry` | Agent-facing DTOs + weak handles (`object`). |
-| `Interaction/RealInput` | OS SendInput drag (Windows). |
+| `PilotRuntime` | Enablement, pipe, discovery, tool wiring; idempotent host start |
+| `IUiBackend` / `FindPage` | Framework-neutral automation contract |
+| `ToolCatalog` | Canonical built-in tool names (CLI + tests parity) |
+| `PilotToolException` | Structured `error.data` codes for agents |
+| `Server/*` | Named pipe, JSON-RPC, discovery, Low-IL pipe security |
+| `BuiltInTools` | Identical tool surface for every adapter |
 
-### Threading
+UI work marshals through `ToolContext.OnUi` (WPF `Dispatcher` / Avalonia `Dispatcher.UIThread`).
+Real-input `drag` runs off the UI thread under its own lock.
 
-The pipe accept loop runs on a background thread. Every tool that touches UI objects is
-marshaled onto the app UI thread via `ToolContext.OnUi(...)`, which each host supplies
-(WPF `Dispatcher` or Avalonia `Dispatcher.UIThread`).
+## Adapters
 
-## WPF adapter (`src/WpfPilot`)
+- **WPF** — visual/logical tree, UIA peers, binding trace, adorners, DPI-aware screenshots.
+- **Avalonia** — split under `Inspection/` + `Interaction/` + `Media/`; chained log sink for binding capture.
 
-`WpfPilotHost` + `WpfUiBackend` wrap the existing WPF visual-tree, UIA, binding-trace,
-adorner, and `RenderTargetBitmap` implementations. Public API stays `WpfPilotHost.Start()`.
+## CLI
 
-## Avalonia adapter (`src/AvaloniaPilot`)
-
-`AvaloniaPilotHost` + `AvaloniaUiBackend` implement the same `IUiBackend` surface using Avalonia
-visual/logical trees, control events/commands, logging-sink binding capture, and Avalonia
-`RenderTargetBitmap`.
-
-## CLI (`src/WpfPilot.Cli`)
-
-Unchanged role: MCP bridge + lifecycle. Discovery now surfaces `uiFramework`. Launch sets both
-`UIPILOT_ENABLE` / `WPFPILOT_ENABLE` (and the start-minimized pair) so either host enables.
+- References Core (shared `DiscoveryInfo`).
+- Forwards every `ToolCatalog` tool; extras: `describe_app_tools`, `invoke_app_tool`.
+- Screenshot → MCP image content + path metadata.
+- Lifecycle: attach filters, `detach`, structured error JSON.

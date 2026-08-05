@@ -6,8 +6,8 @@ using System.Windows.Media;
 namespace WpfPilot.Inspection;
 
 /// <summary>
-/// Flags common layout smells that render "invisibly wrong": zero-size visible elements and
-/// elements positioned entirely outside their window. Must run on the WPF UI thread.
+/// Flags common layout smells: zero-size, off-screen, and overlapping sibling controls.
+/// Must run on the WPF UI thread.
 /// </summary>
 public static class LayoutAnalyzer
 {
@@ -21,6 +21,7 @@ public static class LayoutAnalyzer
         {
             var window = FindWindow(root);
             Rect windowRect = TryScreenRect(window);
+            var visible = new List<(FrameworkElement Fe, Rect Rect)>();
 
             foreach (var node in VisualTreeQuery.EnumerateDescendants(root, includeSelf: true))
             {
@@ -33,17 +34,39 @@ public static class LayoutAnalyzer
                     continue;
                 }
 
-                if (!windowRect.IsEmpty)
+                var rect = TryScreenRect(fe);
+                if (!windowRect.IsEmpty && !rect.IsEmpty && !windowRect.IntersectsWith(rect))
                 {
-                    var rect = TryScreenRect(fe);
-                    if (!rect.IsEmpty && !windowRect.IntersectsWith(rect))
-                        issues.Add(Make(registry, fe, "off_screen",
-                            "Element is positioned entirely outside its window bounds."));
+                    issues.Add(Make(registry, fe, "off_screen",
+                        "Element is positioned entirely outside its window bounds."));
+                    continue;
+                }
+
+                if (!rect.IsEmpty)
+                    visible.Add((fe, rect));
+            }
+
+            // Pairwise overlap among leaf-ish controls (skip nesting: parent contains child).
+            for (var i = 0; i < visible.Count; i++)
+            {
+                for (var j = i + 1; j < visible.Count; j++)
+                {
+                    var a = visible[i];
+                    var b = visible[j];
+                    if (!a.Rect.IntersectsWith(b.Rect)) continue;
+                    if (Contains(a.Rect, b.Rect) || Contains(b.Rect, a.Rect)) continue;
+                    // Only report once per pair, attached to the later element.
+                    issues.Add(Make(registry, b.Fe, "overlap",
+                        $"Overlaps {a.Fe.GetType().Name} ({registry.GetOrAdd(a.Fe)})."));
                 }
             }
         }
         return issues;
     }
+
+    private static bool Contains(Rect outer, Rect inner) =>
+        outer.Left <= inner.Left && outer.Top <= inner.Top &&
+        outer.Right >= inner.Right && outer.Bottom >= inner.Bottom;
 
     private static LayoutIssue Make(ElementRegistry registry, FrameworkElement fe, string issue, string message) =>
         new LayoutIssue

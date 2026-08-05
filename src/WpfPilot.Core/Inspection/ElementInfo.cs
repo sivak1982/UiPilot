@@ -25,6 +25,11 @@ public sealed class ElementInfo
     [JsonPropertyName("children")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<ElementInfo>? Children { get; set; }
+
+    /// <summary>Optional framework-specific property snapshot requested by inspect_element.</summary>
+    [JsonPropertyName("properties")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, string?>? Properties { get; set; }
 }
 
 public sealed class LayoutIssue

@@ -40,6 +40,9 @@ public static class WpfPilotHost
         options ??= new WpfPilotOptions();
         lock (Gate)
         {
+            if (Runtime.IsRunning)
+                return;
+
             var app = Application.Current;
             if (app == null)
             {

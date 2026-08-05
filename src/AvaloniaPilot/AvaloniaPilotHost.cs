@@ -35,6 +35,9 @@ public static class AvaloniaPilotHost
         options ??= new AvaloniaPilotOptions();
         lock (Gate)
         {
+            if (Runtime.IsRunning)
+                return;
+
             if (Application.Current == null)
             {
                 Log("AvaloniaPilot cannot start: no Avalonia Application.Current.");

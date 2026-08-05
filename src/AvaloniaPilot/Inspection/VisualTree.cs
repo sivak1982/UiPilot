@@ -1,26 +1,23 @@
 using System;
 using System.Collections.Generic;
-using System.Windows;
-using System.Windows.Automation;
-using System.Windows.Controls;
-using System.Windows.Media;
-using System.Windows.Media.Media3D;
+using System.Linq;
+using Avalonia;
+using Avalonia.Automation;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.LogicalTree;
+using Avalonia.VisualTree;
 using WpfPilot.Abstraction;
+using WpfPilot.Inspection;
 
-namespace WpfPilot.Inspection;
+namespace AvaloniaPilot;
 
-/// <summary>
-/// Query-first visual tree access. Returns summaries (identity + bounds) and only expands a
-/// full subtree for a specific selected node, so large trees never blow the agent's context.
-/// All methods must be called on the WPF UI thread.
-/// </summary>
-public static class VisualTreeQuery
+internal static class VisualTree
 {
     public static List<ElementInfo> ListWindows(ElementRegistry registry)
     {
         var result = new List<ElementInfo>();
-        if (Application.Current == null) return result;
-        foreach (Window window in Application.Current.Windows)
+        foreach (var window in EnumerateWindows())
             result.Add(BuildInfo(window, registry));
         return result;
     }
@@ -70,7 +67,7 @@ public static class VisualTreeQuery
         int depth,
         IReadOnlyList<string>? propertyNames = null)
     {
-        var obj = registry.Resolve<DependencyObject>(id);
+        var obj = registry.Resolve<Visual>(id);
         if (obj == null) return null;
         var info = BuildInfo(obj, registry);
         if (includeChildren)
@@ -80,15 +77,14 @@ public static class VisualTreeQuery
         return info;
     }
 
-    private static List<ElementInfo>? BuildChildren(DependencyObject obj, ElementRegistry registry, int depth)
+    private static List<ElementInfo>? BuildChildren(Visual obj, ElementRegistry registry, int depth)
     {
-        if (depth <= 0 || !IsVisual(obj)) return null;
-        var count = VisualTreeHelper.GetChildrenCount(obj);
-        if (count == 0) return null;
-        var list = new List<ElementInfo>(count);
-        for (var i = 0; i < count; i++)
+        if (depth <= 0) return null;
+        var children = obj.GetVisualChildren().ToList();
+        if (children.Count == 0) return null;
+        var list = new List<ElementInfo>(children.Count);
+        foreach (var child in children)
         {
-            var child = VisualTreeHelper.GetChild(obj, i);
             var childInfo = BuildInfo(child, registry);
             childInfo.Children = BuildChildren(child, registry, depth - 1);
             list.Add(childInfo);
@@ -96,67 +92,67 @@ public static class VisualTreeQuery
         return list;
     }
 
-    public static IEnumerable<DependencyObject> EnumerateDescendants(DependencyObject root, bool includeSelf)
-    {
-        return Walk(root, includeSelf, new HashSet<DependencyObject>());
-    }
+    public static IEnumerable<Visual> EnumerateDescendants(Visual root, bool includeSelf) =>
+        Walk(root, includeSelf, new HashSet<Visual>());
 
-    /// <summary>
-    /// Depth-first walk over both the visual and logical trees (deduped). Traversing the logical
-    /// tree surfaces elements that aren't visually realized yet - most importantly submenu
-    /// <see cref="System.Windows.Controls.MenuItem"/>s and unselected tab/content - so agents can
-    /// find and drive menu-based navigation without first opening every popup.
-    /// </summary>
-    private static IEnumerable<DependencyObject> Walk(DependencyObject node, bool includeSelf, HashSet<DependencyObject> seen)
+    private static IEnumerable<Visual> Walk(Visual node, bool includeSelf, HashSet<Visual> seen)
     {
         if (!seen.Add(node)) yield break;
         if (includeSelf) yield return node;
 
-        if (IsVisual(node))
+        foreach (var child in node.GetVisualChildren())
         {
-            var count = VisualTreeHelper.GetChildrenCount(node);
-            for (var i = 0; i < count; i++)
-            {
-                var child = VisualTreeHelper.GetChild(node, i);
-                foreach (var d in Walk(child, includeSelf: true, seen))
-                    yield return d;
-            }
+            foreach (var d in Walk(child, includeSelf: true, seen))
+                yield return d;
         }
 
-        foreach (var logical in LogicalTreeHelper.GetChildren(node))
+        if (node is ILogical logical)
         {
-            if (logical is DependencyObject dob && !seen.Contains(dob))
-                foreach (var d in Walk(dob, includeSelf: true, seen))
-                    yield return d;
+            foreach (var child in logical.LogicalChildren)
+            {
+                if (child is Visual visual && !seen.Contains(visual))
+                {
+                    foreach (var d in Walk(visual, includeSelf: true, seen))
+                        yield return d;
+                }
+            }
         }
     }
 
-    internal static List<DependencyObject> ResolveRoots(ElementRegistry registry, string? rootId)
+    internal static List<Visual> ResolveRoots(ElementRegistry registry, string? rootId)
     {
-        var roots = new List<DependencyObject>();
+        var roots = new List<Visual>();
         if (!string.IsNullOrEmpty(rootId))
         {
-            var obj = registry.Resolve<DependencyObject>(rootId);
+            var obj = registry.Resolve<Visual>(rootId);
             if (obj != null) roots.Add(obj);
             return roots;
         }
-        if (Application.Current != null)
-            foreach (Window window in Application.Current.Windows)
-                roots.Add(window);
+        roots.AddRange(EnumerateWindows());
         return roots;
     }
 
-    internal static bool Matches(DependencyObject obj, string query)
+    private static IEnumerable<Window> EnumerateWindows()
+    {
+        if (Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            if (desktop.MainWindow != null)
+                yield return desktop.MainWindow;
+            foreach (var w in desktop.Windows)
+                if (!ReferenceEquals(w, desktop.MainWindow))
+                    yield return w;
+        }
+    }
+
+    internal static bool Matches(Visual obj, string query)
     {
         if (Contains(obj.GetType().Name, query)) return true;
-        if (obj is FrameworkElement fe)
+        if (obj is Control control)
         {
-            if (Contains(fe.Name, query)) return true;
-            // Icon-only toolbar buttons often expose their label only via ToolTip.
-            if (Contains(fe.ToolTip as string, query)) return true;
-            if (fe.ToolTip is FrameworkElement tipFe && Contains(GetText(tipFe), query)) return true;
+            if (Contains(control.Name, query)) return true;
+            if (Contains(ToolTip.GetTip(control) as string, query)) return true;
+            if (Contains(AutomationProperties.GetAutomationId(control), query)) return true;
         }
-        if (Contains(AutomationProperties.GetAutomationId(obj), query)) return true;
         if (Contains(GetText(obj), query)) return true;
         return false;
     }
@@ -164,61 +160,47 @@ public static class VisualTreeQuery
     private static bool Contains(string? value, string query) =>
         !string.IsNullOrEmpty(value) && value!.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
 
-    internal static ElementInfo BuildInfo(DependencyObject obj, ElementRegistry registry)
+    internal static ElementInfo BuildInfo(Visual obj, ElementRegistry registry)
     {
         var info = new ElementInfo
         {
             Id = registry.GetOrAdd(obj),
             Type = obj.GetType().Name,
-            AutomationId = NullIfEmpty(AutomationProperties.GetAutomationId(obj)),
             Text = NullIfEmpty(GetText(obj)),
+            ChildCount = obj.GetVisualChildren().Count(),
         };
 
-        if (obj is FrameworkElement fe)
-            info.Name = NullIfEmpty(fe.Name);
-
-        // Prefer explicit content/header text; fall back to ToolTip so icon-only buttons
-        // are discoverable by their label (e.g. ToolTip="New Script").
-        if (string.IsNullOrEmpty(info.Text) && obj is FrameworkElement tipSource)
-            info.Text = NullIfEmpty(tipSource.ToolTip as string);
-
-        if (obj is UIElement ui)
+        if (obj is Control control)
         {
-            info.Enabled = ui.IsEnabled;
-            info.Visible = ui.IsVisible;
+            info.Name = NullIfEmpty(control.Name);
+            info.AutomationId = NullIfEmpty(AutomationProperties.GetAutomationId(control));
+            info.Enabled = control.IsEnabled;
+            info.Visible = control.IsVisible;
+            info.Width = control.Bounds.Width;
+            info.Height = control.Bounds.Height;
+
+            if (string.IsNullOrEmpty(info.Text))
+                info.Text = NullIfEmpty(ToolTip.GetTip(control) as string);
+
+            if (control.IsVisible)
+            {
+                try
+                {
+                    var origin = control.PointToScreen(new Point(0, 0));
+                    info.X = origin.X;
+                    info.Y = origin.Y;
+                }
+                catch
+                {
+                    // Not attached to a top-level yet.
+                }
+            }
         }
 
-        if (IsVisual(obj))
-            info.ChildCount = VisualTreeHelper.GetChildrenCount(obj);
-
-        FillBounds(obj, info);
         return info;
     }
 
-    private static void FillBounds(DependencyObject obj, ElementInfo info)
-    {
-        if (obj is FrameworkElement fe)
-        {
-            info.Width = fe.ActualWidth;
-            info.Height = fe.ActualHeight;
-        }
-
-        if (obj is Visual visual && obj is UIElement uiElement && uiElement.IsVisible)
-        {
-            try
-            {
-                var origin = visual.PointToScreen(new Point(0, 0));
-                info.X = origin.X;
-                info.Y = origin.Y;
-            }
-            catch
-            {
-                // PointToScreen throws when the element is not connected to a presentation source.
-            }
-        }
-    }
-
-    internal static string? GetText(DependencyObject obj)
+    internal static string? GetText(Visual obj)
     {
         switch (obj)
         {
@@ -228,8 +210,6 @@ public static class VisualTreeQuery
                 return tb.Text;
             case TextBox txt:
                 return txt.Text;
-            case HeaderedItemsControl hic when hic.Header is string his:
-                return his;
             case ContentControl cc when cc.Content is string s:
                 return s;
             case HeaderedContentControl hcc when hcc.Header is string hs:
@@ -239,10 +219,10 @@ public static class VisualTreeQuery
         }
     }
 
-    private static bool IsVisual(DependencyObject obj) => obj is Visual || obj is Visual3D;
+    private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
     private static Dictionary<string, string?> ReadProperties(
-        DependencyObject obj,
+        Visual obj,
         ElementInfo info,
         IReadOnlyList<string> propertyNames)
     {
@@ -255,7 +235,7 @@ public static class VisualTreeQuery
         return values;
     }
 
-    private static string? ReadProperty(DependencyObject obj, ElementInfo info, string name)
+    private static string? ReadProperty(Visual obj, ElementInfo info, string name)
     {
         switch (name.Trim().ToLowerInvariant())
         {
@@ -281,6 +261,4 @@ public static class VisualTreeQuery
         try { return prop.GetValue(obj, null)?.ToString(); }
         catch { return null; }
     }
-
-    private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
 }

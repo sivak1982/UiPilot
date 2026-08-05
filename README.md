@@ -52,6 +52,17 @@ Cursor/Claude  --stdio MCP-->  WpfPilot.Cli  --JSON-RPC over named pipe-->  your
 | **`AvaloniaPilot`** | Avalonia adapter + `AvaloniaPilotHost.Start()` (`net8.0`). |
 | **`WpfPilot.Cli`** | Out-of-process stdio MCP bridge + app launcher (framework-agnostic). |
 
+## Agent-facing highlights (protocol 1.1)
+
+- `wait_for_element`, paged `find_elements` (`offset` / `hasMore`)
+- Window control: `set_window_state`, `bring_to_front`, `detach`
+- Input: `press_keys`, `scroll`, `focus`, `select_item`, real-mouse `drag`
+- Screenshots returned as MCP **image content** (plus a temp path)
+- Structured errors: `{ error, code, message, hint }`
+- Custom tools: `describe_app_tools` / `invoke_app_tool`
+
+Full catalog: [docs/05-tools.md](docs/05-tools.md).
+
 ## Security defaults
 
 - Disabled unless `#if DEBUG`, env `UIPILOT_ENABLE=1` / `WPFPILOT_ENABLE=1`, or an explicit `Start(force: true)`.

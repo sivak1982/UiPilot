@@ -10,8 +10,8 @@ namespace WpfPilot.Server;
 /// <summary>
 /// Accepts named-pipe connections and dispatches newline-delimited JSON-RPC requests to the
 /// tool registry. Several clients may be connected at once (an MCP session alongside ad-hoc
-/// scripts); tool invocations are serialised so they never interleave. Auth token required on
-/// every request. Runs its accept loop on a dedicated background thread.
+/// scripts). Auth token required on every request. Runs its accept loop on a dedicated
+/// background thread.
 /// </summary>
 internal sealed class NamedPipeServer
 {
@@ -19,7 +19,6 @@ internal sealed class NamedPipeServer
     private readonly string _token;
     private readonly ToolRegistry _registry;
     private readonly Action<string> _log;
-    private readonly object _invokeGate = new object();
 
     private Thread? _thread;
     private volatile bool _running;
@@ -130,11 +129,15 @@ internal sealed class NamedPipeServer
                 default:
                     if (!_registry.Contains(request.Method))
                         return Rpc.Error(request.Id, RpcCodes.MethodNotFound, "Unknown method: " + request.Method);
-                    object? result;
-                    lock (_invokeGate)
-                        result = _registry.Invoke(request.Method, request.Params);
+                    // UI-affecting tools marshal through the app dispatcher, which is the
+                    // appropriate serialization point; non-UI pipe clients need not block each other.
+                    var result = _registry.Invoke(request.Method, request.Params);
                     return Rpc.Result(request.Id, result);
             }
+        }
+        catch (PilotToolException ex)
+        {
+            return Rpc.Error(request.Id, RpcCodes.ToolError, ex.Message, new { code = ex.Code, hint = ex.Hint });
         }
         catch (Exception ex)
         {

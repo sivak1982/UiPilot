@@ -30,6 +30,17 @@ public sealed class ToolRegistry
 
     public bool Contains(string name) => _tools.ContainsKey(name);
 
+    public IReadOnlyCollection<string> Names
+    {
+        get
+        {
+            var names = new List<string>();
+            foreach (var e in _tools.Values)
+                names.Add(e.Name);
+            return names.AsReadOnly();
+        }
+    }
+
     /// <summary>Invoke a tool by name. Throws <see cref="KeyNotFoundException"/> if unknown.</summary>
     public object? Invoke(string name, JsonElement args)
     {

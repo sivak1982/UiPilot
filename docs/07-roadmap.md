@@ -2,46 +2,50 @@
 
 Priority order, following the "thin vertical slice first" principle.
 
-## Phase 0-1 (this MVP) - done
+## Phase 0-1 (MVP) - done
 
 - One package `WpfPilot` + `WpfPilotHost.Start()`.
 - Named-pipe server + per-run token auth + discovery file.
-- Built-in tools: `list_windows`, `find_elements`, `inspect_element`, `click`, `type_text`,
-  `invoke_command`, `screenshot`, `get_binding_errors`, `analyze_layout`, `highlight_element`.
-- `WpfPilot.Cli` stdio MCP bridge + lifecycle tools (`list_apps`, `attach`, `build_and_start`,
-  `restart_app`, `stop_app`).
-- `samples/SampleApp` to validate the loop end-to-end.
+- Built-in tools + `WpfPilot.Cli` MCP bridge + lifecycle tools.
+- `samples/SampleApp` end-to-end loop.
 
-## Phase 2 - diagnostics polish
+## Phase 2 - diagnostics polish - largely done
 
-- Return screenshots as MCP image content (not just a file path).
+- MCP screenshot as image content (path retained).
 - Overlap detection in `analyze_layout`.
-- Richer element properties on demand (dependency property snapshot).
+- Opt-in property snapshot on `inspect_element`.
+- Structured tool errors (`error.data.code` / hints).
 
-## Phase 3 - extensibility
+## Phase 3 - agent loop ergonomics - largely done
 
-- `[WpfPilotTool]` discovery + registration for opt-in custom domain tools.
-- `services.AddWpfPilot()` convenience for Generic Host apps.
+- `wait_for_element`, pagination (`offset` / `hasMore`).
+- Window control over MCP (`set_window_state`, `bring_to_front`).
+- `press_keys`, `scroll`, `focus`, `select_item`.
+- `describe_app_tools` / `invoke_app_tool` for custom handlers.
+- `detach` + attach filters (`processName`, `uiFramework`).
 
-## Phase 4 - real input
+## Phase 4 - real input - partially done
 
-- Optional SendInput / FlaUI "real input" mode alongside the synthetic default.
+- `drag` via SendInput (Windows) shipped.
+- Broader real-input mode / FlaUI parity still optional.
+- Non-Windows input backends for Avalonia (deferred).
 
-## Phase 5 - packaging
+## Phase 5 - multi-UI - done for Avalonia
 
-- Debug-only MSBuild props that auto-call `Start()` via a module initializer (zero-line adoption).
+- `WpfPilot.Core` + `IUiBackend`.
+- `AvaloniaPilot` + sample app.
+- Discovery `uiFramework`; `UIPILOT_*` env aliases.
+
+## Phase 6 - packaging / extensibility
+
+- `[PilotTool]` discovery + auto-registration.
+- `services.AddWpfPilot()` / Avalonia host helpers.
 - Publish `wpfpilot` CLI as a `dotnet tool`.
+- Debug-only MSBuild props / module initializer auto-`Start()`.
 
-## Phase 6 - multi-UI (in progress)
-
-- Shared `WpfPilot.Core` + `IUiBackend` contract.
-- `AvaloniaPilot` package + sample app (parity for tree/query/click/type/screenshot/layout/window).
-- Discovery `uiFramework` field; CLI enablement env aliases (`UIPILOT_*`).
-
-## Deferred (not planned for now)
+## Deferred
 
 - Multi-transport (REST/gRPC/TCP).
 - WinUI / MAUI adapters.
 - ViewModel mutation tools.
 - Full visual-tree dump.
-- Non-Windows real-input backends (macOS/Linux SendInput equivalents).

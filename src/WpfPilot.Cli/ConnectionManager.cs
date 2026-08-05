@@ -2,6 +2,8 @@ using System.Text.Json;
 using WpfPilot.Cli.Discovery;
 using WpfPilot.Cli.Pipe;
 using WpfPilot.Cli.Process;
+using WpfPilot.Server;
+using WpfPilot.Tools;
 
 namespace WpfPilot.Cli;
 
@@ -26,12 +28,16 @@ public sealed class ConnectionManager : IDisposable
 
     public DiscoveryInfo? Current => _current;
 
-    public async Task<DiscoveryInfo> AttachAsync(int? pid, CancellationToken ct = default)
+    public async Task<DiscoveryInfo> AttachAsync(
+        int? pid,
+        string? processName = null,
+        string? uiFramework = null,
+        CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var target = ResolveTarget(pid);
+            var target = ResolveTarget(pid, processName, uiFramework);
             await ConnectLocked(target, ct).ConfigureAwait(false);
             return target;
         }
@@ -48,7 +54,17 @@ public sealed class ConnectionManager : IDisposable
         catch (IOException)
         {
             ResetConnection();
-            throw new InvalidOperationException("Lost connection to the app (it may have exited). Re-attach or restart.");
+            throw new PilotCliException(
+                PilotErrorCodes.NotAttached,
+                "Lost connection to the app (it may have exited). Re-attach or restart.");
+        }
+        catch (PipeRpcException ex)
+        {
+            throw new PilotCliException(
+                ex.Code ?? $"rpc_{ex.RpcCode}",
+                ex.Message,
+                ex.Hint,
+                ex);
         }
     }
 
@@ -86,6 +102,13 @@ public sealed class ConnectionManager : IDisposable
         finally { _gate.Release(); }
     }
 
+    public void Detach()
+    {
+        _gate.Wait();
+        try { ResetConnection(); }
+        finally { _gate.Release(); }
+    }
+
     /// <summary>
     /// Detach and terminate whatever app we're driving: the process we launched, and/or the app we
     /// attached to (by pid, so externally-started elevated apps can be stopped too).
@@ -114,7 +137,7 @@ public sealed class ConnectionManager : IDisposable
         finally { _gate.Release(); }
     }
 
-    private DiscoveryInfo ResolveTarget(int? pid)
+    private DiscoveryInfo ResolveTarget(int? pid, string? processName = null, string? uiFramework = null)
     {
         var alive = _discovery.ListAlive();
         if (pid.HasValue)
@@ -123,11 +146,38 @@ public sealed class ConnectionManager : IDisposable
                 ?? throw new InvalidOperationException($"No running WpfPilot app with pid {pid.Value}.");
             return match;
         }
+
+        var filtered = alive.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(processName))
+        {
+            filtered = filtered.Where(a =>
+                a.ProcessName.IndexOf(processName, StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+        if (!string.IsNullOrWhiteSpace(uiFramework))
+        {
+            filtered = filtered.Where(a =>
+                string.Equals(a.UiFramework, uiFramework, StringComparison.OrdinalIgnoreCase));
+        }
+        alive = filtered.ToList();
+
         if (alive.Count == 0)
-            throw new InvalidOperationException("No running WpfPilot apps found. Use build_and_start or launch one, then attach.");
+            throw new InvalidOperationException(TargetNotFoundMessage(processName, uiFramework));
         if (alive.Count > 1)
-            throw new InvalidOperationException($"Multiple apps running ({alive.Count}). Call attach with an explicit pid.");
+            throw new InvalidOperationException($"Multiple apps match ({alive.Count}). Call attach with an explicit pid or narrower filters.");
         return alive[0];
+    }
+
+    private static string TargetNotFoundMessage(string? processName, string? uiFramework)
+    {
+        if (string.IsNullOrWhiteSpace(processName) && string.IsNullOrWhiteSpace(uiFramework))
+            return "No running WpfPilot apps found. Use build_and_start or launch one, then attach.";
+
+        var filters = new List<string>();
+        if (!string.IsNullOrWhiteSpace(processName))
+            filters.Add($"processName contains '{processName}'");
+        if (!string.IsNullOrWhiteSpace(uiFramework))
+            filters.Add($"uiFramework equals '{uiFramework}'");
+        return "No running WpfPilot apps matched " + string.Join(" and ", filters) + ".";
     }
 
     private async Task ConnectLocked(DiscoveryInfo target, CancellationToken ct)

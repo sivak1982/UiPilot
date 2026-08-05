@@ -13,7 +13,7 @@ namespace WpfPilot.Hosting;
 /// </summary>
 public sealed class PilotRuntime : IDisposable
 {
-    public const string ProtocolVersion = "1.0";
+    public const string ProtocolVersion = "1.1";
 
     private readonly object _gate = new object();
     private NamedPipeServer? _server;
