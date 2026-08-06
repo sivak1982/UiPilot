@@ -1,4 +1,4 @@
-# WpfPilot (+ AvaloniaPilot)
+# UiPilot
 
 In-process automation for **WPF and Avalonia** desktop apps, built for AI coding agents
 (Cursor, Claude, etc.).
@@ -17,7 +17,7 @@ diagnostics because it has direct access to the running objects.
 protected override void OnStartup(StartupEventArgs e)
 {
     base.OnStartup(e);
-    WpfPilot.WpfPilotHost.Start(); // only enabled in Debug / via env flag
+    UiPilot.Wpf.PilotHost.Start(); // only enabled in Debug / via env flag
 }
 ```
 
@@ -30,7 +30,7 @@ public override void OnFrameworkInitializationCompleted()
     if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         desktop.MainWindow = new MainWindow();
 
-    AvaloniaPilot.AvaloniaPilotHost.Start(); // same pipe/MCP protocol as WPF
+    UiPilot.Avalonia.PilotHost.Start(); // same pipe/MCP protocol as WPF
     base.OnFrameworkInitializationCompleted();
 }
 ```
@@ -40,19 +40,19 @@ That's it. No DI, no Generic Host, no attributes, no TCP port. Same agent tools 
 ## How it fits together
 
 ```text
-Cursor/Claude  --stdio MCP-->  WpfPilot.Cli  --JSON-RPC over named pipe-->  your app (WpfPilot or AvaloniaPilot)
+Cursor/Claude  --stdio MCP-->  UiPilot.Cli  --JSON-RPC over named pipe-->  your app (UiPilot.Wpf or UiPilot.Avalonia)
                                     |
                                     +-- build / launch / restart your app (the AI edit loop)
 ```
 
 | Package | Role |
 |---|---|
-| **`WpfPilot.Core`** | Shared protocol, discovery, named pipe, tool registry, `IUiBackend` contract. |
-| **`WpfPilot`** | WPF adapter + `WpfPilotHost.Start()` (`net472;net8.0-windows`). |
-| **`AvaloniaPilot`** | Avalonia adapter + `AvaloniaPilotHost.Start()` (`net8.0`). |
-| **`WpfPilot.Cli`** | Out-of-process stdio MCP bridge + app launcher (framework-agnostic). |
+| **`UiPilot.Core`** | Shared protocol, discovery, named pipe, tool registry, `IUiBackend` contract. |
+| **`UiPilot.Wpf`** | WPF adapter + `PilotHost.Start()` (`net472;net8.0-windows`). |
+| **`UiPilot.Avalonia`** | Avalonia adapter + `PilotHost.Start()` (`net8.0`). |
+| **`UiPilot.Cli`** | Out-of-process stdio MCP bridge + app launcher (framework-agnostic). |
 
-## Agent-facing highlights (protocol 1.1)
+## Agent-facing highlights (protocol 1.2)
 
 - `wait_for_element`, paged `find_elements` (`offset` / `hasMore`)
 - Window control: `set_window_state`, `bring_to_front`, `detach`
@@ -65,19 +65,19 @@ Full catalog: [docs/05-tools.md](docs/05-tools.md).
 
 ## Security defaults
 
-- Disabled unless `#if DEBUG`, env `UIPILOT_ENABLE=1` / `WPFPILOT_ENABLE=1`, or an explicit `Start(force: true)`.
+- Disabled unless `#if DEBUG`, env `UIPILOT_ENABLE=1`, or an explicit `Start(force: true)`.
 - Named pipe only. No TCP, no remote surface by default.
-- Per-run auth token written to `%TEMP%\wpfpilot\<pid>.json`; every request must present it.
+- Per-run auth token written to `%TEMP%/uipilot/<pid>.json`; every request must present it.
 - Discovery files include `uiFramework` (`wpf` or `avalonia`) so agents know which stack is attached.
 
 ## Repo layout
 
 | Path | What |
 |---|---|
-| `src/WpfPilot.Core` | Shared core (protocol + backend contract). |
-| `src/WpfPilot` | WPF in-process library. |
-| `src/AvaloniaPilot` | Avalonia in-process library. |
-| `src/WpfPilot.Cli` | Out-of-process stdio MCP bridge + app launcher. |
+| `src/UiPilot.Core` | Shared core (protocol + backend contract). |
+| `src/UiPilot.Wpf` | WPF in-process library. |
+| `src/UiPilot.Avalonia` | Avalonia in-process library. |
+| `src/UiPilot.Cli` | Out-of-process stdio MCP bridge + app launcher. |
 | `samples/SampleApp` | Minimal WPF app used to validate the loop. |
 | `samples/AvaloniaSampleApp` | Minimal Avalonia app used to validate the loop. |
 | `docs/` | Design review, architecture, adoption, security, tools, protocol, roadmap. |
@@ -87,7 +87,7 @@ Start with [docs/01-overview.md](docs/01-overview.md).
 ## Build
 
 ```powershell
-dotnet build WpfPilot.sln
+dotnet build UiPilot.sln
 ```
 
-On non-Windows hosts, build the cross-platform projects (`WpfPilot.Core`, `AvaloniaPilot`, `WpfPilot.Cli`, samples/AvaloniaSampleApp, tests). The WPF projects require Windows Desktop targeting packs.
+On non-Windows hosts, `EnableWindowsTargeting` is set so WPF TFMs restore; full WPF runtime still requires Windows.

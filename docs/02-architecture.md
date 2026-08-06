@@ -3,12 +3,12 @@
 ```mermaid
 flowchart TB
   subgraph consumers [Target apps]
-    WpfApp["WPF: WpfPilotHost.Start()"]
-    AvaApp["Avalonia: AvaloniaPilotHost.Start()"]
+    WpfApp["WPF: PilotHost.Start()"]
+    AvaApp["Avalonia: UiPilot.Avalonia.PilotHost.Start()"]
   end
-  subgraph core [WpfPilot.Core]
+  subgraph core [UiPilot.Core]
     Runtime[PilotRuntime]
-    Pipe[NamedPipeServer JSON-RPC 1.1]
+    Pipe[NamedPipeServer JSON-RPC line protocol]
     Reg[ToolRegistry + BuiltInTools + ToolCatalog]
     Contract[IUiBackend]
     Disc[DiscoveryFile]
@@ -18,7 +18,7 @@ flowchart TB
     AvaBack[AvaloniaUiBackend]
   end
   subgraph agentSide [Agent side]
-    CLI["WpfPilot.Cli MCP + launcher"]
+    CLI["UiPilot.Cli MCP + launcher"]
     Cursor[Cursor / Claude]
   end
   WpfApp --> Runtime
@@ -35,7 +35,7 @@ flowchart TB
   CLI -->|discovery| Disc
 ```
 
-## Core (`src/WpfPilot.Core`)
+## Core (`src/UiPilot.Core`)
 
 | Piece | Role |
 |---|---|

@@ -1,5 +1,5 @@
 <#
-    End-to-end smoke test for the WpfPilot named-pipe surface.
+    End-to-end smoke test for the UiPilot named-pipe surface.
 
     Launches the sample app, waits for its discovery file, connects to the pipe, and exercises a
     representative set of tools directly (bypassing MCP, so it is easy to run from PowerShell).
@@ -25,12 +25,12 @@ function Send-Rpc($writer, $reader, $method, $token, $params) {
 
 if (-not (Test-Path $Exe)) { throw "Sample app not built: $Exe" }
 
-$env:WPFPILOT_ENABLE = "1"
+$env:UIPILOT_ENABLE = "1"
 $proc = Start-Process -FilePath $Exe -PassThru
 Write-Host "Started SampleApp pid=$($proc.Id)"
 
 try {
-    $file = Join-Path (Join-Path $env:TEMP "wpfpilot") "$($proc.Id).json"
+    $file = Join-Path (Join-Path $env:TEMP "uipilot") "$($proc.Id).json"
     $deadline = (Get-Date).AddSeconds(30)
     while (-not (Test-Path $file) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 200 }
     if (-not (Test-Path $file)) { throw "Discovery file never appeared: $file" }
@@ -58,7 +58,8 @@ try {
     Write-Host "list_windows -> $($windows.windows.Count) window(s): '$($windows.windows[0].text)'"
 
     $found = Send-Rpc $writer $reader "find_elements" $token @{ query = "Greet"; limit = 50 }
-    Write-Host "find_elements('Greet') -> $($found.count) match(es)"
+    $foundTotal = if ($null -ne $found.total) { $found.total } else { $found.count }
+    Write-Host "find_elements('Greet') -> $foundTotal match(es)"
     $button = $found.elements | Where-Object { $_.automationId -eq "GreetButton" } | Select-Object -First 1
     if (-not $button) { throw "GreetButton not found." }
     Write-Host "  GreetButton id=$($button.id) enabled=$($button.enabled) bounds=$($button.width)x$($button.height)"
@@ -67,7 +68,8 @@ try {
     Write-Host "click -> method=$($click.method)"
 
     $greeting = Send-Rpc $writer $reader "find_elements" $token @{ query = "Hello" }
-    Write-Host "after click, elements containing 'Hello': $($greeting.count)"
+    $greetingTotal = if ($null -ne $greeting.total) { $greeting.total } else { $greeting.count }
+    Write-Host "after click, elements containing 'Hello': $greetingTotal"
 
     $bind = Send-Rpc $writer $reader "get_binding_errors" $token @{}
     Write-Host "get_binding_errors -> $($bind.count) error(s)"

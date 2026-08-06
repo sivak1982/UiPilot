@@ -2,18 +2,18 @@
 
 Two groups: **forwarding** tools run inside the app (require an attached app);
 **lifecycle** tools run in the CLI (drive the edit loop). All are exposed to the agent over MCP.
-Built-in in-app names are catalogued in [`ToolCatalog`](../src/WpfPilot.Core/Tools/ToolCatalog.cs)
-and registered by [`BuiltInTools`](../src/WpfPilot.Core/Tools/BuiltInTools.cs).
+Built-in in-app names are catalogued in [`ToolCatalog`](../src/UiPilot.Core/Tools/ToolCatalog.cs)
+and registered by [`BuiltInTools`](../src/UiPilot.Core/Tools/BuiltInTools.cs).
 
-Protocol version: **1.1**.
+Protocol version: **1.2**.
 
 ## Lifecycle tools (CLI)
 
-Defined in [LifecycleTools.cs](../src/WpfPilot.Cli/Tools/LifecycleTools.cs).
+Defined in [LifecycleTools.cs](../src/UiPilot.Cli/Tools/LifecycleTools.cs).
 
 | Tool | Args | Description |
 |---|---|---|
-| `list_apps` | - | List running pilot apps from `%TEMP%/wpfpilot` (includes `uiFramework`). |
+| `list_apps` | - | List running pilot apps from `%TEMP%/uipilot` (includes `uiFramework`). |
 | `attach` | `pid?`, `processName?`, `uiFramework?` | Attach; filters apply when `pid` is omitted. |
 | `detach` | - | Drop the pipe connection without killing the process. |
 | `build_and_start` | `project`, `configuration="Debug"`, `platform?` | Build, launch with pilot enabled, attach. |
@@ -22,12 +22,12 @@ Defined in [LifecycleTools.cs](../src/WpfPilot.Cli/Tools/LifecycleTools.cs).
 
 ## Forwarding tools (in-app)
 
-Defined in [ForwardingTools.cs](../src/WpfPilot.Cli/Tools/ForwardingTools.cs).
+Defined in [ForwardingTools.cs](../src/UiPilot.Cli/Tools/ForwardingTools.cs).
 
 | Tool | Args | Returns / notes |
 |---|---|---|
 | `list_windows` | - | Windows with identity + bounds. |
-| `find_elements` | `query?`, `limit=50`, `offset=0`, `root?` | `{ count, hasMore, offset, limit, elements }`. |
+| `find_elements` | `query?`, `limit=50`, `offset=0`, `root?` | `{ count, total, hasMore, offset, limit, elements }`; `count` is this page, `total` is all matches. |
 | `inspect_element` | `id`, `includeChildren=false`, `depth=1`, `properties?` | One element; optional comma-separated property names. |
 | `wait_for_element` | `query`, `root?`, `timeoutMs=10000`, `pollMs=200` | Polls until a match appears or times out. |
 | `click` | `id` | `{ method }` synthetic click / toggle / expand. |
@@ -66,11 +66,11 @@ Failed tools return JSON like:
 { "error": true, "code": "stale_element", "message": "...", "hint": "..." }
 ```
 
-Common codes: `stale_element`, `not_found`, `not_attached`, `invalid_args`, `unsupported`,
-`platform_unsupported`, `timeout`.
+Common codes: `stale_element`, `not_found`, `ambiguous`, `not_attached`, `invalid_args`,
+`unsupported`, `platform_unsupported`, `timeout`, `canceled`.
 
 ## Custom domain tools
 
-Register on `WpfPilotHost.Tools` / `AvaloniaPilotHost.Tools` after `Start()`, or annotate with
-`[PilotTool]` / `[WpfPilotTool]` (discovery wiring is still post-MVP; use
+Register on `PilotHost.Tools` / `UiPilot.Avalonia.PilotHost.Tools` after `Start()`, or annotate with
+`[PilotTool]` (discovery wiring is still post-MVP; use
 `describe_app_tools` + `invoke_app_tool` once registered manually).

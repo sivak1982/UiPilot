@@ -1,5 +1,5 @@
 <#
-    Ad-hoc WpfPilot driver: connects to a running WpfPilot app over its named pipe and runs a
+    Ad-hoc UiPilot driver: connects to a running UiPilot app over its named pipe and runs a
     small sequence of operations (find / click-by-text / screenshot / binding+layout diagnostics).
 
     Connects fresh each invocation (reading the discovery file), so the target app stays alive
@@ -45,7 +45,7 @@ function Send-Rpc($writer, $reader, $method, $token, $params) {
 }
 
 # --- locate discovery file ---
-$discDir = Join-Path $env:TEMP "wpfpilot"
+$discDir = Join-Path $env:TEMP "uipilot"
 if (-not (Test-Path $discDir)) { throw "No discovery dir: $discDir (is the app running?)" }
 $files = Get-ChildItem $discDir -Filter *.json
 if ($TargetPid -ne 0) { $files = $files | Where-Object { $_.BaseName -eq "$TargetPid" } }
@@ -54,7 +54,7 @@ $live = @()
 foreach ($f in $files) {
     try { $null = Get-Process -Id ([int]$f.BaseName) -ErrorAction Stop; $live += $f } catch {}
 }
-if ($live.Count -eq 0) { throw "No live WpfPilot app found (pid filter=$TargetPid)." }
+if ($live.Count -eq 0) { throw "No live UiPilot app found (pid filter=$TargetPid)." }
 if ($live.Count -gt 1) { throw "Multiple apps live: $($live.BaseName -join ', '). Pass -TargetPid." }
 $info = Get-Content $live[0].FullName -Raw | ConvertFrom-Json
 
@@ -99,7 +99,8 @@ try {
 
     if ($FindQuery) {
         $found = Send-Rpc $writer $reader "find_elements" $token @{ query = $FindQuery; limit = $FindLimit }
-        "FIND '$FindQuery' -> $($found.count) match(es)"
+        $foundTotal = if ($null -ne $found.total) { $found.total } else { $found.count }
+        "FIND '$FindQuery' -> $foundTotal match(es)"
         $found.elements | ForEach-Object {
             "  id=$($_.id) type=$($_.type) name='$($_.name)' text='$($_.text)' vis=$($_.visible) en=$($_.enabled) $([int]$_.width)x$([int]$_.height)"
         }

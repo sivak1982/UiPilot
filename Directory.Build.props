@@ -7,15 +7,17 @@
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- Allow net*-windows TFMs to restore/build on Linux CI/agents. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 
   <PropertyGroup Label="Package metadata">
-    <Company>WpfPilot</Company>
-    <Product>WpfPilot</Product>
-    <Authors>WpfPilot</Authors>
-    <Copyright>Copyright (c) WpfPilot</Copyright>
+    <Company>UiPilot</Company>
+    <Product>UiPilot</Product>
+    <Authors>UiPilot</Authors>
+    <Copyright>Copyright (c) UiPilot</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/wpfpilot/wpfpilot</RepositoryUrl>
+    <RepositoryUrl>https://github.com/sivak1982/UiPilot</RepositoryUrl>
     <Version>0.1.0</Version>
   </PropertyGroup>
 

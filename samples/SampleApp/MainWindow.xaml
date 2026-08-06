@@ -2,9 +2,9 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
-        Title="WpfPilot Sample" Height="360" Width="480">
+        Title="UiPilot Sample" Height="360" Width="480">
     <StackPanel Margin="16">
-        <TextBlock Text="WpfPilot sample app" FontSize="18" FontWeight="Bold" Margin="0,0,0,12" />
+        <TextBlock Text="UiPilot sample app" FontSize="18" FontWeight="Bold" Margin="0,0,0,12" />
 
         <TextBlock Text="Your name:" />
         <TextBox x:Name="NameBox"

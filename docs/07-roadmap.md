@@ -4,10 +4,10 @@ Priority order, following the "thin vertical slice first" principle.
 
 ## Phase 0-1 (MVP) - done
 
-- One package `WpfPilot` + `WpfPilotHost.Start()`.
-- Named-pipe server + per-run token auth + discovery file.
-- Built-in tools + `WpfPilot.Cli` MCP bridge + lifecycle tools.
-- `samples/SampleApp` end-to-end loop.
+- Packages `UiPilot.Wpf` / `UiPilot.Avalonia` + `PilotHost.Start()` (clean break from former WpfPilot names).
+- Named-pipe server + per-run token auth + discovery file (`%TEMP%/uipilot`, `UIPILOT_*` env only).
+- Built-in tools + `UiPilot.Cli` MCP bridge + lifecycle tools.
+- `samples/SampleApp` / `AvaloniaSampleApp` end-to-end loop.
 
 ## Phase 2 - diagnostics polish - largely done
 
@@ -32,20 +32,23 @@ Priority order, following the "thin vertical slice first" principle.
 
 ## Phase 5 - multi-UI - done for Avalonia
 
-- `WpfPilot.Core` + `IUiBackend`.
-- `AvaloniaPilot` + sample app.
-- Discovery `uiFramework`; `UIPILOT_*` env aliases.
+- `UiPilot.Core` + `IUiBackend`.
+- `UiPilot.Avalonia` + sample app.
+- Discovery `uiFramework`; env `UIPILOT_ENABLE` / `UIPILOT_START_MINIMIZED` only (no legacy aliases).
 
 ## Phase 6 - packaging / extensibility
 
 - `[PilotTool]` discovery + auto-registration.
-- `services.AddWpfPilot()` / Avalonia host helpers.
-- Publish `wpfpilot` CLI as a `dotnet tool`.
+- `services.AddUiPilot()` / Avalonia host helpers.
+- Publish `uipilot` CLI as a `dotnet tool`.
 - Debug-only MSBuild props / module initializer auto-`Start()`.
 
-## Deferred
+## Deferred (tracked leftovers)
 
+- `[PilotTool]` attribute auto-discovery (tools are registered manually today).
+- Publish `uipilot` CLI as a `dotnet tool`.
+- Real input injection on non-Windows (Avalonia / cross-platform).
+- WinUI / MAUI adapters sharing `UiPilot.Core`.
 - Multi-transport (REST/gRPC/TCP).
-- WinUI / MAUI adapters.
 - ViewModel mutation tools.
 - Full visual-tree dump.

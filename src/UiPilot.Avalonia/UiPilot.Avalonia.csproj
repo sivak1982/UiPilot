@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>UiPilot.Avalonia</RootNamespace>
+    <AssemblyName>UiPilot.Avalonia</AssemblyName>
+    <PackageId>UiPilot.Avalonia</PackageId>
+    <Description>In-process Avalonia automation for AI agents, sharing the UiPilot pipe/MCP protocol.</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\UiPilot.Core\UiPilot.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="UiPilot.Tests" />
+  </ItemGroup>
+
+</Project>

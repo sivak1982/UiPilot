@@ -2,9 +2,9 @@
 
 ## Contract
 
-1. Reference `WpfPilot` or `AvaloniaPilot` (Core comes transitively).
+1. Reference `UiPilot.Wpf` or `UiPilot.Avalonia` (Core comes transitively).
 2. Call `Start()` once at startup.
-3. Point your agent at `WpfPilot.Cli` as an MCP server.
+3. Point your agent at `UiPilot.Cli` as an MCP server.
 4. No attributes required for basic automation.
 5. No DI / Generic Host / TCP required.
 
@@ -14,7 +14,7 @@
 protected override void OnStartup(StartupEventArgs e)
 {
     base.OnStartup(e);
-    WpfPilot.WpfPilotHost.Start();
+    UiPilot.Wpf.PilotHost.Start();
 }
 ```
 
@@ -26,22 +26,21 @@ public override void OnFrameworkInitializationCompleted()
     if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         desktop.MainWindow = new MainWindow();
 
-    AvaloniaPilot.AvaloniaPilotHost.Start();
+    UiPilot.Avalonia.PilotHost.Start();
     base.OnFrameworkInitializationCompleted();
 }
 ```
 
-`Start()` is idempotent and a no-op in Release unless `UIPILOT_ENABLE=1` /
-`WPFPILOT_ENABLE=1` or `Force=true`. See [04-security.md](04-security.md).
+`Start()` is idempotent and a no-op in Release unless `UIPILOT_ENABLE=1` or `Force=true`. See [04-security.md](04-security.md).
 
 ## MCP config (Cursor / Claude)
 
 ```json
 {
   "mcpServers": {
-    "wpfpilot": {
+    "uipilot": {
       "command": "dotnet",
-      "args": ["run", "--project", "path/to/WpfPilot/src/WpfPilot.Cli/WpfPilot.Cli.csproj"]
+      "args": ["run", "--project", "path/to/UiPilot/src/UiPilot.Cli/UiPilot.Cli.csproj"]
     }
   }
 }

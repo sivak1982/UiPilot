@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>UiPilot.Cli</RootNamespace>
+    <AssemblyName>UiPilot.Cli</AssemblyName>
+    <!-- When packaged as a dotnet tool the invocable command is still 'uipilot'. -->
+    <ToolCommandName>uipilot</ToolCommandName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <!-- MCP stdio servers must never write to stdout except protocol frames. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\UiPilot.Core\UiPilot.Core.csproj" />
+  </ItemGroup>
+
+</Project>

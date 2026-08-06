@@ -8,7 +8,7 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        // The only line an app needs. Enabled in Debug / via WPFPILOT_ENABLE=1; a no-op otherwise.
-        WpfPilot.WpfPilotHost.Start();
+        // The only line an app needs. Enabled in Debug / via UIPILOT_ENABLE=1; a no-op otherwise.
+        UiPilot.Wpf.PilotHost.Start();
     }
 }

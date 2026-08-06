@@ -3,10 +3,10 @@
         xmlns:vm="using:AvaloniaSampleApp"
         x:Class="AvaloniaSampleApp.MainWindow"
         x:DataType="vm:MainViewModel"
-        Title="AvaloniaPilot Sample"
+        Title="UiPilot.Avalonia Sample"
         Width="420" Height="240">
   <StackPanel Margin="24" Spacing="12">
-    <TextBlock Text="AvaloniaPilot Sample" FontSize="20" FontWeight="Bold" />
+    <TextBlock Text="UiPilot.Avalonia Sample" FontSize="20" FontWeight="Bold" />
     <TextBox Name="NameBox" Watermark="Your name" Text="{Binding Name}" />
     <Button Name="GreetButton" Content="Greet" Command="{Binding GreetCommand}" />
     <TextBlock Name="GreetingText" Text="{Binding Greeting}" />

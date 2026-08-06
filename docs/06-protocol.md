@@ -4,12 +4,12 @@ The in-app server and the CLI communicate over a Windows named pipe using a smal
 JSON-RPC-flavored line protocol. This is intentionally *not* the MCP wire format - MCP lives only
 in the CLI, which translates between MCP and this protocol.
 
-**Protocol version: `1.1`** (discovery `uiFramework`, paged find, wait/press/scroll/focus/select,
+**Protocol version: `1.2`** (discovery `uiFramework`, paged find, wait/press/scroll/focus/select,
 window tools, structured `error.data`).
 
 ## Transport
 
-- Pipe name: `wpfpilot.<pid>.<guid>` (published in the discovery file).
+- Pipe name: `uipilot.<pid>.<guid>` (published in the discovery file).
 - Encoding: UTF-8, no BOM.
 - Framing: **one JSON object per line**, `\n`-terminated. No embedded newlines in a frame.
 - Up to **4 concurrent clients** (`PipeIntegrity.MaxInstances`); UI work is serialized by the
@@ -17,18 +17,18 @@ window tools, structured `error.data`).
 
 ## Discovery file
 
-Written to `%TEMP%\wpfpilot\<pid>.json` on start, deleted on clean shutdown
-([DiscoveryFile.cs](../src/WpfPilot.Core/Server/DiscoveryFile.cs)):
+Written to `%TEMP%/uipilot\<pid>.json` on start, deleted on clean shutdown
+([DiscoveryFile.cs](../src/UiPilot.Core/Server/DiscoveryFile.cs)):
 
 ```json
 {
   "pid": 12345,
   "processName": "SampleApp",
-  "pipeName": "wpfpilot.12345.0f1e2d...",
+  "pipeName": "uipilot.12345.0f1e2d...",
   "token": "3a1b...9c",
-  "protocolVersion": "1.1",
+  "protocolVersion": "1.2",
   "startedUtc": "2026-07-17T07:00:00.0000000Z",
-  "mainWindowTitle": "WpfPilot Sample",
+  "mainWindowTitle": "UiPilot Sample",
   "uiFramework": "wpf"
 }
 ```
@@ -41,7 +41,7 @@ Written to `%TEMP%\wpfpilot\<pid>.json` on start, deleted on clean shutdown
 { "jsonrpc": "2.0", "id": 1, "method": "find_elements", "token": "<token>", "params": { "query": "Greet", "limit": 20, "offset": 0 } }
 ```
 
-- `method`: `ping`, `describe`, or a tool name from [`ToolCatalog`](../src/WpfPilot.Core/Tools/ToolCatalog.cs).
+- `method`: `ping`, `describe`, or a tool name from [`ToolCatalog`](../src/UiPilot.Core/Tools/ToolCatalog.cs).
 - `token`: required on every request.
 - `params`: tool-specific object (may be omitted / empty).
 
@@ -50,8 +50,11 @@ Written to `%TEMP%\wpfpilot\<pid>.json` on start, deleted on clean shutdown
 Success:
 
 ```json
-{ "jsonrpc": "2.0", "id": 1, "result": { "count": 1, "hasMore": false, "elements": [ /* ... */ ] } }
+{ "jsonrpc": "2.0", "id": 1, "result": { "count": 1, "total": 1, "hasMore": false, "elements": [ /* ... */ ] } }
 ```
+
+For paged tools, `count` is the number of elements in the returned page and `total` is the
+number of matching elements before `limit`/`offset` paging.
 
 Error:
 
@@ -67,7 +70,7 @@ Error:
 }
 ```
 
-### Error codes ([JsonRpc.cs](../src/WpfPilot.Core/Server/JsonRpc.cs))
+### Error codes ([JsonRpc.cs](../src/UiPilot.Core/Server/JsonRpc.cs))
 
 | Code | Meaning |
 |---|---|

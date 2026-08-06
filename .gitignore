@@ -32,6 +32,6 @@ packages/
 .DS_Store
 Thumbs.db
 
-## WpfPilot runtime discovery files live in %TEMP%\wpfpilot, never in the repo,
-## so no ignore rule is needed here. (A bare 'wpfpilot/' rule would wrongly match
-## the src/WpfPilot/ source directory on case-insensitive filesystems.)
+## UiPilot runtime discovery files live in %TEMP%\uipilot, never in the repo,
+## so no ignore rule is needed here. (A bare 'uipilot/' rule would wrongly match
+## source directories on case-insensitive filesystems.)

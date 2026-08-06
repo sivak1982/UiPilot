@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\WpfPilot\WpfPilot.csproj" />
+    <ProjectReference Include="..\..\src\UiPilot.Wpf\UiPilot.Wpf.csproj" />
   </ItemGroup>
 
 </Project>

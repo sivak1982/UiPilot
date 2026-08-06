@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net472;net8.0</TargetFrameworks>
+    <RootNamespace>UiPilot</RootNamespace>
+    <AssemblyName>UiPilot.Core</AssemblyName>
+    <PackageId>UiPilot.Core</PackageId>
+    <Description>Shared protocol, pipe transport, and UI-backend contracts for UiPilot (WPF and Avalonia).</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="UiPilot.Wpf" />
+    <InternalsVisibleTo Include="UiPilot.Avalonia" />
+    <InternalsVisibleTo Include="UiPilot.Tests" />
+  </ItemGroup>
+
+</Project>

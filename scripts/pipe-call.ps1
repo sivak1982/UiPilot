@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Send a single WpfPilot pipe request to a running app, bypassing the MCP CLI.
+  Send a single UiPilot pipe request to a running app, bypassing the MCP CLI.
 
 .DESCRIPTION
   Useful when the CLI binary is locked by a running MCP server but the in-app library
@@ -22,10 +22,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$discoveryDir = Join-Path $env:TEMP 'wpfpilot'
+$discoveryDir = Join-Path $env:TEMP 'uipilot'
 $files = Get-ChildItem $discoveryDir -Filter *.json -ErrorAction SilentlyContinue
 if ($Pid_ -gt 0) { $files = $files | Where-Object { $_.BaseName -eq "$Pid_" } }
-if (-not $files) { throw "No WpfPilot app discovered in $discoveryDir." }
+if (-not $files) { throw "No UiPilot app discovered in $discoveryDir." }
 if ($files.Count -gt 1) { throw "Multiple apps running; pass -Pid_ to pick one." }
 
 $info = Get-Content $files[0].FullName -Raw | ConvertFrom-Json
