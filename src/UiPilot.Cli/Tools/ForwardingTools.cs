@@ -9,7 +9,7 @@ using UiPilot.Tools;
 namespace UiPilot.Cli.Tools;
 
 /// <summary>
-/// MCP tools that forward to the in-app named-pipe server. These are the "inside the running app"
+/// MCP tools that forward to the in-app MCP-over-pipe server. These are the "inside the running app"
 /// capabilities: query the tree, interact, screenshot, diagnose. They require an attached app.
 /// </summary>
 [McpServerToolType]

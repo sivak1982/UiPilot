@@ -5,7 +5,7 @@ Priority order, following the "thin vertical slice first" principle.
 ## Phase 0-1 (MVP) - done
 
 - Packages `UiPilot.Wpf` / `UiPilot.Avalonia` + `PilotHost.Start()` (clean break from former WpfPilot names).
-- Named-pipe server + per-run token auth + discovery file (`%TEMP%/uipilot`, `UIPILOT_*` env only).
+- MCP-over-pipe (`.NET 8+` only) + per-run token auth + discovery file (`%TEMP%/uipilot`, `UIPILOT_*` env only).
 - Built-in tools + `UiPilot.Cli` MCP bridge + lifecycle tools.
 - `samples/SampleApp` / `AvaloniaSampleApp` end-to-end loop.
 

@@ -34,8 +34,9 @@ The CLI sets `UIPILOT_ENABLE=1` (and `UIPILOT_START_MINIMIZED=1`) on apps it lau
 
 - Only a **named pipe** is opened: `uipilot.<pid>.<guid>`. There is no network listener.
 - On start, a random token (two GUIDs) is generated and written to the discovery file.
-- **Every** pipe request must present the matching token; the server rejects mismatches with an
-  `Unauthorized` error. See [Server/NamedPipeServer.Process](../src/UiPilot.Core/Server/NamedPipeServer.cs).
+- After connect, the client must pass a one-line token gate before MCP begins; mismatches get an
+  auth failure and close. See [PipeSessionAuth](../src/UiPilot.Core/Server/PipeSessionAuth.cs) /
+  [McpPipeServer](../src/UiPilot.Core/Server/McpPipeServer.cs).
 - The discovery file lives in `%TEMP%/uipilot\<pid>.json`, readable by the current user. Treat
   the token like any local dev secret; it is scoped to a single app run and removed on shutdown.
   Prefer a private `DiscoveryDirectory` on shared machines.

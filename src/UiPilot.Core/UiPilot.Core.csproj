@@ -1,21 +1,22 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net472;net8.0</TargetFrameworks>
+    <TargetFramework>net8.0</TargetFramework>
     <RootNamespace>UiPilot</RootNamespace>
     <AssemblyName>UiPilot.Core</AssemblyName>
     <PackageId>UiPilot.Core</PackageId>
-    <Description>Shared protocol, pipe transport, and UI-backend contracts for UiPilot (WPF and Avalonia).</Description>
+    <Description>Shared MCP-over-pipe protocol, discovery, and UI-backend contracts for UiPilot (WPF and Avalonia).</Description>
     <IsPackable>true</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.Text.Json" />
+    <PackageReference Include="ModelContextProtocol" />
   </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="UiPilot.Wpf" />
     <InternalsVisibleTo Include="UiPilot.Avalonia" />
+    <InternalsVisibleTo Include="UiPilot.Cli" />
     <InternalsVisibleTo Include="UiPilot.Tests" />
   </ItemGroup>
 

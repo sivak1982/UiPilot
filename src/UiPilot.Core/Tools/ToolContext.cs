@@ -21,8 +21,8 @@ public sealed class ToolContext
     public IUiBackend Backend { get; }
 
     /// <summary>
-    /// Cooperative cancellation token for long-running tools. Named-pipe requests currently leave
-    /// this as <see cref="CancellationToken.None"/>; future transports can set it per request.
+    /// Cooperative cancellation token for long-running tools. Set per MCP <c>tools/call</c>
+    /// while the handler runs.
     /// </summary>
     public CancellationToken CancellationToken { get; set; } = CancellationToken.None;
 

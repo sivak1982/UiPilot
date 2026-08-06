@@ -17,7 +17,7 @@ lifecycle and security. The MVP fixes those first and defers multi-transport / m
 | 2 | Process lifecycle (`launch_app`/`restart_app` from inside the app) is backwards | Split: in-process [UiPilot](../src/UiPilot.Wpf) inspects/interacts; out-of-process [UiPilot.Cli](../src/UiPilot.Cli) owns build/launch/restart/discover. The app never launches itself. |
 | 3 | Fixed TCP port 7777 is a security + collision hazard | **Named pipe only.** No TCP. Unique pipe name per process. Per-run auth token in the discovery file. See [04-security.md](04-security.md). |
 | 4 | Premature platform abstraction | v1 shipped WPF-only. Multi-UI is now introduced deliberately via a shared core (`UiPilot.Core` + `IUiBackend`) with thin WPF/Avalonia adapters — not REST/gRPC theater. |
-| 5 | "Any WPF app" underspecified | Library multi-targets `net472;net8.0-windows`; static `PilotHost.Start()` needs no DI or Generic Host. |
+| 5 | "Any WPF app" underspecified | Library targets `net8.0-windows` / `net8.0`; static `PilotHost.Start()` needs no DI or Generic Host. |
 | 6 | Interaction fidelity oversold | v1 is explicitly "synthetic" (UI Automation invoke + RaiseEvent fallback), clearly labeled in results. Real-input/FlaUI mode deferred. |
 | 7 | Full tree dumps break agents | Query-first API: `find_elements`/`inspect_element` with limits and depth. No full-tree dump tool. |
 | 8 | ViewModel reflection is not generic | No ViewModel mutation tools in v1. Core surface = windows + tree + properties + screenshots + binding errors + synthetic input. |
@@ -31,8 +31,8 @@ lifecycle and security. The MVP fixes those first and defers multi-transport / m
   "any WPF app must not ship a remote-control backdoor" - a developer who forgets to remove
   `Start()` does not accidentally expose their shipped app. See
   [PilotHost.Start](../src/UiPilot.Wpf/PilotHost.cs).
-- **The pipe protocol is a lightweight JSON-RPC line protocol, not the MCP wire format.** MCP
-  lives only in the CLI (the `ModelContextProtocol` SDK requires modern .NET). This keeps the
-  in-app library dependency-light and `net472`-compatible. The CLI bridges MCP <-> pipe.
+- **The pipe speaks MCP** (`StreamServerTransport` in-app). `net472` was dropped so the app can
+  host the MCP C# SDK. The CLI remains the agent stdio MCP server and an MCP client to the app
+  (plus build/launch lifecycle). See [06-protocol.md](06-protocol.md).
 
 See [02-architecture.md](02-architecture.md) for the full picture.

@@ -8,15 +8,15 @@ using UiPilot.Tools;
 namespace UiPilot.Cli;
 
 /// <summary>
-/// Central state for the CLI: which app we're attached to, the live pipe connection, and the
-/// process we launched (for build/restart). Registered as a DI singleton and injected into tools.
+/// Central state for the CLI: which app we're attached to, the live MCP-over-pipe connection, and
+/// the process we launched (for build/restart). Registered as a DI singleton and injected into tools.
 /// </summary>
 public sealed class ConnectionManager : IDisposable
 {
     private readonly DiscoveryReader _discovery = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    private PipeClient? _client;
+    private McpPipeClient? _client;
     private DiscoveryInfo? _current;
     private System.Diagnostics.Process? _launched;
     private string? _lastProject;
@@ -49,7 +49,16 @@ public sealed class ConnectionManager : IDisposable
         var client = await EnsureConnectedAsync(ct).ConfigureAwait(false);
         try
         {
-            return await client.SendAsync(method, args, ct).ConfigureAwait(false);
+            if (string.Equals(method, "ping", StringComparison.OrdinalIgnoreCase))
+            {
+                await client.PingAsync(ct).ConfigureAwait(false);
+                return JsonSerializer.SerializeToElement(new { pong = true });
+            }
+
+            if (string.Equals(method, "describe", StringComparison.OrdinalIgnoreCase))
+                return await client.ListToolsAsync(ct).ConfigureAwait(false);
+
+            return await client.CallToolAsync(method, args, ct).ConfigureAwait(false);
         }
         catch (IOException)
         {
@@ -116,10 +125,6 @@ public sealed class ConnectionManager : IDisposable
         finally { _gate.Release(); }
     }
 
-    /// <summary>
-    /// Detach and terminate whatever app we're driving: the process we launched, and/or the app we
-    /// attached to (by pid, so externally-started elevated apps can be stopped too).
-    /// </summary>
     private void KillCurrentLocked()
     {
         var attachedPid = _attachedPid ?? _current?.Pid;
@@ -130,7 +135,7 @@ public sealed class ConnectionManager : IDisposable
             AppLauncher.KillByPid(attachedPid.Value);
     }
 
-    private async Task<PipeClient> EnsureConnectedAsync(CancellationToken ct)
+    private async Task<McpPipeClient> EnsureConnectedAsync(CancellationToken ct)
     {
         if (_client is { IsConnected: true }) return _client;
         await _gate.WaitAsync(ct).ConfigureAwait(false);
@@ -201,7 +206,7 @@ public sealed class ConnectionManager : IDisposable
     private async Task ConnectLocked(DiscoveryInfo target, CancellationToken ct)
     {
         ResetConnection();
-        _client = await PipeClient.ConnectAsync(target.PipeName, target.Token, 5000, ct).ConfigureAwait(false);
+        _client = await McpPipeClient.ConnectAsync(target.PipeName, target.Token, 5000, ct).ConfigureAwait(false);
         _current = target;
         _attachedPid = target.Pid;
     }

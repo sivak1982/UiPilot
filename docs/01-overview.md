@@ -1,7 +1,7 @@
 # Overview
 
 UiPilot lets an AI coding agent drive and inspect a running desktop UI app from the inside.
-The same MCP tools and named-pipe protocol (**v1.2**) work for **WPF** (`UiPilot.Wpf`) and
+The same MCP tools and **MCP-over-pipe** protocol (**v2.0**) work for **WPF** (`UiPilot.Wpf`) and
 **Avalonia** (`UiPilot.Avalonia`).
 
 ## Why in-process
@@ -16,25 +16,23 @@ in-process library has the live objects: visual tree, binding errors, layout, an
 | Package | Role |
 |---|---|
 | `UiPilot.Core` | Protocol, discovery, pipe, `IUiBackend`, `ToolCatalog`, `PilotRuntime` |
-| `UiPilot.Wpf` | WPF adapter + `PilotHost.Start()` |
+| `UiPilot.Wpf` | WPF adapter + `PilotHost.Start()` (`net8.0-windows`) |
 | `UiPilot.Avalonia` | Avalonia adapter + `UiPilot.Avalonia.PilotHost.Start()` |
 | `UiPilot.Cli` | stdio MCP bridge + build/launch/restart loop |
 
 ## Agent edit loop
 
-```mermaid
-sequenceDiagram
-  participant Agent
-  participant Cli as UiPilot.Cli
-  participant App as WPF or Avalonia app
-  Agent->>Cli: build_and_start(project)
-  Cli->>App: dotnet build + launch (UIPILOT_ENABLE=1)
-  App->>App: Host.Start()
-  App-->>Cli: %TEMP%/uipilot/pid.json (uiFramework)
-  Cli->>App: named pipe + token
-  Agent->>Cli: wait_for_element / click / screenshot / …
-  Cli->>App: JSON-RPC
-  Agent->>Cli: restart_app after edits
+```text
+Agent                  UiPilot.Cli                         App (WPF / Avalonia)
+  |                         |                                      |
+  |-- build_and_start ----->|                                      |
+  |                         |-- dotnet build + launch ------------>|
+  |                         |   (UIPILOT_ENABLE=1)                 |
+  |                         |                      Host.Start() ---|
+  |                         |<-- %TEMP%/uipilot/<pid>.json --------|
+  |                         |-- auth + MCP over named pipe ------->|
+  |-- wait/click/shot ----->|-- tools/call (MCP) ----------------->|
+  |-- restart_app --------->|                                      |
 ```
 
 ## Try it

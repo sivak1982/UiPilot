@@ -13,10 +13,10 @@ namespace UiPilot.Hosting;
 /// </summary>
 public sealed class PilotRuntime : IDisposable
 {
-    public const string ProtocolVersion = "1.2";
+    public const string ProtocolVersion = "2.0";
 
     private readonly object _gate = new object();
-    private NamedPipeServer? _server;
+    private McpPipeServer? _server;
     private IUiBackend? _backend;
     private string? _discoveryPath;
     private bool _started;
@@ -65,7 +65,7 @@ public sealed class PilotRuntime : IDisposable
                 ? $"uipilot.{pid}.{Guid.NewGuid():N}"
                 : options.PipeName!;
 
-            _server = new NamedPipeServer(pipeName, token, registry, log);
+            _server = new McpPipeServer(pipeName, token, registry, log);
             _server.Start();
 
             var info = new DiscoveryInfo

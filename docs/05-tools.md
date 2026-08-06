@@ -5,7 +5,7 @@ Two groups: **forwarding** tools run inside the app (require an attached app);
 Built-in in-app names are catalogued in [`ToolCatalog`](../src/UiPilot.Core/Tools/ToolCatalog.cs)
 and registered by [`BuiltInTools`](../src/UiPilot.Core/Tools/BuiltInTools.cs).
 
-Protocol version: **1.2**.
+Protocol / discovery version: **2.0** (MCP over named pipe).
 
 ## Lifecycle tools (CLI)
 

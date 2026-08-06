@@ -40,7 +40,7 @@ That's it. No DI, no Generic Host, no attributes, no TCP port. Same agent tools 
 ## How it fits together
 
 ```text
-Cursor/Claude  --stdio MCP-->  UiPilot.Cli  --JSON-RPC over named pipe-->  your app (UiPilot.Wpf or UiPilot.Avalonia)
+Cursor/Claude  --stdio MCP-->  UiPilot.Cli  --MCP over named pipe-->  your app (UiPilot.Wpf or UiPilot.Avalonia)
                                     |
                                     +-- build / launch / restart your app (the AI edit loop)
 ```
@@ -48,11 +48,11 @@ Cursor/Claude  --stdio MCP-->  UiPilot.Cli  --JSON-RPC over named pipe-->  your 
 | Package | Role |
 |---|---|
 | **`UiPilot.Core`** | Shared protocol, discovery, named pipe, tool registry, `IUiBackend` contract. |
-| **`UiPilot.Wpf`** | WPF adapter + `PilotHost.Start()` (`net472;net8.0-windows`). |
+| **`UiPilot.Wpf`** | WPF adapter + `PilotHost.Start()` (`net8.0-windows`). |
 | **`UiPilot.Avalonia`** | Avalonia adapter + `PilotHost.Start()` (`net8.0`). |
 | **`UiPilot.Cli`** | Out-of-process stdio MCP bridge + app launcher (framework-agnostic). |
 
-## Agent-facing highlights (protocol 1.2)
+## Agent-facing highlights (protocol 2.0)
 
 - `wait_for_element`, paged `find_elements` (`offset` / `hasMore`)
 - Window control: `set_window_state`, `bring_to_front`, `detach`

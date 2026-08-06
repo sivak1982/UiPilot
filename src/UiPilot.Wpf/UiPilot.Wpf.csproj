@@ -1,12 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net472;net8.0-windows</TargetFrameworks>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <RootNamespace>UiPilot.Wpf</RootNamespace>
     <AssemblyName>UiPilot.Wpf</AssemblyName>
     <PackageId>UiPilot.Wpf</PackageId>
-    <Description>In-process WPF automation for AI agents: visual tree query, bindings, screenshots, synthetic input, exposed over a named-pipe MCP bridge.</Description>
+    <Description>In-process WPF automation for AI agents: visual tree query, bindings, screenshots, synthetic input, exposed over MCP on a named pipe.</Description>
     <IsPackable>true</IsPackable>
   </PropertyGroup>
 

@@ -25,7 +25,7 @@ public sealed class ElementRegistry
         if (obj == null) throw new ArgumentNullException(nameof(obj));
         lock (_gate)
         {
-            // GetValue works on netstandard2.0 / net472 (TryGetValue does not).
+            // GetValue works across TFMs (TryGetValue is not available on older ConcurrentDictionary APIs).
             string? createdId = null;
             var holder = _byObject.GetValue(obj, _ =>
             {

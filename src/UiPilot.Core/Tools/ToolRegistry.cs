@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Threading;
 
 namespace UiPilot.Tools;
 
@@ -28,6 +29,8 @@ public sealed class ToolRegistry
         _tools[name] = new Entry { Name = name, Description = description, Handler = handler ?? throw new ArgumentNullException(nameof(handler)) };
     }
 
+    private readonly object _invokeGate = new object();
+
     public bool Contains(string name) => _tools.ContainsKey(name);
 
     public IReadOnlyCollection<string> Names
@@ -41,15 +44,38 @@ public sealed class ToolRegistry
         }
     }
 
+    /// <summary>Snapshot of registered tools for MCP <c>tools/list</c>.</summary>
+    public IReadOnlyList<(string Name, string Description)> List()
+    {
+        var list = new List<(string, string)>(_tools.Count);
+        foreach (var e in _tools.Values)
+            list.Add((e.Name, e.Description));
+        return list;
+    }
+
     /// <summary>Invoke a tool by name. Throws <see cref="KeyNotFoundException"/> if unknown.</summary>
-    public object? Invoke(string name, JsonElement args)
+    public object? Invoke(string name, JsonElement args, CancellationToken cancellationToken = default)
     {
         if (!_tools.TryGetValue(name, out var entry))
             throw new KeyNotFoundException("Unknown tool: " + name);
-        return entry.Handler(_context, args);
+
+        lock (_invokeGate)
+        {
+            var previous = _context.CancellationToken;
+            if (cancellationToken.CanBeCanceled)
+                _context.CancellationToken = cancellationToken;
+            try
+            {
+                return entry.Handler(_context, args);
+            }
+            finally
+            {
+                _context.CancellationToken = previous;
+            }
+        }
     }
 
-    /// <summary>Machine-readable description of every tool (used by the CLI's <c>describe</c>).</summary>
+    /// <summary>Machine-readable description of every tool (used by the CLI's <c>describe_app_tools</c>).</summary>
     public object Describe()
     {
         var list = new List<object>();
