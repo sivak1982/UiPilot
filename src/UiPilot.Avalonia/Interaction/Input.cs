@@ -77,10 +77,25 @@ internal static class Input
             throw new InvalidOperationException("Target is not a Control.");
 
         control.Focus();
+        var value = text ?? string.Empty;
+
+        // Prefer SetPassword(string) when present (e.g. secure password boxes that keep
+        // Text as a mask). Reflection keeps this generic for any control that exposes it.
+        var setPassword = obj.GetType().GetMethod(
+            "SetPassword",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public,
+            binder: null,
+            types: new[] { typeof(string) },
+            modifiers: null);
+        if (setPassword != null)
+        {
+            setPassword.Invoke(obj, new object[] { value });
+            return "synthetic:setpassword";
+        }
 
         if (obj is TextBox textBox)
         {
-            textBox.Text = text ?? string.Empty;
+            textBox.Text = value;
             return "synthetic:textbox-set";
         }
 

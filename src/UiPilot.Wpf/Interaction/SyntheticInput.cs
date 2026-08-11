@@ -101,17 +101,37 @@ public static class SyntheticInput
 
         element.Focus();
         Keyboard.Focus(element as IInputElement);
+        var value = text ?? string.Empty;
+
+        // Prefer SetPassword(string) when present (secure password boxes that mask Text).
+        var setPassword = obj.GetType().GetMethod(
+            "SetPassword",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public,
+            binder: null,
+            types: new[] { typeof(string) },
+            modifiers: null);
+        if (setPassword != null)
+        {
+            setPassword.Invoke(obj, new object[] { value });
+            return "synthetic:setpassword";
+        }
+
+        if (obj is System.Windows.Controls.PasswordBox passwordBox)
+        {
+            passwordBox.Password = value;
+            return "synthetic:passwordbox-set";
+        }
 
         var peer = UIElementAutomationPeer.CreatePeerForElement(element);
-        if (peer?.GetPattern(PatternInterface.Value) is IValueProvider value && !value.IsReadOnly)
+        if (peer?.GetPattern(PatternInterface.Value) is IValueProvider valueProvider && !valueProvider.IsReadOnly)
         {
-            value.SetValue(text ?? string.Empty);
+            valueProvider.SetValue(value);
             return "synthetic:automation-setvalue";
         }
 
         if (obj is TextBoxBase textBox && obj is System.Windows.Controls.TextBox tb)
         {
-            tb.Text = text ?? string.Empty;
+            tb.Text = value;
             return "synthetic:textbox-set";
         }
 
