@@ -25,15 +25,17 @@ in-process library has the live objects: visual tree, binding errors, layout, an
 ```text
 Agent                  UiPilot.Cli                         App (WPF / Avalonia)
   |                         |                                      |
-  |-- build_and_start ----->|                                      |
-  |                         |-- dotnet build + launch ------------>|
-  |                         |   (UIPILOT_ENABLE=1)                 |
-  |                         |                      Host.Start() ---|
+  |-- start_app / --------->|                                      |
+  |   build_and_start       |-- launch (UIPILOT_ENABLE=1) -------->|
+  |   (session: "oi")       |                      Host.Start() ---|
   |                         |<-- %TEMP%/uipilot/<pid>.json --------|
   |                         |-- auth + MCP over named pipe ------->|
-  |-- wait/click/shot ----->|-- tools/call (MCP) ----------------->|
-  |-- restart_app --------->|                                      |
+  |-- click(session=oi) --->|-- tools/call (MCP) ----------------->|
+  |-- select_session ------>|                                      |
 ```
+
+Multiple named sessions can be attached at once (Simulation + Operator Interface). See
+[05-tools.md](05-tools.md#sessions-multi-app).
 
 ## Try it
 

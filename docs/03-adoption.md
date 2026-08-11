@@ -46,7 +46,16 @@ public override void OnFrameworkInitializationCompleted()
 }
 ```
 
-Typical loop: `build_and_start` → `wait_for_element` / `find_elements` → `click` /
+Typical loop: `build_and_start` or `start_app` → `wait_for_element` / `find_elements` → `click` /
 `type_text` / `screenshot` → `restart_app` after edits.
+
+### Driving two apps (e.g. Simulation + OI)
+
+1. Call `PilotHost.Start()` in **each** UI process.
+2. `start_app(..., session: "sim")` and `start_app(..., session: "oi")` (or `attach` with session names).
+3. Pass `session` on forwarding tools, or `select_session` for a sticky default.
+4. Use `list_sessions` to confirm; `stop_app(session)` / `stop_all` to tear down.
+
+Element ids are per process — always pair an id with the session that produced it.
 
 See [05-tools.md](05-tools.md).

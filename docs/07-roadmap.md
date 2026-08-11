@@ -23,6 +23,8 @@ Priority order, following the "thin vertical slice first" principle.
 - `press_keys`, `scroll`, `focus`, `select_item`.
 - `describe_app_tools` / `invoke_app_tool` for custom handlers.
 - `detach` + attach filters (`processName`, `uiFramework`).
+- **Multi-session CLI**: named sessions, `list_sessions` / `select_session`, optional `session` on
+  forwarding tools, `start_app` (prebuilt exe), `stop_all`, per-session restart/stop.
 
 ## Phase 4 - real input - partially done
 

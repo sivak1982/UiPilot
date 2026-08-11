@@ -9,8 +9,9 @@ using UiPilot.Tools;
 namespace UiPilot.Cli.Tools;
 
 /// <summary>
-/// MCP tools that forward to the in-app MCP-over-pipe server. These are the "inside the running app"
-/// capabilities: query the tree, interact, screenshot, diagnose. They require an attached app.
+/// MCP tools that forward to an in-app MCP-over-pipe server. These are the "inside the running app"
+/// capabilities: query the tree, interact, screenshot, diagnose. They require an attached session.
+/// Pass <c>session</c> when multiple apps are attached, or call <c>select_session</c> first.
 /// </summary>
 [McpServerToolType]
 public sealed class ForwardingTools
@@ -26,49 +27,55 @@ public sealed class ForwardingTools
     public ForwardingTools(ConnectionManager connection) => _connection = connection;
 
     [McpServerTool(Name = ToolCatalog.ListWindows)]
-    [Description("List all top-level windows of the attached app with identity and bounds.")]
-    public Task<CallToolResult> ListWindows(CancellationToken ct) =>
-        Forward(ToolCatalog.ListWindows, new { }, ct);
+    [Description("List all top-level windows of the target session's app with identity and bounds. Result includes session.")]
+    public Task<CallToolResult> ListWindows(
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
+        CancellationToken ct = default) =>
+        Forward(ToolCatalog.ListWindows, new { }, session, ct);
 
     [McpServerTool(Name = ToolCatalog.FindElements)]
-    [Description("Search the visual tree by name, AutomationId, type, or text. Returns element summaries with handle ids plus hasMore for pagination.")]
+    [Description("Search the visual tree by name, AutomationId, type, or text. Returns element summaries with handle ids plus hasMore for pagination. Result includes session.")]
     public Task<CallToolResult> FindElements(
         [Description("Case-insensitive substring to match. Omit to list everything up to the limit.")] string? query = null,
         [Description("Maximum number of elements to return.")] int limit = 50,
         [Description("Number of matching elements to skip before returning this page.")] int offset = 0,
         [Description("Optional element handle id to scope the search to a subtree.")] string? root = null,
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default) =>
-        Forward(ToolCatalog.FindElements, new { query, limit, offset, root }, ct);
+        Forward(ToolCatalog.FindElements, new { query, limit, offset, root }, session, ct);
 
     [McpServerTool(Name = ToolCatalog.InspectElement)]
-    [Description("Get detailed info for one element by handle id, optionally including child summaries and named properties.")]
+    [Description("Get detailed info for one element by handle id, optionally including child summaries and named properties. Result includes session.")]
     public Task<CallToolResult> InspectElement(
         [Description("Element handle id from find_elements/list_windows.")] string id,
         [Description("Include child element summaries.")] bool includeChildren = false,
         [Description("How many levels of children to include when includeChildren is true.")] int depth = 1,
         [Description("Optional comma-separated property names to include in the inspection result.")] string? properties = null,
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default) =>
-        Forward(ToolCatalog.InspectElement, new { id, includeChildren, depth, properties = ParseProperties(properties) }, ct);
+        Forward(ToolCatalog.InspectElement, new { id, includeChildren, depth, properties = ParseProperties(properties) }, session, ct);
 
     [McpServerTool(Name = ToolCatalog.WaitForElement)]
-    [Description("Poll until the first matching element appears, returning the same paged shape as find_elements.")]
+    [Description("Poll until the first matching element appears, returning the same paged shape as find_elements. Result includes session.")]
     public Task<CallToolResult> WaitForElement(
         [Description("Case-insensitive substring to match by name, AutomationId, type, or text.")] string query,
         [Description("Optional element handle id to scope polling to a subtree.")] string? root = null,
         [Description("Maximum time to wait, in milliseconds.")] int timeoutMs = 10000,
         [Description("Delay between polls, in milliseconds.")] int pollMs = 200,
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default) =>
-        Forward(ToolCatalog.WaitForElement, new { query, root, timeoutMs, pollMs }, ct);
+        Forward(ToolCatalog.WaitForElement, new { query, root, timeoutMs, pollMs }, session, ct);
 
     [McpServerTool(Name = ToolCatalog.Click)]
-    [Description("Synthetically click an element (automation invoke / control click fallback).")]
+    [Description("Synthetically click an element (automation invoke / control click fallback). Result includes session.")]
     public Task<CallToolResult> Click(
         [Description("Element handle id.")] string id,
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default) =>
-        Forward(ToolCatalog.Click, new { id }, ct);
+        Forward(ToolCatalog.Click, new { id }, session, ct);
 
     [McpServerTool(Name = ToolCatalog.Drag)]
-    [Description("Drag with the real OS mouse (press, glide, release) so hit-testing, mouse capture and Preview* handlers run. Use this for tiles, thumbs and drag/drop, which synthetic click cannot reach. Give a start (element id, or fromX/fromY screen pixels) and a destination (toId, toX/toY screen pixels, or dx/dy offset from the start).")]
+    [Description("Drag with the real OS mouse (press, glide, release) so hit-testing, mouse capture and Preview* handlers run. Use this for tiles, thumbs and drag/drop, which synthetic click cannot reach. Give a start (element id, or fromX/fromY screen pixels) and a destination (toId, toX/toY screen pixels, or dx/dy offset from the start). Result includes session.")]
     public Task<CallToolResult> Drag(
         [Description("Element handle id to grab; its centre is the press point. Omit when using fromX/fromY.")] string? id = null,
         [Description("Press point X in screen pixels. Used when id is omitted.")] double? fromX = null,
@@ -83,107 +90,123 @@ public sealed class ForwardingTools
         [Description("How many intermediate mouse moves to send between press and release.")] int steps = 24,
         [Description("Pause between intermediate moves, in milliseconds. Raise it if the app misses moves.")] int stepDelayMs = 12,
         [Description("Pause after release so the app can finish animating, in milliseconds.")] int settleMs = 250,
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default) =>
-        Forward(ToolCatalog.Drag, new { id, fromX, fromY, grabOffsetX, grabOffsetY, toId, toX, toY, dx, dy, steps, stepDelayMs, settleMs }, ct);
+        Forward(ToolCatalog.Drag, new { id, fromX, fromY, grabOffsetX, grabOffsetY, toId, toX, toY, dx, dy, steps, stepDelayMs, settleMs }, session, ct);
 
     [McpServerTool(Name = ToolCatalog.TypeText)]
-    [Description("Set text on a focusable input (UI Automation Value pattern or TextBox).")]
+    [Description("Set text on a focusable input (UI Automation Value pattern or TextBox). Result includes session.")]
     public Task<CallToolResult> TypeText(
         [Description("Element handle id.")] string id,
         [Description("Text to set.")] string text,
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default) =>
-        Forward(ToolCatalog.TypeText, new { id, text }, ct);
+        Forward(ToolCatalog.TypeText, new { id, text }, session, ct);
 
     [McpServerTool(Name = ToolCatalog.PressKeys)]
-    [Description("Send key chords (Ctrl+S, Enter, Tab, Escape) or sequential text to an optional element.")]
+    [Description("Send key chords (Ctrl+S, Enter, Tab, Escape) or sequential text to an optional element. Result includes session.")]
     public Task<CallToolResult> PressKeys(
         [Description("Key chord or text sequence to send.")] string keys,
         [Description("Optional element handle id to focus before sending keys.")] string? id = null,
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default) =>
-        Forward(ToolCatalog.PressKeys, new { id, keys }, ct);
+        Forward(ToolCatalog.PressKeys, new { id, keys }, session, ct);
 
     [McpServerTool(Name = ToolCatalog.Scroll)]
-    [Description("Scroll an element by horizontal and/or vertical deltas.")]
+    [Description("Scroll an element by horizontal and/or vertical deltas. Result includes session.")]
     public Task<CallToolResult> Scroll(
         [Description("Element handle id.")] string id,
         [Description("Horizontal scroll delta.")] double dx = 0,
         [Description("Vertical scroll delta.")] double dy = 0,
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default) =>
-        Forward(ToolCatalog.Scroll, new { id, dx, dy }, ct);
+        Forward(ToolCatalog.Scroll, new { id, dx, dy }, session, ct);
 
     [McpServerTool(Name = ToolCatalog.Focus)]
-    [Description("Move keyboard focus to an element.")]
+    [Description("Move keyboard focus to an element. Result includes session.")]
     public Task<CallToolResult> Focus(
         [Description("Element handle id.")] string id,
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default) =>
-        Forward(ToolCatalog.Focus, new { id }, ct);
+        Forward(ToolCatalog.Focus, new { id }, session, ct);
 
     [McpServerTool(Name = ToolCatalog.SelectItem)]
-    [Description("Select an item by visible text or zero-based index.")]
+    [Description("Select an item by visible text or zero-based index. Result includes session.")]
     public Task<CallToolResult> SelectItem(
         [Description("Element handle id for the selector/list control.")] string id,
         [Description("Optional visible item text to select.")] string? text = null,
         [Description("Optional zero-based item index to select.")] int? index = null,
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default) =>
-        Forward(ToolCatalog.SelectItem, new { id, text, index }, ct);
+        Forward(ToolCatalog.SelectItem, new { id, text, index }, session, ct);
 
     [McpServerTool(Name = ToolCatalog.InvokeCommand)]
-    [Description("Execute the ICommand bound to an element (e.g. Button.Command).")]
+    [Description("Execute the ICommand bound to an element (e.g. Button.Command). Result includes session.")]
     public Task<CallToolResult> InvokeCommand(
         [Description("Element handle id.")] string id,
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default) =>
-        Forward(ToolCatalog.InvokeCommand, new { id }, ct);
+        Forward(ToolCatalog.InvokeCommand, new { id }, session, ct);
 
     [McpServerTool(Name = ToolCatalog.SetWindowState)]
-    [Description("Minimize, restore, or maximize a window and optionally activate it. Screenshots still work while minimized.")]
+    [Description("Minimize, restore, or maximize a window and optionally activate it. Screenshots still work while minimized. Result includes session.")]
     public Task<CallToolResult> SetWindowState(
         [Description("Optional window element id; omit for the main window.")] string? id = null,
         [Description("Target state: minimized, normal, or maximized.")] string state = "normal",
         [Description("Bring the window to the foreground after setting the state.")] bool activate = false,
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default) =>
-        Forward(ToolCatalog.SetWindowState, new { id, state, activate }, ct);
+        Forward(ToolCatalog.SetWindowState, new { id, state, activate }, session, ct);
 
     [McpServerTool(Name = ToolCatalog.BringToFront)]
-    [Description("Restore, if minimized, and bring a WPF or Avalonia window to the foreground so a human can see it.")]
+    [Description("Restore, if minimized, and bring a WPF or Avalonia window to the foreground so a human can see it. Result includes session.")]
     public Task<CallToolResult> BringToFront(
         [Description("Optional window element id; omit for the main window.")] string? id = null,
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default) =>
-        Forward(ToolCatalog.BringToFront, new { id }, ct);
+        Forward(ToolCatalog.BringToFront, new { id }, session, ct);
 
     [McpServerTool(Name = ToolCatalog.GetBindingErrors)]
-    [Description("Return captured data-binding errors/warnings from the attached app.")]
+    [Description("Return captured data-binding errors/warnings from the target session's app. Result includes session.")]
     public Task<CallToolResult> GetBindingErrors(
         [Description("Clear the buffer after reading.")] bool clear = false,
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default) =>
-        Forward(ToolCatalog.GetBindingErrors, new { clear }, ct);
+        Forward(ToolCatalog.GetBindingErrors, new { clear }, session, ct);
 
     [McpServerTool(Name = ToolCatalog.AnalyzeLayout)]
-    [Description("Flag zero-size and off-screen visible elements.")]
+    [Description("Flag zero-size and off-screen visible elements. Result includes session.")]
     public Task<CallToolResult> AnalyzeLayout(
         [Description("Optional element handle id to scope analysis to a subtree.")] string? root = null,
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default) =>
-        Forward(ToolCatalog.AnalyzeLayout, new { root }, ct);
+        Forward(ToolCatalog.AnalyzeLayout, new { root }, session, ct);
 
     [McpServerTool(Name = ToolCatalog.HighlightElement)]
-    [Description("Briefly draw a red overlay over an element so a human can see the selection.")]
+    [Description("Briefly draw a red overlay over an element so a human can see the selection. Result includes session.")]
     public Task<CallToolResult> HighlightElement(
         [Description("Element handle id.")] string id,
         [Description("How long to show the overlay, in milliseconds.")] int durationMs = 1500,
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default) =>
-        Forward(ToolCatalog.HighlightElement, new { id, durationMs }, ct);
+        Forward(ToolCatalog.HighlightElement, new { id, durationMs }, session, ct);
 
     [McpServerTool(Name = ToolCatalog.Screenshot)]
-    [Description("Capture a PNG of a window (default main window) or a specific element. Saves the PNG to a temp file and returns an embedded image plus JSON path/dimensions.")]
+    [Description("Capture a PNG of a window (default main window) or a specific element. Saves the PNG to a temp file and returns an embedded image plus JSON path/dimensions/session.")]
     public async Task<CallToolResult> Screenshot(
         [Description("Optional element handle id; omit for the main window.")] string? id = null,
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default)
     {
         try
         {
-            var result = await _connection.SendAsync(ToolCatalog.Screenshot, new { id }, ct).ConfigureAwait(false);
+            var result = await _connection.SendAsync(ToolCatalog.Screenshot, new { id }, session, ct).ConfigureAwait(false);
             var base64 = result.GetProperty("base64").GetString() ?? "";
             var width = result.GetProperty("width").GetInt32();
             var height = result.GetProperty("height").GetInt32();
+            var sessionName = result.TryGetProperty("session", out var sessionProp)
+                ? sessionProp.GetString()
+                : session ?? _connection.ActiveSessionName;
             var bytes = Convert.FromBase64String(base64);
 
             var dir = Path.Combine(Path.GetTempPath(), "uipilot", "shots");
@@ -192,7 +215,7 @@ public sealed class ForwardingTools
             var path = Path.Combine(dir, $"{Guid.NewGuid():N}.png");
             await File.WriteAllBytesAsync(path, bytes, ct).ConfigureAwait(false);
 
-            var metadata = JsonSerializer.Serialize(new { path, width, height }, Json);
+            var metadata = JsonSerializer.Serialize(new { path, width, height, session = sessionName }, Json);
             return new CallToolResult
             {
                 Content = new List<ContentBlock>
@@ -209,15 +232,18 @@ public sealed class ForwardingTools
     }
 
     [McpServerTool(Name = "describe_app_tools")]
-    [Description("Describe all built-in and custom tools currently registered by the attached WPF or Avalonia app.")]
-    public Task<CallToolResult> DescribeAppTools(CancellationToken ct = default) =>
-        Forward("describe", new { }, ct);
+    [Description("Describe all built-in and custom tools currently registered by the target session's WPF or Avalonia app. Result includes session.")]
+    public Task<CallToolResult> DescribeAppTools(
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
+        CancellationToken ct = default) =>
+        Forward("describe", new { }, session, ct);
 
     [McpServerTool(Name = "invoke_app_tool")]
-    [Description("Invoke any attached-app tool by method name, passing a JSON object string as parameters. Use for custom app tools not exposed as first-class MCP tools.")]
+    [Description("Invoke any attached-app tool by method name, passing a JSON object string as parameters. Use for custom app tools not exposed as first-class MCP tools. Result includes session.")]
     public Task<CallToolResult> InvokeAppTool(
         [Description("Tool method name registered inside the attached app.")] string method,
         [Description("JSON object string passed as the tool parameters.")] string parametersJson = "{}",
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default)
     {
         JsonElement args;
@@ -233,14 +259,14 @@ public sealed class ForwardingTools
             return Task.FromResult(Err(PilotErrorCodes.InvalidArgs, "parametersJson must be valid JSON.", ex.Message));
         }
 
-        return Forward(method, args, ct);
+        return Forward(method, args, session, ct);
     }
 
-    private async Task<CallToolResult> Forward(string method, object args, CancellationToken ct)
+    private async Task<CallToolResult> Forward(string method, object args, string? session, CancellationToken ct)
     {
         try
         {
-            var result = await _connection.SendAsync(method, args, ct).ConfigureAwait(false);
+            var result = await _connection.SendAsync(method, args, session, ct).ConfigureAwait(false);
             return Ok(result.ValueKind == JsonValueKind.Undefined ? "null" : result.GetRawText());
         }
         catch (Exception ex) when (TryCreateErrorResult(ex, out var error))

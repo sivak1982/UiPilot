@@ -9,8 +9,9 @@ using UiPilot.Tools;
 namespace UiPilot.Cli.Tools;
 
 /// <summary>
-/// Out-of-process lifecycle tools: discover running apps, attach, and drive the AI edit loop by
-/// building/launching/restarting the target app. These do not require an attached app to start.
+/// Out-of-process lifecycle tools: discover running apps, attach named sessions, and drive the
+/// AI edit loop by building/launching/restarting target apps. These do not require an attached
+/// app to start. Multiple sessions are supported (e.g. Simulation + Operator Interface).
 /// </summary>
 [McpServerToolType]
 public sealed class LifecycleTools
@@ -35,18 +36,48 @@ public sealed class LifecycleTools
         return Ok(JsonSerializer.Serialize(new { count = apps.Count, apps }, Json));
     }
 
+    [McpServerTool(Name = "list_sessions")]
+    [Description("List attached UiPilot sessions (named connections to pilot apps). Includes which session is active and whether restart_app can relaunch it.")]
+    public CallToolResult ListSessions()
+    {
+        var sessions = _connection.ListSessions();
+        return Ok(JsonSerializer.Serialize(new
+        {
+            count = sessions.Count,
+            activeSession = _connection.ActiveSessionName,
+            sessions,
+        }, Json));
+    }
+
+    [McpServerTool(Name = "select_session")]
+    [Description("Set the sticky active session used by forwarding tools when they omit the session argument.")]
+    public CallToolResult SelectSession(
+        [Description("Session name from list_sessions / attach / start_app.")] string session)
+    {
+        try
+        {
+            var info = _connection.SelectSession(session);
+            return Ok(JsonSerializer.Serialize(new { selected = true, session = info }, Json));
+        }
+        catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+        {
+            return error;
+        }
+    }
+
     [McpServerTool(Name = "attach")]
-    [Description("Attach to a running pilot app (WPF or Avalonia). If pid is omitted, optional processName/uiFramework filters are applied before requiring exactly one match.")]
+    [Description("Attach to a running pilot app (WPF or Avalonia) as a named session. If pid is omitted, optional processName/uiFramework filters are applied before requiring exactly one match. Does not disconnect other sessions.")]
     public async Task<CallToolResult> Attach(
         [Description("Process id of the target app. Optional when filters identify exactly one app.")] int? pid = null,
         [Description("Optional case-insensitive substring filter for process name when pid is omitted.")] string? processName = null,
         [Description("Optional exact UI framework filter when pid is omitted, e.g. 'wpf' or 'avalonia'.")] string? uiFramework = null,
+        [Description("Optional session name. Defaults to the process name. Use short names like 'sim' and 'oi' when driving two apps.")] string? session = null,
         CancellationToken ct = default)
     {
         try
         {
-            var info = await _connection.AttachAsync(pid, processName, uiFramework, ct).ConfigureAwait(false);
-            return Ok(JsonSerializer.Serialize(new { attached = true, info.Pid, info.ProcessName, info.MainWindowTitle, info.UiFramework }, Json));
+            var info = await _connection.AttachAsync(pid, processName, uiFramework, session, ct).ConfigureAwait(false);
+            return Ok(JsonSerializer.Serialize(new { attached = true, session = info }, Json));
         }
         catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
         {
@@ -55,17 +86,37 @@ public sealed class LifecycleTools
     }
 
     [McpServerTool(Name = "build_and_start")]
-    [Description("Build a WPF or Avalonia project and launch it with pilot enabled, then attach. This is the entry point of the edit loop.")]
+    [Description("Build a WPF or Avalonia project and launch it with pilot enabled, then attach as a named session. Only replaces an existing session with the same name; other sessions stay up.")]
     public async Task<CallToolResult> BuildAndStart(
         [Description("Path to the .csproj (or a directory/solution the SDK can build) of the target app.")] string project,
         [Description("Build configuration.")] string configuration = "Debug",
         [Description("Optional MSBuild platform (e.g. 'x64') for projects that require an explicit platform.")] string? platform = null,
+        [Description("Optional session name. Defaults to the built assembly name.")] string? session = null,
         CancellationToken ct = default)
     {
         try
         {
-            var info = await _connection.BuildAndStartAsync(project, configuration, platform, ct).ConfigureAwait(false);
-            return Ok(JsonSerializer.Serialize(new { started = true, info.Pid, info.ProcessName, info.MainWindowTitle, info.UiFramework }, Json));
+            var info = await _connection.BuildAndStartAsync(project, configuration, platform, session, ct).ConfigureAwait(false);
+            return Ok(JsonSerializer.Serialize(new { started = true, session = info }, Json));
+        }
+        catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+        {
+            return error;
+        }
+    }
+
+    [McpServerTool(Name = "start_app")]
+    [Description("Launch a prebuilt pilot-enabled .exe/.dll (no rebuild), then attach as a named session. Use for sample Bin folders when binaries already exist.")]
+    public async Task<CallToolResult> StartApp(
+        [Description("Path to the app .exe or .dll.")] string path,
+        [Description("Optional session name. Defaults to the file name without extension (e.g. 'sim').")] string? session = null,
+        [Description("Optional working directory. Defaults to the directory containing the app.")] string? workingDirectory = null,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var info = await _connection.StartAppAsync(path, session, workingDirectory, ct).ConfigureAwait(false);
+            return Ok(JsonSerializer.Serialize(new { started = true, session = info }, Json));
         }
         catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
         {
@@ -74,13 +125,15 @@ public sealed class LifecycleTools
     }
 
     [McpServerTool(Name = "restart_app")]
-    [Description("Rebuild and relaunch the last WPF or Avalonia app started via build_and_start, then re-attach. Use after code edits.")]
-    public async Task<CallToolResult> RestartApp(CancellationToken ct = default)
+    [Description("Relaunch a session previously started via build_and_start or start_app, then re-attach. Attached-only sessions cannot be restarted.")]
+    public async Task<CallToolResult> RestartApp(
+        [Description("Optional session name. Defaults to the active session, or the only session.")] string? session = null,
+        CancellationToken ct = default)
     {
         try
         {
-            var info = await _connection.RestartAsync(ct).ConfigureAwait(false);
-            return Ok(JsonSerializer.Serialize(new { restarted = true, info.Pid, info.ProcessName, info.MainWindowTitle, info.UiFramework }, Json));
+            var info = await _connection.RestartAsync(session, ct).ConfigureAwait(false);
+            return Ok(JsonSerializer.Serialize(new { restarted = true, session = info }, Json));
         }
         catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
         {
@@ -89,17 +142,18 @@ public sealed class LifecycleTools
     }
 
     /// <summary>
-    /// Drops only the active pipe attachment. The launched process and last build settings are
-    /// retained so restart_app can still rebuild and relaunch after a detach.
+    /// Drops only the active (or named) pipe attachment. Launch metadata is retained when the
+    /// CLI started the process so restart_app can still relaunch after a detach.
     /// </summary>
     [McpServerTool(Name = "detach")]
-    [Description("Detach from the currently driven WPF or Avalonia app without stopping or killing its process.")]
-    public CallToolResult Detach()
+    [Description("Detach a session's pipe connection without stopping or killing its process. Other sessions are left alone.")]
+    public CallToolResult Detach(
+        [Description("Optional session name. Defaults to the active session, or the only session.")] string? session = null)
     {
         try
         {
-            _connection.Detach();
-            return Ok(JsonSerializer.Serialize(new { detached = true }, Json));
+            var info = _connection.Detach(session);
+            return Ok(JsonSerializer.Serialize(new { detached = true, session = info }, Json));
         }
         catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
         {
@@ -108,17 +162,32 @@ public sealed class LifecycleTools
     }
 
     /// <summary>
-    /// Terminates the process launched by build_and_start and/or the currently attached process,
-    /// then clears the active attachment state.
+    /// Terminates one launched/attached session process and clears that session.
     /// </summary>
     [McpServerTool(Name = "stop_app")]
-    [Description("Stop the currently driven app (launched via build_and_start or attached to) and detach. Terminating an elevated app requires this CLI to run elevated.")]
-    public CallToolResult StopApp()
+    [Description("Stop one driven app session and detach it. When multiple sessions exist, pass session or select_session first. Terminating an elevated app requires this CLI to run elevated.")]
+    public CallToolResult StopApp(
+        [Description("Optional session name. Defaults to the active session, or the only session.")] string? session = null)
     {
         try
         {
-            _connection.StopApp();
-            return Ok(JsonSerializer.Serialize(new { stopped = true }, Json));
+            var info = _connection.StopApp(session);
+            return Ok(JsonSerializer.Serialize(new { stopped = true, session = info }, Json));
+        }
+        catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+        {
+            return error;
+        }
+    }
+
+    [McpServerTool(Name = "stop_all")]
+    [Description("Stop every driven app session (launched or attached) and clear all sessions.")]
+    public CallToolResult StopAll()
+    {
+        try
+        {
+            var sessions = _connection.StopAll();
+            return Ok(JsonSerializer.Serialize(new { stopped = true, count = sessions.Count, sessions }, Json));
         }
         catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
         {

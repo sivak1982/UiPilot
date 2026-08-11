@@ -33,16 +33,30 @@ public static class AppLauncher
         return targetPath!;
     }
 
-    /// <summary>Start the built app with UiPilot force-enabled via environment variable.</summary>
-    public static System.Diagnostics.Process Start(string targetAssemblyPath)
+    /// <summary>
+    /// Start a built assembly or prebuilt exe with UiPilot force-enabled via environment variable.
+    /// Accepts a <c>.dll</c>/<c>.exe</c> path; working directory defaults to the file's folder.
+    /// </summary>
+    public static System.Diagnostics.Process Start(string targetAssemblyOrExePath, string? workingDirectory = null)
     {
-        var exePath = Path.ChangeExtension(targetAssemblyPath, ".exe");
+        if (string.IsNullOrWhiteSpace(targetAssemblyOrExePath))
+            throw new ArgumentException("Target path is required.", nameof(targetAssemblyOrExePath));
+
+        var fullPath = Path.GetFullPath(targetAssemblyOrExePath);
+        var exePath = string.Equals(Path.GetExtension(fullPath), ".exe", StringComparison.OrdinalIgnoreCase)
+            ? fullPath
+            : Path.ChangeExtension(fullPath, ".exe");
+
+        var workDir = string.IsNullOrWhiteSpace(workingDirectory)
+            ? Path.GetDirectoryName(fullPath)
+            : Path.GetFullPath(workingDirectory!);
+
         var psi = new ProcessStartInfo
         {
             UseShellExecute = false,
             RedirectStandardOutput = false,
             RedirectStandardError = false,
-            WorkingDirectory = Path.GetDirectoryName(targetAssemblyPath),
+            WorkingDirectory = workDir,
         };
         psi.Environment["UIPILOT_ENABLE"] = "1";
         // Keep the driven app out of the way so the agent/IDE stays visible. Offscreen screenshots
@@ -53,10 +67,14 @@ public static class AppLauncher
         {
             psi.FileName = exePath;
         }
-        else
+        else if (File.Exists(fullPath))
         {
             psi.FileName = "dotnet";
-            psi.ArgumentList.Add(targetAssemblyPath);
+            psi.ArgumentList.Add(fullPath);
+        }
+        else
+        {
+            throw new FileNotFoundException($"App path not found: {targetAssemblyOrExePath}", targetAssemblyOrExePath);
         }
 
         var process = System.Diagnostics.Process.Start(psi)

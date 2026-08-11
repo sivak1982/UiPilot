@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using UiPilot.Cli.Discovery;
 using UiPilot.Cli.Pipe;
 using UiPilot.Cli.Process;
@@ -8,64 +10,138 @@ using UiPilot.Tools;
 namespace UiPilot.Cli;
 
 /// <summary>
-/// Central state for the CLI: which app we're attached to, the live MCP-over-pipe connection, and
-/// the process we launched (for build/restart). Registered as a DI singleton and injected into tools.
+/// Snapshot of an attached (and optionally launched) pilot app session.
+/// </summary>
+public sealed class SessionSnapshot
+{
+    public required string Name { get; init; }
+    public required bool IsActive { get; init; }
+    public required int Pid { get; init; }
+    public required string ProcessName { get; init; }
+    public required string? MainWindowTitle { get; init; }
+    public required string? UiFramework { get; init; }
+    public required bool LaunchedByCli { get; init; }
+    public required bool CanRestart { get; init; }
+}
+
+/// <summary>
+/// Central state for the CLI: named sessions to pilot-enabled apps, live MCP-over-pipe
+/// connections, and processes launched for build/start/restart. Supports driving multiple
+/// apps (e.g. Simulation + Operator Interface) at once.
 /// </summary>
 public sealed class ConnectionManager : IDisposable
 {
     private readonly DiscoveryReader _discovery = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly Dictionary<string, AppSession> _sessions =
+        new(StringComparer.OrdinalIgnoreCase);
 
-    private McpPipeClient? _client;
-    private DiscoveryInfo? _current;
-    private System.Diagnostics.Process? _launched;
-    private string? _lastProject;
-    private string? _lastConfiguration;
-    private string? _lastPlatform;
-    private int? _attachedPid;
+    private string? _activeSession;
 
     public IReadOnlyList<DiscoveryInfo> ListAlive() => _discovery.ListAlive();
 
-    public DiscoveryInfo? Current => _current;
+    /// <summary>Name of the sticky active session, if any.</summary>
+    public string? ActiveSessionName
+    {
+        get
+        {
+            _gate.Wait();
+            try { return _activeSession; }
+            finally { _gate.Release(); }
+        }
+    }
 
-    public async Task<DiscoveryInfo> AttachAsync(
+    public IReadOnlyList<SessionSnapshot> ListSessions()
+    {
+        _gate.Wait();
+        try
+        {
+            return _sessions.Values
+                .Select(s => ToSnapshot(s, string.Equals(s.Name, _activeSession, StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        finally { _gate.Release(); }
+    }
+
+    public SessionSnapshot SelectSession(string session)
+    {
+        if (string.IsNullOrWhiteSpace(session))
+            throw new PilotCliException(PilotErrorCodes.InvalidArgs, "Session name is required.");
+
+        _gate.Wait();
+        try
+        {
+            var target = RequireSessionLocked(session);
+            _activeSession = target.Name;
+            return ToSnapshot(target, isActive: true);
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<SessionSnapshot> AttachAsync(
         int? pid,
         string? processName = null,
         string? uiFramework = null,
+        string? session = null,
         CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var target = ResolveTarget(pid, processName, uiFramework);
-            await ConnectLocked(target, ct).ConfigureAwait(false);
-            return target;
+            var info = ResolveTarget(pid, processName, uiFramework);
+            var sessionName = ResolveSessionName(session, info.ProcessName);
+            await ConnectSessionLocked(sessionName, info, launched: null, launchSource: null, ct).ConfigureAwait(false);
+            return ToSnapshot(_sessions[sessionName], isActive: true);
         }
         finally { _gate.Release(); }
     }
 
-    public async Task<JsonElement> SendAsync(string method, object? args, CancellationToken ct = default)
+    public async Task<JsonElement> SendAsync(string method, object? args, string? session = null, CancellationToken ct = default)
     {
-        var client = await EnsureConnectedAsync(ct).ConfigureAwait(false);
+        AppSession target;
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            target = ResolveSessionForSendLocked(session);
+            if (target.Client is not { IsConnected: true })
+            {
+                ResetSessionConnectionLocked(target);
+                throw new PilotCliException(
+                    PilotErrorCodes.NotAttached,
+                    $"Session '{target.Name}' is not connected.",
+                    "Use attach, start_app, or build_and_start for that session.");
+            }
+        }
+        finally { _gate.Release(); }
+
         try
         {
             if (string.Equals(method, "ping", StringComparison.OrdinalIgnoreCase))
             {
-                await client.PingAsync(ct).ConfigureAwait(false);
-                return JsonSerializer.SerializeToElement(new { pong = true });
+                await target.Client.PingAsync(ct).ConfigureAwait(false);
+                return JsonSerializer.SerializeToElement(new { pong = true, session = target.Name });
             }
 
             if (string.Equals(method, "describe", StringComparison.OrdinalIgnoreCase))
-                return await client.ListToolsAsync(ct).ConfigureAwait(false);
+            {
+                var described = await target.Client.ListToolsAsync(ct).ConfigureAwait(false);
+                return WrapWithSession(described, target.Name);
+            }
 
-            return await client.CallToolAsync(method, args, ct).ConfigureAwait(false);
+            var result = await target.Client.CallToolAsync(method, args, ct).ConfigureAwait(false);
+            return WrapWithSession(result, target.Name);
         }
         catch (IOException)
         {
-            ResetConnection();
+            await _gate.WaitAsync(ct).ConfigureAwait(false);
+            try { ResetSessionConnectionLocked(target); }
+            finally { _gate.Release(); }
+
             throw new PilotCliException(
                 PilotErrorCodes.NotAttached,
-                "Lost connection to the app (it may have exited). Re-attach or restart.");
+                $"Lost connection to session '{target.Name}' (the app may have exited). Re-attach or restart.",
+                "Use list_sessions / list_apps, then attach or start_app again.");
         }
         catch (PipeRpcException ex)
         {
@@ -77,78 +153,351 @@ public sealed class ConnectionManager : IDisposable
         }
     }
 
-    public async Task<DiscoveryInfo> BuildAndStartAsync(string project, string configuration, string? platform, CancellationToken ct = default)
+    public async Task<SessionSnapshot> BuildAndStartAsync(
+        string project,
+        string configuration,
+        string? platform,
+        string? session = null,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(project))
             throw new PilotCliException(PilotErrorCodes.InvalidArgs, "Project path is required.");
         if (string.IsNullOrWhiteSpace(configuration))
             throw new PilotCliException(PilotErrorCodes.InvalidArgs, "Build configuration is required.");
 
+        var targetPath = await AppLauncher.BuildAsync(project, configuration, platform, ct).ConfigureAwait(false);
+        var sessionHint = string.IsNullOrWhiteSpace(session)
+            ? Path.GetFileNameWithoutExtension(targetPath)
+            : session;
+
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            KillCurrentLocked();
+            KillSessionLocked(sessionHint!);
 
-            var targetPath = await AppLauncher.BuildAsync(project, configuration, platform, ct).ConfigureAwait(false);
-            _launched = AppLauncher.Start(targetPath);
-            _lastProject = project;
-            _lastConfiguration = configuration;
-            _lastPlatform = platform;
+            var launched = AppLauncher.Start(targetPath);
+            try
+            {
+                var info = await WaitForDiscoveryAsync(launched, launched.Id, TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
+                var sessionName = ResolveSessionName(session, info.ProcessName);
+                // If auto-name differs from the pre-kill hint, ensure we don't leave a stale empty slot.
+                if (!string.Equals(sessionName, sessionHint, StringComparison.OrdinalIgnoreCase))
+                    KillSessionLocked(sessionName);
 
-            var info = await WaitForDiscoveryAsync(_launched.Id, TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
-            await ConnectLocked(info, ct).ConfigureAwait(false);
-            return info;
+                var source = LaunchSource.FromProject(project, configuration, platform, targetPath);
+                await ConnectSessionLocked(sessionName, info, launched, source, ct).ConfigureAwait(false);
+                return ToSnapshot(_sessions[sessionName], isActive: true);
+            }
+            catch
+            {
+                AppLauncher.KillTree(launched);
+                throw;
+            }
         }
         finally { _gate.Release(); }
     }
 
-    public async Task<DiscoveryInfo> RestartAsync(CancellationToken ct = default)
+    /// <summary>
+    /// Launch a prebuilt <c>.exe</c>/<c>.dll</c> with pilot enabled, wait for discovery, and attach
+    /// as a named session. Does not rebuild.
+    /// </summary>
+    public async Task<SessionSnapshot> StartAppAsync(
+        string path,
+        string? session = null,
+        string? workingDirectory = null,
+        CancellationToken ct = default)
     {
-        if (_lastProject == null || _lastConfiguration == null)
+        if (string.IsNullOrWhiteSpace(path))
+            throw new PilotCliException(PilotErrorCodes.InvalidArgs, "App path is required.");
+
+        var fullPath = Path.GetFullPath(path);
+        if (!File.Exists(fullPath))
             throw new PilotCliException(
-                PilotErrorCodes.InvalidArgs,
-                "Nothing to restart. Use build_and_start first.");
-        return await BuildAndStartAsync(_lastProject, _lastConfiguration, _lastPlatform, ct).ConfigureAwait(false);
-    }
+                PilotErrorCodes.NotFound,
+                $"App path not found: {path}",
+                "Pass a path to a pilot-enabled .exe or .dll.");
 
-    public void StopApp()
-    {
-        _gate.Wait();
-        try { KillCurrentLocked(); }
-        finally { _gate.Release(); }
-    }
+        var sessionHint = string.IsNullOrWhiteSpace(session)
+            ? Path.GetFileNameWithoutExtension(fullPath)
+            : session;
 
-    public void Detach()
-    {
-        _gate.Wait();
-        try { ResetConnection(); }
-        finally { _gate.Release(); }
-    }
-
-    private void KillCurrentLocked()
-    {
-        var attachedPid = _attachedPid ?? _current?.Pid;
-        ResetConnection();
-        AppLauncher.KillTree(_launched);
-        _launched = null;
-        if (attachedPid.HasValue)
-            AppLauncher.KillByPid(attachedPid.Value);
-    }
-
-    private async Task<McpPipeClient> EnsureConnectedAsync(CancellationToken ct)
-    {
-        if (_client is { IsConnected: true }) return _client;
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (_client is { IsConnected: true }) return _client;
-            ResetConnection();
+            KillSessionLocked(sessionHint!);
+
+            System.Diagnostics.Process launched;
+            try
+            {
+                launched = AppLauncher.Start(fullPath, workingDirectory);
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or InvalidOperationException)
+            {
+                throw new PilotCliException(PilotErrorCodes.InvalidArgs, ex.Message, innerException: ex);
+            }
+
+            try
+            {
+                var info = await WaitForDiscoveryAsync(launched, launched.Id, TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
+                var sessionName = ResolveSessionName(session, info.ProcessName);
+                if (!string.Equals(sessionName, sessionHint, StringComparison.OrdinalIgnoreCase))
+                    KillSessionLocked(sessionName);
+
+                var source = LaunchSource.FromExe(fullPath, workingDirectory);
+                await ConnectSessionLocked(sessionName, info, launched, source, ct).ConfigureAwait(false);
+                return ToSnapshot(_sessions[sessionName], isActive: true);
+            }
+            catch
+            {
+                AppLauncher.KillTree(launched);
+                throw;
+            }
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<SessionSnapshot> RestartAsync(string? session = null, CancellationToken ct = default)
+    {
+        LaunchSource source;
+        string sessionName;
+
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var target = ResolveSessionForLifecycleLocked(session);
+            if (target.LaunchSource is null)
+            {
+                throw new PilotCliException(
+                    PilotErrorCodes.InvalidArgs,
+                    $"Session '{target.Name}' cannot be restarted because it was attached, not launched by the CLI.",
+                    "Use start_app or build_and_start for that session first.");
+            }
+
+            sessionName = target.Name;
+            source = target.LaunchSource;
+            KillSessionLocked(sessionName);
+        }
+        finally { _gate.Release(); }
+
+        if (source.Kind == LaunchKind.Project)
+            return await BuildAndStartAsync(source.Project!, source.Configuration!, source.Platform, sessionName, ct).ConfigureAwait(false);
+
+        return await StartAppAsync(source.ExePath!, sessionName, source.WorkingDirectory, ct).ConfigureAwait(false);
+    }
+
+    public SessionSnapshot? StopApp(string? session = null)
+    {
+        _gate.Wait();
+        try
+        {
+            if (string.IsNullOrWhiteSpace(session) && _sessions.Count > 1 && _activeSession is null)
+            {
+                throw new PilotCliException(
+                    PilotErrorCodes.Ambiguous,
+                    $"Multiple sessions are attached ({_sessions.Count}). Pass session or call select_session first.",
+                    "Use list_sessions, then stop_app with an explicit session name (or stop_all).");
+            }
+
+            if (_sessions.Count == 0)
+                return null;
+
+            var target = ResolveSessionForLifecycleLocked(session);
+            var snapshot = ToSnapshot(target, isActive: false);
+            KillSessionLocked(target.Name);
+            return snapshot;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public IReadOnlyList<SessionSnapshot> StopAll()
+    {
+        _gate.Wait();
+        try
+        {
+            var stopped = _sessions.Values
+                .Select(s => ToSnapshot(s, isActive: false))
+                .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var name in _sessions.Keys.ToList())
+                KillSessionLocked(name);
+
+            return stopped;
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>
+    /// Drops pipe attachment for one session (or the active/only session) without killing the process.
+    /// Launch metadata is retained when the process was started by this CLI so restart_app still works.
+    /// </summary>
+    public SessionSnapshot? Detach(string? session = null)
+    {
+        _gate.Wait();
+        try
+        {
+            if (_sessions.Count == 0)
+                return null;
+
+            var target = ResolveSessionForLifecycleLocked(session);
+            var snapshot = ToSnapshot(target, isActive: false);
+
+            // Keep launch metadata for restart; drop only the live pipe.
+            if (target.LaunchSource is not null)
+            {
+                ResetSessionConnectionLocked(target);
+                target.Info = null;
+                if (string.Equals(_activeSession, target.Name, StringComparison.OrdinalIgnoreCase))
+                    _activeSession = _sessions.Keys.FirstOrDefault(k =>
+                        !string.Equals(k, target.Name, StringComparison.OrdinalIgnoreCase));
+            }
+            else
+            {
+                RemoveSessionLocked(target.Name);
+            }
+
+            return snapshot;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public void Dispose()
+    {
+        _gate.Wait();
+        try
+        {
+            foreach (var name in _sessions.Keys.ToList())
+                ResetSessionConnectionLocked(_sessions[name]);
+            _sessions.Clear();
+            _activeSession = null;
+        }
+        finally
+        {
+            _gate.Release();
+            _gate.Dispose();
+        }
+    }
+
+    private async Task ConnectSessionLocked(
+        string sessionName,
+        DiscoveryInfo info,
+        System.Diagnostics.Process? launched,
+        LaunchSource? launchSource,
+        CancellationToken ct)
+    {
+        if (_sessions.TryGetValue(sessionName, out var existing))
+        {
+            // Replacing an existing session name: drop old pipe; kill prior CLI-launched process if different.
+            if (existing.Launched is not null && existing.Launched.Id != info.Pid)
+                AppLauncher.KillTree(existing.Launched);
+            else if (existing.AttachedPid is int oldPid && oldPid != info.Pid && existing.Launched is null)
+                AppLauncher.KillByPid(oldPid);
+            ResetSessionConnectionLocked(existing);
+            _sessions.Remove(sessionName);
+        }
+
+        var client = await McpPipeClient.ConnectAsync(info.PipeName, info.Token, 5000, ct).ConfigureAwait(false);
+        _sessions[sessionName] = new AppSession
+        {
+            Name = sessionName,
+            Client = client,
+            Info = info,
+            AttachedPid = info.Pid,
+            Launched = launched,
+            LaunchSource = launchSource,
+        };
+        _activeSession = sessionName;
+    }
+
+    private AppSession ResolveSessionForSendLocked(string? session)
+    {
+        if (!string.IsNullOrWhiteSpace(session))
+            return RequireSessionLocked(session);
+
+        if (!string.IsNullOrWhiteSpace(_activeSession) &&
+            _sessions.TryGetValue(_activeSession, out var active) &&
+            active.Client is { IsConnected: true })
+        {
+            return active;
+        }
+
+        var connected = _sessions.Values.Where(s => s.Client is { IsConnected: true }).ToList();
+        if (connected.Count == 1)
+            return connected[0];
+        if (connected.Count == 0)
+        {
             throw new PilotCliException(
                 PilotErrorCodes.NotAttached,
                 "No app is attached.",
-                "Use attach with an explicit target or build_and_start before calling app tools.");
+                "Use attach with an explicit target, start_app, or build_and_start before calling app tools.");
         }
-        finally { _gate.Release(); }
+
+        throw new PilotCliException(
+            PilotErrorCodes.Ambiguous,
+            $"Multiple sessions are attached ({connected.Count}). Pass session or call select_session first.",
+            "Use list_sessions, then pass session on the tool or call select_session.");
+    }
+
+    private AppSession ResolveSessionForLifecycleLocked(string? session)
+    {
+        if (!string.IsNullOrWhiteSpace(session))
+            return RequireSessionLocked(session);
+
+        if (!string.IsNullOrWhiteSpace(_activeSession) && _sessions.TryGetValue(_activeSession, out var active))
+            return active;
+
+        if (_sessions.Count == 1)
+            return _sessions.Values.First();
+
+        if (_sessions.Count == 0)
+        {
+            throw new PilotCliException(
+                PilotErrorCodes.NotAttached,
+                "No app session exists.",
+                "Use attach, start_app, or build_and_start first.");
+        }
+
+        throw new PilotCliException(
+            PilotErrorCodes.Ambiguous,
+            $"Multiple sessions are attached ({_sessions.Count}). Pass session or call select_session first.",
+            "Use list_sessions, then pass an explicit session name.");
+    }
+
+    private AppSession RequireSessionLocked(string session)
+    {
+        if (_sessions.TryGetValue(session, out var found))
+            return found;
+
+        throw new PilotCliException(
+            PilotErrorCodes.NotFound,
+            $"No session named '{session}'.",
+            "Use list_sessions to see attached sessions.");
+    }
+
+    private void KillSessionLocked(string sessionName)
+    {
+        if (!_sessions.TryGetValue(sessionName, out var session))
+            return;
+
+        var attachedPid = session.AttachedPid ?? session.Info?.Pid;
+        ResetSessionConnectionLocked(session);
+        AppLauncher.KillTree(session.Launched);
+        if (attachedPid.HasValue)
+            AppLauncher.KillByPid(attachedPid.Value);
+        RemoveSessionLocked(sessionName);
+    }
+
+    private void RemoveSessionLocked(string sessionName)
+    {
+        _sessions.Remove(sessionName);
+        if (string.Equals(_activeSession, sessionName, StringComparison.OrdinalIgnoreCase))
+            _activeSession = _sessions.Keys.FirstOrDefault();
+    }
+
+    private static void ResetSessionConnectionLocked(AppSession session)
+    {
+        try { session.Client?.Dispose(); } catch { /* ignore */ }
+        session.Client = null;
     }
 
     private DiscoveryInfo ResolveTarget(int? pid, string? processName = null, string? uiFramework = null)
@@ -181,7 +530,7 @@ public sealed class ConnectionManager : IDisposable
             throw new PilotCliException(
                 PilotErrorCodes.NotFound,
                 TargetNotFoundMessage(processName, uiFramework),
-                "Use list_apps to see currently discoverable apps, or build_and_start to launch one.");
+                "Use list_apps to see currently discoverable apps, or start_app / build_and_start to launch one.");
         if (alive.Count > 1)
             throw new PilotCliException(
                 PilotErrorCodes.Ambiguous,
@@ -193,7 +542,7 @@ public sealed class ConnectionManager : IDisposable
     private static string TargetNotFoundMessage(string? processName, string? uiFramework)
     {
         if (string.IsNullOrWhiteSpace(processName) && string.IsNullOrWhiteSpace(uiFramework))
-            return "No running UiPilot apps found. Use build_and_start or launch one, then attach.";
+            return "No running UiPilot apps found. Use start_app / build_and_start or launch one, then attach.";
 
         var filters = new List<string>();
         if (!string.IsNullOrWhiteSpace(processName))
@@ -203,15 +552,11 @@ public sealed class ConnectionManager : IDisposable
         return "No running UiPilot apps matched " + string.Join(" and ", filters) + ".";
     }
 
-    private async Task ConnectLocked(DiscoveryInfo target, CancellationToken ct)
-    {
-        ResetConnection();
-        _client = await McpPipeClient.ConnectAsync(target.PipeName, target.Token, 5000, ct).ConfigureAwait(false);
-        _current = target;
-        _attachedPid = target.Pid;
-    }
-
-    private async Task<DiscoveryInfo> WaitForDiscoveryAsync(int pid, TimeSpan timeout, CancellationToken ct)
+    private async Task<DiscoveryInfo> WaitForDiscoveryAsync(
+        System.Diagnostics.Process launched,
+        int pid,
+        TimeSpan timeout,
+        CancellationToken ct)
     {
         var deadline = DateTime.UtcNow + timeout;
         while (DateTime.UtcNow < deadline)
@@ -219,27 +564,84 @@ public sealed class ConnectionManager : IDisposable
             ct.ThrowIfCancellationRequested();
             var info = _discovery.FindByPid(pid);
             if (info != null) return info;
-            if (_launched is { HasExited: true })
+            if (launched.HasExited)
                 throw new PilotCliException(
                     PilotErrorCodes.NotAttached,
                     $"App process {pid} exited before publishing a discovery file.",
-                    "Check the app startup failure, then run build_and_start again.");
+                    "Check the app startup failure (PilotHost.Start required), then run start_app / build_and_start again.");
             await Task.Delay(200, ct).ConfigureAwait(false);
         }
         throw new TimeoutException($"Timed out waiting for app {pid} to publish its discovery file.");
     }
 
-    private void ResetConnection()
+    private static string ResolveSessionName(string? session, string? processName)
     {
-        try { _client?.Dispose(); } catch { /* ignore */ }
-        _client = null;
-        _current = null;
-        _attachedPid = null;
+        if (!string.IsNullOrWhiteSpace(session))
+            return session.Trim();
+        if (!string.IsNullOrWhiteSpace(processName))
+            return processName.Trim();
+        return "default";
     }
 
-    public void Dispose()
+    private static SessionSnapshot ToSnapshot(AppSession session, bool isActive) => new()
     {
-        ResetConnection();
-        _gate.Dispose();
+        Name = session.Name,
+        IsActive = isActive,
+        Pid = session.Info?.Pid ?? session.AttachedPid ?? session.Launched?.Id ?? 0,
+        ProcessName = session.Info?.ProcessName ?? Path.GetFileNameWithoutExtension(session.LaunchSource?.ExePath) ?? session.Name,
+        MainWindowTitle = session.Info?.MainWindowTitle,
+        UiFramework = session.Info?.UiFramework,
+        LaunchedByCli = session.LaunchSource is not null,
+        CanRestart = session.LaunchSource is not null,
+    };
+
+    private static JsonElement WrapWithSession(JsonElement result, string sessionName)
+    {
+        if (result.ValueKind == JsonValueKind.Object)
+        {
+            var node = JsonNode.Parse(result.GetRawText())!.AsObject();
+            node["session"] = sessionName;
+            return JsonSerializer.SerializeToElement(node);
+        }
+
+        return JsonSerializer.SerializeToElement(new { session = sessionName, result });
+    }
+
+    private enum LaunchKind { Project, Exe }
+
+    private sealed class LaunchSource
+    {
+        public LaunchKind Kind { get; private init; }
+        public string? Project { get; private init; }
+        public string? Configuration { get; private init; }
+        public string? Platform { get; private init; }
+        public string? ExePath { get; private init; }
+        public string? WorkingDirectory { get; private init; }
+
+        public static LaunchSource FromProject(string project, string configuration, string? platform, string targetPath) => new()
+        {
+            Kind = LaunchKind.Project,
+            Project = project,
+            Configuration = configuration,
+            Platform = platform,
+            ExePath = Path.ChangeExtension(targetPath, ".exe"),
+        };
+
+        public static LaunchSource FromExe(string exePath, string? workingDirectory) => new()
+        {
+            Kind = LaunchKind.Exe,
+            ExePath = exePath,
+            WorkingDirectory = workingDirectory,
+        };
+    }
+
+    private sealed class AppSession
+    {
+        public required string Name { get; init; }
+        public McpPipeClient? Client { get; set; }
+        public DiscoveryInfo? Info { get; set; }
+        public int? AttachedPid { get; set; }
+        public System.Diagnostics.Process? Launched { get; set; }
+        public LaunchSource? LaunchSource { get; set; }
     }
 }
