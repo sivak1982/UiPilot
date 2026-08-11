@@ -58,7 +58,7 @@ Cursor/Claude  --stdio MCP-->  UiPilot.Cli  --MCP over named pipe-->  your app (
 - Window control: `set_window_state`, `bring_to_front`, `detach`
 - Input: `press_keys`, `scroll`, `focus`, `select_item`, real-mouse `drag`
 - **Multi-session**: `list_sessions` / `select_session`, optional `session` on every forwarding tool,
-  `start_app` for prebuilt exes, `stop_all`
+  `start_app` for prebuilt exes, `start_process` + `wait_for_log` for non-UI readiness, `stop_all`
 - Screenshots returned as MCP **image content** (plus a temp path)
 - Structured errors: `{ error, code, message, hint }`
 - Custom tools: `describe_app_tools` / `invoke_app_tool`

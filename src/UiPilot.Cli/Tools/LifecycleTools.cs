@@ -37,7 +37,7 @@ public sealed class LifecycleTools
     }
 
     [McpServerTool(Name = "list_sessions")]
-    [Description("List attached UiPilot sessions (named connections to pilot apps). Includes which session is active and whether restart_app can relaunch it.")]
+    [Description("List attached sessions: pilot (MCP UI pipe) and process (launch tracking only). Includes which session is active and whether restart_app can relaunch it.")]
     public CallToolResult ListSessions()
     {
         var sessions = _connection.ListSessions();
@@ -124,8 +124,57 @@ public sealed class LifecycleTools
         }
     }
 
+    [McpServerTool(Name = "start_process")]
+    [Description("Launch a non-pilot process (console host, helper, etc.) and track it as a named process session. Does not wait for UiPilot discovery. Pair with wait_for_log for readiness.")]
+    public async Task<CallToolResult> StartProcess(
+        [Description("Path to the .exe or .dll.")] string path,
+        [Description("Optional session name. Defaults to the file name without extension.")] string? session = null,
+        [Description("Optional working directory. Defaults to the directory containing the exe.")] string? workingDirectory = null,
+        [Description("Optional process arguments string.")] string? arguments = null,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var info = await _connection.StartProcessAsync(path, session, workingDirectory, arguments, ct).ConfigureAwait(false);
+            return Ok(JsonSerializer.Serialize(new { started = true, session = info }, Json));
+        }
+        catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+        {
+            return error;
+        }
+    }
+
+    [McpServerTool(Name = "wait_for_log")]
+    [Description("Poll a log file (or the newest file matching a glob/directory) until a regex matches. Generic readiness helper — supply path and pattern; not app-specific.")]
+    public async Task<CallToolResult> WaitForLog(
+        [Description("File path, directory (newest file), or simple glob like C:\\logs\\20260811\\*.ecflog.")] string pathOrGlob,
+        [Description(".NET regular expression to match in the log content (e.g. 'Startup completed').")] string pattern,
+        [Description("Maximum wait time in milliseconds.")] int timeoutMs = 60_000,
+        [Description("Delay between polls in milliseconds.")] int pollMs = 200,
+        [Description("When true, only content written after the waiter first opens the file is searched. Default false searches the whole file.")] bool fromEnd = false,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var result = await _connection.WaitForLogAsync(pathOrGlob, pattern, timeoutMs, pollMs, fromEnd, ct).ConfigureAwait(false);
+            return Ok(JsonSerializer.Serialize(new
+            {
+                matched = true,
+                path = result.Path,
+                pattern = result.Pattern,
+                match = result.Match,
+                byteOffset = result.ByteOffset,
+                elapsedMs = result.ElapsedMs,
+            }, Json));
+        }
+        catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+        {
+            return error;
+        }
+    }
+
     [McpServerTool(Name = "restart_app")]
-    [Description("Relaunch a session previously started via build_and_start or start_app, then re-attach. Attached-only sessions cannot be restarted.")]
+    [Description("Relaunch a session previously started via build_and_start, start_app, or start_process. Attached-only pilot sessions cannot be restarted.")]
     public async Task<CallToolResult> RestartApp(
         [Description("Optional session name. Defaults to the active session, or the only session.")] string? session = null,
         CancellationToken ct = default)
@@ -165,7 +214,7 @@ public sealed class LifecycleTools
     /// Terminates one launched/attached session process and clears that session.
     /// </summary>
     [McpServerTool(Name = "stop_app")]
-    [Description("Stop one driven app session and detach it. When multiple sessions exist, pass session or select_session first. Terminating an elevated app requires this CLI to run elevated.")]
+    [Description("Stop one driven session (pilot or process) and clear it. When multiple sessions exist, pass session or select_session first. Terminating an elevated app requires this CLI to run elevated.")]
     public CallToolResult StopApp(
         [Description("Optional session name. Defaults to the active session, or the only session.")] string? session = null)
     {
@@ -181,7 +230,7 @@ public sealed class LifecycleTools
     }
 
     [McpServerTool(Name = "stop_all")]
-    [Description("Stop every driven app session (launched or attached) and clear all sessions.")]
+    [Description("Stop every driven session (pilot and process) and clear all sessions.")]
     public CallToolResult StopAll()
     {
         try

@@ -26,6 +26,7 @@ adapter / Cli** rather than working around it in one-off scripts.
 - Screenshots via `RenderTargetBitmap` work while minimized — prefer that over keeping the app foregrounded.
 - For elevated targets (`requireAdministrator`), run Cursor/CLI elevated so start/stop works without UAC prompts.
 - For two UIs (e.g. Simulation + OI): `start_app`/`attach` with distinct `session` names (`sim`, `oi`), pass `session` on tools or `select_session`, and remember element ids are per session. Use `stop_all` to tear down.
+- For non-UI hosts (e.g. a supervisor console): `start_process` + generic `wait_for_log(pathOrGlob, pattern)` — keep product-specific paths/regex in project rules, not in UiPilot.
 
 ## Target app changes
 

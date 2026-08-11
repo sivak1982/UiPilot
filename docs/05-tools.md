@@ -33,9 +33,22 @@ Defined in [LifecycleTools.cs](../src/UiPilot.Cli/Tools/LifecycleTools.cs).
 | `detach` | `session?` | Drop one session's pipe without killing the process. |
 | `build_and_start` | `project`, `configuration="Debug"`, `platform?`, `session?` | Build, launch with pilot enabled, attach. Replaces only the same session name. |
 | `start_app` | `path`, `session?`, `workingDirectory?` | Launch a prebuilt `.exe`/`.dll` (no rebuild), attach. |
-| `restart_app` | `session?` | Relaunch a CLI-started session (`build_and_start` or `start_app`). |
+| `start_process` | `path`, `session?`, `workingDirectory?`, `arguments?` | Launch a **non-pilot** process; track as `kind: process` (no MCP pipe). |
+| `wait_for_log` | `pathOrGlob`, `pattern`, `timeoutMs=60000`, `pollMs=200`, `fromEnd=false` | Poll a file / newest glob match until regex matches (generic readiness). |
+| `restart_app` | `session?` | Relaunch a CLI-started session (`build_and_start`, `start_app`, or `start_process`). |
 | `stop_app` | `session?` | Kill one session's process and clear it. |
 | `stop_all` | - | Kill every session. |
+
+### Readiness (console / non-UI)
+
+Use `start_process` + `wait_for_log` for hosts that are not pilot UI apps. UiPilot stays
+app-agnostic: the agent supplies the log path and regex.
+
+```text
+start_process(path: ".../SomeHost.exe", session: "host")
+wait_for_log(pathOrGlob: ".../Logs/yyyyMMdd/*.log", pattern: "Startup completed")
+start_app(path: ".../OperatorInterface.exe", session: "oi")
+```
 
 ## Forwarding tools (in-app)
 
@@ -99,6 +112,8 @@ Register on `PilotHost.Tools` / `UiPilot.Avalonia.PilotHost.Tools` after `Start(
 
 ```text
 start_app(path: ".../AtmosphericAvaloniaSimulation.exe", session: "sim")
+start_process(path: ".../AtmosphericSupervisor.exe", session: "supervisor")
+wait_for_log(pathOrGlob: ".../Runtime/Logs/Supervisor/yyyyMMdd/*.ecflog", pattern: "Startup completed")
 start_app(path: ".../AtmosphericAvaloniaOperatorInterface.exe", session: "oi")
 find_elements(query: "Load", session: "oi")
 click(id: "e12", session: "oi")
@@ -106,3 +121,6 @@ screenshot(session: "sim")
 select_session("oi")          # sticky; later tools may omit session
 stop_all()
 ```
+
+Paths and the readiness regex are supplied by the agent (or project rules) — UiPilot does not
+hard-code any product-specific log format.

@@ -24,7 +24,8 @@ Priority order, following the "thin vertical slice first" principle.
 - `describe_app_tools` / `invoke_app_tool` for custom handlers.
 - `detach` + attach filters (`processName`, `uiFramework`).
 - **Multi-session CLI**: named sessions, `list_sessions` / `select_session`, optional `session` on
-  forwarding tools, `start_app` (prebuilt exe), `stop_all`, per-session restart/stop.
+  forwarding tools, `start_app` (prebuilt exe), `start_process` + `wait_for_log` (generic readiness),
+  `stop_all`, per-session restart/stop.
 
 ## Phase 4 - real input - partially done
 

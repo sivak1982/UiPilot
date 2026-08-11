@@ -10,11 +10,13 @@ using UiPilot.Tools;
 namespace UiPilot.Cli;
 
 /// <summary>
-/// Snapshot of an attached (and optionally launched) pilot app session.
+/// Snapshot of an attached pilot session or a tracked non-pilot process session.
 /// </summary>
 public sealed class SessionSnapshot
 {
     public required string Name { get; init; }
+    /// <summary><c>pilot</c> (MCP pipe) or <c>process</c> (launch tracking only).</summary>
+    public required string Kind { get; init; }
     public required bool IsActive { get; init; }
     public required int Pid { get; init; }
     public required string ProcessName { get; init; }
@@ -256,6 +258,93 @@ public sealed class ConnectionManager : IDisposable
         finally { _gate.Release(); }
     }
 
+    /// <summary>
+    /// Launch a non-pilot process and track it as a named session (no discovery / MCP pipe).
+    /// Does not replace the sticky active pilot session when one already exists.
+    /// </summary>
+    public async Task<SessionSnapshot> StartProcessAsync(
+        string path,
+        string? session = null,
+        string? workingDirectory = null,
+        string? arguments = null,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new PilotCliException(PilotErrorCodes.InvalidArgs, "Process path is required.");
+
+        var fullPath = Path.GetFullPath(path);
+        if (!File.Exists(fullPath))
+            throw new PilotCliException(
+                PilotErrorCodes.NotFound,
+                $"Process path not found: {path}",
+                "Pass a path to an .exe or .dll.");
+
+        var sessionName = ResolveSessionName(session, Path.GetFileNameWithoutExtension(fullPath));
+
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            KillSessionLocked(sessionName);
+
+            System.Diagnostics.Process launched;
+            try
+            {
+                launched = AppLauncher.StartProcess(fullPath, workingDirectory, arguments);
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or InvalidOperationException or ArgumentException)
+            {
+                throw new PilotCliException(PilotErrorCodes.InvalidArgs, ex.Message, innerException: ex);
+            }
+
+            if (launched.HasExited)
+            {
+                throw new PilotCliException(
+                    PilotErrorCodes.NotAttached,
+                    $"Process '{sessionName}' exited immediately (pid {launched.Id}).",
+                    "Check the executable path, working directory, and arguments.");
+            }
+
+            var source = LaunchSource.FromProcess(fullPath, workingDirectory, arguments);
+            _sessions[sessionName] = new AppSession
+            {
+                Name = sessionName,
+                Kind = SessionKind.Process,
+                AttachedPid = launched.Id,
+                Launched = launched,
+                LaunchSource = source,
+                ProcessNameHint = Path.GetFileNameWithoutExtension(fullPath),
+            };
+
+            // Process sessions are tracked but should not steal sticky pilot focus.
+            if (_activeSession is null ||
+                !_sessions.TryGetValue(_activeSession, out var active) ||
+                active.Kind != SessionKind.Pilot ||
+                active.Client is not { IsConnected: true })
+            {
+                // Prefer keeping an existing connected pilot session as active.
+                var pilot = _sessions.Values.FirstOrDefault(s =>
+                    s.Kind == SessionKind.Pilot && s.Client is { IsConnected: true });
+                _activeSession = pilot?.Name ?? _activeSession;
+            }
+
+            return ToSnapshot(_sessions[sessionName], isActive: false);
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>
+    /// Poll a log file (or newest glob match) until <paramref name="pattern"/> matches.
+    /// App-agnostic readiness helper — callers supply path and regex.
+    /// </summary>
+    public Task<LogWaitResult> WaitForLogAsync(
+        string pathOrGlob,
+        string pattern,
+        int timeoutMs = 60_000,
+        int pollMs = 200,
+        bool fromEnd = false,
+        CancellationToken ct = default) =>
+        LogWaiter.WaitAsync(pathOrGlob, pattern, timeoutMs, pollMs, fromEnd, ct);
+
     public async Task<SessionSnapshot> RestartAsync(string? session = null, CancellationToken ct = default)
     {
         LaunchSource source;
@@ -281,6 +370,8 @@ public sealed class ConnectionManager : IDisposable
 
         if (source.Kind == LaunchKind.Project)
             return await BuildAndStartAsync(source.Project!, source.Configuration!, source.Platform, sessionName, ct).ConfigureAwait(false);
+        if (source.Kind == LaunchKind.Process)
+            return await StartProcessAsync(source.ExePath!, sessionName, source.WorkingDirectory, source.Arguments, ct).ConfigureAwait(false);
 
         return await StartAppAsync(source.ExePath!, sessionName, source.WorkingDirectory, ct).ConfigureAwait(false);
     }
@@ -342,6 +433,18 @@ public sealed class ConnectionManager : IDisposable
             var target = ResolveSessionForLifecycleLocked(session);
             var snapshot = ToSnapshot(target, isActive: false);
 
+            if (target.Kind == SessionKind.Process)
+            {
+                // Forget tracking; leave the OS process running.
+                if (target.Launched is not null)
+                {
+                    try { target.Launched.Dispose(); } catch { /* ignore */ }
+                    target.Launched = null;
+                }
+                RemoveSessionLocked(target.Name);
+                return snapshot;
+            }
+
             // Keep launch metadata for restart; drop only the live pipe.
             if (target.LaunchSource is not null)
             {
@@ -400,11 +503,13 @@ public sealed class ConnectionManager : IDisposable
         _sessions[sessionName] = new AppSession
         {
             Name = sessionName,
+            Kind = SessionKind.Pilot,
             Client = client,
             Info = info,
             AttachedPid = info.Pid,
             Launched = launched,
             LaunchSource = launchSource,
+            ProcessNameHint = info.ProcessName,
         };
         _activeSession = sessionName;
     }
@@ -412,16 +517,31 @@ public sealed class ConnectionManager : IDisposable
     private AppSession ResolveSessionForSendLocked(string? session)
     {
         if (!string.IsNullOrWhiteSpace(session))
-            return RequireSessionLocked(session);
+        {
+            var named = RequireSessionLocked(session);
+            if (named.Kind != SessionKind.Pilot || named.Client is not { IsConnected: true })
+            {
+                throw new PilotCliException(
+                    PilotErrorCodes.NotAttached,
+                    $"Session '{named.Name}' is not a connected pilot app.",
+                    named.Kind == SessionKind.Process
+                        ? "Process sessions have no UI pipe. Use wait_for_log / stop_app, or attach/start_app for a pilot UI."
+                        : "Use attach, start_app, or build_and_start for that session.");
+            }
+            return named;
+        }
 
         if (!string.IsNullOrWhiteSpace(_activeSession) &&
             _sessions.TryGetValue(_activeSession, out var active) &&
+            active.Kind == SessionKind.Pilot &&
             active.Client is { IsConnected: true })
         {
             return active;
         }
 
-        var connected = _sessions.Values.Where(s => s.Client is { IsConnected: true }).ToList();
+        var connected = _sessions.Values
+            .Where(s => s.Kind == SessionKind.Pilot && s.Client is { IsConnected: true })
+            .ToList();
         if (connected.Count == 1)
             return connected[0];
         if (connected.Count == 0)
@@ -586,9 +706,13 @@ public sealed class ConnectionManager : IDisposable
     private static SessionSnapshot ToSnapshot(AppSession session, bool isActive) => new()
     {
         Name = session.Name,
+        Kind = session.Kind == SessionKind.Process ? "process" : "pilot",
         IsActive = isActive,
         Pid = session.Info?.Pid ?? session.AttachedPid ?? session.Launched?.Id ?? 0,
-        ProcessName = session.Info?.ProcessName ?? Path.GetFileNameWithoutExtension(session.LaunchSource?.ExePath) ?? session.Name,
+        ProcessName = session.Info?.ProcessName
+            ?? session.ProcessNameHint
+            ?? Path.GetFileNameWithoutExtension(session.LaunchSource?.ExePath)
+            ?? session.Name,
         MainWindowTitle = session.Info?.MainWindowTitle,
         UiFramework = session.Info?.UiFramework,
         LaunchedByCli = session.LaunchSource is not null,
@@ -607,7 +731,9 @@ public sealed class ConnectionManager : IDisposable
         return JsonSerializer.SerializeToElement(new { session = sessionName, result });
     }
 
-    private enum LaunchKind { Project, Exe }
+    private enum SessionKind { Pilot, Process }
+
+    private enum LaunchKind { Project, Exe, Process }
 
     private sealed class LaunchSource
     {
@@ -617,6 +743,7 @@ public sealed class ConnectionManager : IDisposable
         public string? Platform { get; private init; }
         public string? ExePath { get; private init; }
         public string? WorkingDirectory { get; private init; }
+        public string? Arguments { get; private init; }
 
         public static LaunchSource FromProject(string project, string configuration, string? platform, string targetPath) => new()
         {
@@ -633,15 +760,25 @@ public sealed class ConnectionManager : IDisposable
             ExePath = exePath,
             WorkingDirectory = workingDirectory,
         };
+
+        public static LaunchSource FromProcess(string exePath, string? workingDirectory, string? arguments) => new()
+        {
+            Kind = LaunchKind.Process,
+            ExePath = exePath,
+            WorkingDirectory = workingDirectory,
+            Arguments = arguments,
+        };
     }
 
     private sealed class AppSession
     {
         public required string Name { get; init; }
+        public SessionKind Kind { get; init; } = SessionKind.Pilot;
         public McpPipeClient? Client { get; set; }
         public DiscoveryInfo? Info { get; set; }
         public int? AttachedPid { get; set; }
         public System.Diagnostics.Process? Launched { get; set; }
         public LaunchSource? LaunchSource { get; set; }
+        public string? ProcessNameHint { get; set; }
     }
 }

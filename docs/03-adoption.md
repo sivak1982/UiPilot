@@ -53,8 +53,10 @@ Typical loop: `build_and_start` or `start_app` → `wait_for_element` / `find_el
 
 1. Call `PilotHost.Start()` in **each** UI process.
 2. `start_app(..., session: "sim")` and `start_app(..., session: "oi")` (or `attach` with session names).
-3. Pass `session` on forwarding tools, or `select_session` for a sticky default.
-4. Use `list_sessions` to confirm; `stop_app(session)` / `stop_all` to tear down.
+3. For a non-UI host: `start_process(..., session: "host")` then `wait_for_log(pathOrGlob, pattern)` —
+   path and regex come from the agent/project rules, not from UiPilot.
+4. Pass `session` on forwarding tools, or `select_session` for a sticky default.
+5. Use `list_sessions` to confirm; `stop_app(session)` / `stop_all` to tear down.
 
 Element ids are per process — always pair an id with the session that produced it.
 

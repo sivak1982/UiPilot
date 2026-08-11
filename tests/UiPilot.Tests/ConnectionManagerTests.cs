@@ -146,7 +146,7 @@ public class LifecycleToolSurfaceTests
         foreach (var required in new[]
                  {
                      "list_apps", "list_sessions", "select_session", "attach", "build_and_start",
-                     "start_app", "restart_app", "detach", "stop_app", "stop_all",
+                     "start_app", "start_process", "wait_for_log", "restart_app", "detach", "stop_app", "stop_all",
                  })
         {
             Assert.Contains(required, names);

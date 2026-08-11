@@ -37,7 +37,24 @@ public static class AppLauncher
     /// Start a built assembly or prebuilt exe with UiPilot force-enabled via environment variable.
     /// Accepts a <c>.dll</c>/<c>.exe</c> path; working directory defaults to the file's folder.
     /// </summary>
-    public static System.Diagnostics.Process Start(string targetAssemblyOrExePath, string? workingDirectory = null)
+    public static System.Diagnostics.Process Start(string targetAssemblyOrExePath, string? workingDirectory = null) =>
+        StartCore(targetAssemblyOrExePath, workingDirectory, arguments: null, enablePilot: true);
+
+    /// <summary>
+    /// Start a generic (non-pilot) process — console hosts, helpers, etc. Does not set
+    /// <c>UIPILOT_*</c> env vars and does not wait for a discovery file.
+    /// </summary>
+    public static System.Diagnostics.Process StartProcess(
+        string exePath,
+        string? workingDirectory = null,
+        string? arguments = null) =>
+        StartCore(exePath, workingDirectory, arguments, enablePilot: false);
+
+    private static System.Diagnostics.Process StartCore(
+        string targetAssemblyOrExePath,
+        string? workingDirectory,
+        string? arguments,
+        bool enablePilot)
     {
         if (string.IsNullOrWhiteSpace(targetAssemblyOrExePath))
             throw new ArgumentException("Target path is required.", nameof(targetAssemblyOrExePath));
@@ -58,19 +75,30 @@ public static class AppLauncher
             RedirectStandardError = false,
             WorkingDirectory = workDir,
         };
-        psi.Environment["UIPILOT_ENABLE"] = "1";
-        // Keep the driven app out of the way so the agent/IDE stays visible. Offscreen screenshots
-        // still work while minimized; use the bring_to_front tool to show it on demand.
-        psi.Environment["UIPILOT_START_MINIMIZED"] = "1";
+
+        if (enablePilot)
+        {
+            psi.Environment["UIPILOT_ENABLE"] = "1";
+            // Keep the driven app out of the way so the agent/IDE stays visible. Offscreen screenshots
+            // still work while minimized; use the bring_to_front tool to show it on demand.
+            psi.Environment["UIPILOT_START_MINIMIZED"] = "1";
+        }
 
         if (File.Exists(exePath))
         {
             psi.FileName = exePath;
+            if (!string.IsNullOrWhiteSpace(arguments))
+                psi.Arguments = arguments;
         }
         else if (File.Exists(fullPath))
         {
             psi.FileName = "dotnet";
             psi.ArgumentList.Add(fullPath);
+            if (!string.IsNullOrWhiteSpace(arguments))
+            {
+                foreach (var part in SplitArguments(arguments))
+                    psi.ArgumentList.Add(part);
+            }
         }
         else
         {
@@ -80,6 +108,35 @@ public static class AppLauncher
         var process = System.Diagnostics.Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start the app process.");
         return process;
+    }
+
+    /// <summary>Minimal argument splitter for optional <c>dotnet dll …</c> extras; keeps quoted spans intact.</summary>
+    private static IEnumerable<string> SplitArguments(string arguments)
+    {
+        var result = new List<string>();
+        var current = new StringBuilder();
+        var inQuotes = false;
+        foreach (var ch in arguments)
+        {
+            if (ch == '"')
+            {
+                inQuotes = !inQuotes;
+                continue;
+            }
+            if (char.IsWhiteSpace(ch) && !inQuotes)
+            {
+                if (current.Length > 0)
+                {
+                    result.Add(current.ToString());
+                    current.Clear();
+                }
+                continue;
+            }
+            current.Append(ch);
+        }
+        if (current.Length > 0)
+            result.Add(current.ToString());
+        return result;
     }
 
     private static async Task<(int exit, string stdout, string stderr)> RunAsync(
