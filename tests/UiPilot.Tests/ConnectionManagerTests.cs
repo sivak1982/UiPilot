@@ -1,5 +1,6 @@
 using System.Reflection;
 using UiPilot.Cli;
+using UiPilot.Cli.Process;
 using UiPilot.Tools;
 using Xunit;
 
@@ -187,3 +188,105 @@ public class AppLauncherTests
             UiPilot.Cli.Process.AppLauncher.Start(missing));
     }
 }
+
+public class StartupHookLocatorTests
+{
+    [Fact]
+    public void DetectUiFramework_FindsAvalonia()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "uipilot-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            File.WriteAllBytes(Path.Combine(dir, "Avalonia.dll"), Array.Empty<byte>());
+            Assert.Equal(UiFrameworks.Avalonia, StartupHookLocator.DetectUiFramework(dir));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void DetectUiFramework_FindsWpf()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "uipilot-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            File.WriteAllBytes(Path.Combine(dir, "PresentationFramework.dll"), Array.Empty<byte>());
+            Assert.Equal(UiFrameworks.Wpf, StartupHookLocator.DetectUiFramework(dir));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ApplyTo_SetsDotnetStartupHooks()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "uipilot-tests", Guid.NewGuid().ToString("N"));
+        var appDir = Path.Combine(root, "app");
+        var hookDir = Path.Combine(root, "cli", "hooks", "avalonia");
+        Directory.CreateDirectory(appDir);
+        Directory.CreateDirectory(hookDir);
+        try
+        {
+            File.WriteAllBytes(Path.Combine(appDir, "Avalonia.dll"), Array.Empty<byte>());
+            var hookDll = Path.Combine(hookDir, "UiPilot.Avalonia.StartupHook.dll");
+            File.WriteAllBytes(hookDll, Array.Empty<byte>());
+
+            var psi = new System.Diagnostics.ProcessStartInfo();
+            var applied = StartupHookLocator.ApplyTo(
+                psi,
+                appDir,
+                uiFramework: null,
+                useStartupHook: true,
+                baseDirectory: Path.Combine(root, "cli"));
+
+            Assert.Equal(hookDll, applied);
+            Assert.Equal(hookDll, psi.Environment[StartupHookLocator.EnvVarName]);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ApplyTo_RespectsDisableEnv()
+    {
+        var previous = Environment.GetEnvironmentVariable(StartupHookLocator.DisableEnvVarName);
+        try
+        {
+            Environment.SetEnvironmentVariable(StartupHookLocator.DisableEnvVarName, "0");
+            var psi = new System.Diagnostics.ProcessStartInfo();
+            var applied = StartupHookLocator.ApplyTo(psi, Path.GetTempPath(), "avalonia", useStartupHook: true);
+            Assert.Null(applied);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(StartupHookLocator.DisableEnvVarName, previous);
+        }
+    }
+
+    [Fact]
+    public void ApplyTo_UseStartupHookFalse_Skips()
+    {
+        var appDir = Path.Combine(Path.GetTempPath(), "uipilot-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(appDir);
+        try
+        {
+            File.WriteAllBytes(Path.Combine(appDir, "Avalonia.Controls.dll"), Array.Empty<byte>());
+            var psi = new System.Diagnostics.ProcessStartInfo();
+            Assert.Null(StartupHookLocator.ApplyTo(psi, appDir, "avalonia", useStartupHook: false));
+            Assert.False(psi.Environment.ContainsKey(StartupHookLocator.EnvVarName));
+        }
+        finally
+        {
+            Directory.Delete(appDir, recursive: true);
+        }
+    }
+}
+

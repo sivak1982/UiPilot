@@ -18,6 +18,7 @@ in-process library has the live objects: visual tree, binding errors, layout, an
 | `UiPilot.Core` | Protocol, discovery, pipe, `IUiBackend`, `ToolCatalog`, `PilotRuntime` |
 | `UiPilot.Wpf` | WPF adapter + `PilotHost.Start()` (`net8.0-windows`) |
 | `UiPilot.Avalonia` | Avalonia adapter + `UiPilot.Avalonia.PilotHost.Start()` |
+| `UiPilot.*.StartupHook` | `DOTNET_STARTUP_HOOKS` injectors (CLI `hooks/`) |
 | `UiPilot.Cli` | stdio MCP bridge + build/launch/restart loop |
 
 ## Agent edit loop
@@ -26,7 +27,7 @@ in-process library has the live objects: visual tree, binding errors, layout, an
 Agent                  UiPilot.Cli                         App (WPF / Avalonia)
   |                         |                                      |
   |-- start_app / --------->|                                      |
-  |   build_and_start       |-- launch (UIPILOT_ENABLE=1) -------->|
+  |   build_and_start       |-- launch + DOTNET_STARTUP_HOOKS ---->|
   |   (session: "oi")       |                      Host.Start() ---|
   |                         |<-- %TEMP%/uipilot/<pid>.json --------|
   |                         |-- auth + MCP over named pipe ------->|

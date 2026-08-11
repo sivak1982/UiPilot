@@ -11,7 +11,15 @@ data bindings, capture per-window screenshots, and drive synthetic input, then e
 that to an agent over MCP. It beats external UI Automation for binding/ViewModel/layout
 diagnostics because it has direct access to the running objects.
 
-## The one required line
+## Launch without editing the target app
+
+`UiPilot.Cli` injects UiPilot via process-scoped **`DOTNET_STARTUP_HOOKS`** when you use
+`start_app` / `build_and_start`. No project reference or `PilotHost.Start()` in the app is
+required. See [docs/03-adoption.md](docs/03-adoption.md).
+
+Optional in-app opt-in (idempotent with the hook):
+
+## The one optional line
 
 **WPF**
 
@@ -53,6 +61,7 @@ Cursor/Claude  --stdio MCP-->  UiPilot.Cli  --MCP over named pipe-->  your app (
 | **`UiPilot.Core`** | Shared protocol, discovery, named pipe, tool registry, `IUiBackend` contract. |
 | **`UiPilot.Wpf`** | WPF adapter + `PilotHost.Start()` (`net8.0-windows`). |
 | **`UiPilot.Avalonia`** | Avalonia adapter + `PilotHost.Start()` (`net8.0`). |
+| **`UiPilot.*.StartupHook`** | `DOTNET_STARTUP_HOOKS` injectors (copied under CLI `hooks/`). |
 | **`UiPilot.Cli`** | Out-of-process stdio MCP bridge + app launcher (framework-agnostic). |
 
 ## Agent-facing highlights (protocol 2.0)

@@ -86,7 +86,7 @@ public sealed class LifecycleTools
     }
 
     [McpServerTool(Name = "build_and_start")]
-    [Description("Build a WPF or Avalonia project and launch it with pilot enabled, then attach as a named session. Only replaces an existing session with the same name; other sessions stay up.")]
+    [Description("Build a WPF or Avalonia project and launch it with UiPilot enabled (DOTNET_STARTUP_HOOKS by default), then attach as a named session. Only replaces an existing session with the same name; other sessions stay up.")]
     public async Task<CallToolResult> BuildAndStart(
         [Description("Path to the .csproj (or a directory/solution the SDK can build) of the target app.")] string project,
         [Description("Build configuration.")] string configuration = "Debug",
@@ -106,16 +106,18 @@ public sealed class LifecycleTools
     }
 
     [McpServerTool(Name = "start_app")]
-    [Description("Launch a prebuilt pilot-enabled .exe/.dll (no rebuild), then attach as a named session. Use for sample Bin folders when binaries already exist.")]
+    [Description("Launch a prebuilt .exe/.dll (no rebuild) with DOTNET_STARTUP_HOOKS injection by default, then attach as a named session. Target app need not call PilotHost.Start. Use for sample Bin folders when binaries already exist.")]
     public async Task<CallToolResult> StartApp(
         [Description("Path to the app .exe or .dll.")] string path,
         [Description("Optional session name. Defaults to the file name without extension (e.g. 'sim').")] string? session = null,
         [Description("Optional working directory. Defaults to the directory containing the app.")] string? workingDirectory = null,
+        [Description("When true (default), set process-scoped DOTNET_STARTUP_HOOKS so UiPilot starts without editing the app. Set false if the app already calls PilotHost.Start and you want hook injection off.")] bool useStartupHook = true,
+        [Description("Optional UI stack override: 'avalonia' or 'wpf'. When omitted, detected from assemblies beside the app.")] string? uiFramework = null,
         CancellationToken ct = default)
     {
         try
         {
-            var info = await _connection.StartAppAsync(path, session, workingDirectory, ct).ConfigureAwait(false);
+            var info = await _connection.StartAppAsync(path, session, workingDirectory, useStartupHook, uiFramework, ct).ConfigureAwait(false);
             return Ok(JsonSerializer.Serialize(new { started = true, session = info }, Json));
         }
         catch (Exception ex) when (TryCreateErrorResult(ex, out var error))

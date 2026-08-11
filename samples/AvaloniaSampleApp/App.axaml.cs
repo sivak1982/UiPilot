@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
-using UiPilot.Avalonia;
 
 namespace AvaloniaSampleApp;
 
@@ -14,8 +13,8 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             desktop.MainWindow = new MainWindow();
 
-        // The only line an Avalonia app needs — same MCP protocol as WPF.
-        PilotHost.Start();
+        // Zero-edit path: UiPilot is injected via DOTNET_STARTUP_HOOKS from UiPilot.Cli.
+        // Optional in-app opt-in: UiPilot.Avalonia.PilotHost.Start();
 
         base.OnFrameworkInitializationCompleted();
     }

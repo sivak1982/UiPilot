@@ -207,6 +207,8 @@ public sealed class ConnectionManager : IDisposable
         string path,
         string? session = null,
         string? workingDirectory = null,
+        bool useStartupHook = true,
+        string? uiFramework = null,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -231,7 +233,7 @@ public sealed class ConnectionManager : IDisposable
             System.Diagnostics.Process launched;
             try
             {
-                launched = AppLauncher.Start(fullPath, workingDirectory);
+                launched = AppLauncher.Start(fullPath, workingDirectory, useStartupHook, uiFramework);
             }
             catch (Exception ex) when (ex is FileNotFoundException or InvalidOperationException)
             {
@@ -245,7 +247,7 @@ public sealed class ConnectionManager : IDisposable
                 if (!string.Equals(sessionName, sessionHint, StringComparison.OrdinalIgnoreCase))
                     KillSessionLocked(sessionName);
 
-                var source = LaunchSource.FromExe(fullPath, workingDirectory);
+                var source = LaunchSource.FromExe(fullPath, workingDirectory, useStartupHook, uiFramework);
                 await ConnectSessionLocked(sessionName, info, launched, source, ct).ConfigureAwait(false);
                 return ToSnapshot(_sessions[sessionName], isActive: true);
             }
@@ -373,7 +375,13 @@ public sealed class ConnectionManager : IDisposable
         if (source.Kind == LaunchKind.Process)
             return await StartProcessAsync(source.ExePath!, sessionName, source.WorkingDirectory, source.Arguments, ct).ConfigureAwait(false);
 
-        return await StartAppAsync(source.ExePath!, sessionName, source.WorkingDirectory, ct).ConfigureAwait(false);
+        return await StartAppAsync(
+            source.ExePath!,
+            sessionName,
+            source.WorkingDirectory,
+            source.UseStartupHook,
+            source.UiFramework,
+            ct).ConfigureAwait(false);
     }
 
     public SessionSnapshot? StopApp(string? session = null)
@@ -688,7 +696,7 @@ public sealed class ConnectionManager : IDisposable
                 throw new PilotCliException(
                     PilotErrorCodes.NotAttached,
                     $"App process {pid} exited before publishing a discovery file.",
-                    "Check the app startup failure (PilotHost.Start required), then run start_app / build_and_start again.");
+                    "Check the app startup failure (DOTNET_STARTUP_HOOKS / PilotHost.Start), then run start_app / build_and_start again.");
             await Task.Delay(200, ct).ConfigureAwait(false);
         }
         throw new TimeoutException($"Timed out waiting for app {pid} to publish its discovery file.");
@@ -744,6 +752,8 @@ public sealed class ConnectionManager : IDisposable
         public string? ExePath { get; private init; }
         public string? WorkingDirectory { get; private init; }
         public string? Arguments { get; private init; }
+        public bool UseStartupHook { get; private init; } = true;
+        public string? UiFramework { get; private init; }
 
         public static LaunchSource FromProject(string project, string configuration, string? platform, string targetPath) => new()
         {
@@ -752,13 +762,20 @@ public sealed class ConnectionManager : IDisposable
             Configuration = configuration,
             Platform = platform,
             ExePath = Path.ChangeExtension(targetPath, ".exe"),
+            UseStartupHook = true,
         };
 
-        public static LaunchSource FromExe(string exePath, string? workingDirectory) => new()
+        public static LaunchSource FromExe(
+            string exePath,
+            string? workingDirectory,
+            bool useStartupHook = true,
+            string? uiFramework = null) => new()
         {
             Kind = LaunchKind.Exe,
             ExePath = exePath,
             WorkingDirectory = workingDirectory,
+            UseStartupHook = useStartupHook,
+            UiFramework = uiFramework,
         };
 
         public static LaunchSource FromProcess(string exePath, string? workingDirectory, string? arguments) => new()
@@ -767,6 +784,7 @@ public sealed class ConnectionManager : IDisposable
             ExePath = exePath,
             WorkingDirectory = workingDirectory,
             Arguments = arguments,
+            UseStartupHook = false,
         };
     }
 

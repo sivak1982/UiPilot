@@ -17,8 +17,4 @@
     <PackageReference Include="Avalonia.Themes.Fluent" />
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\UiPilot.Avalonia\UiPilot.Avalonia.csproj" />
-  </ItemGroup>
-
 </Project>

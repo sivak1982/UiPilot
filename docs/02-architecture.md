@@ -5,7 +5,7 @@ Target apps                         UiPilot.Core
 ────────────                        ────────────
 WPF: PilotHost.Start() ──┐          PilotRuntime
 Avalonia: PilotHost.Start()┤          ├─ McpPipeServer (MCP over named pipe)
-                           ├────────► ├─ ToolRegistry + BuiltInTools
+  (or DOTNET_STARTUP_HOOKS)├────────► ├─ ToolRegistry + BuiltInTools
                            │          ├─ IUiBackend
                            │          └─ DiscoveryFile
                            │
@@ -16,6 +16,7 @@ WpfUiBackend / AvaloniaUiBackend    Cursor/Claude
         └──── IUiBackend ──────────── UiPilot.Cli
                                         ├─ MCP server (stdio) for agents
                                         ├─ McpPipeClient → app
+                                        ├─ DOTNET_STARTUP_HOOKS (hooks/)
                                         └─ build / launch / restart
 ```
 

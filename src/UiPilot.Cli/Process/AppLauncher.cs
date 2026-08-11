@@ -36,9 +36,15 @@ public static class AppLauncher
     /// <summary>
     /// Start a built assembly or prebuilt exe with UiPilot force-enabled via environment variable.
     /// Accepts a <c>.dll</c>/<c>.exe</c> path; working directory defaults to the file's folder.
+    /// When <paramref name="useStartupHook"/> is true (default), sets process-scoped
+    /// <c>DOTNET_STARTUP_HOOKS</c> so the app need not call <c>PilotHost.Start</c> itself.
     /// </summary>
-    public static System.Diagnostics.Process Start(string targetAssemblyOrExePath, string? workingDirectory = null) =>
-        StartCore(targetAssemblyOrExePath, workingDirectory, arguments: null, enablePilot: true);
+    public static System.Diagnostics.Process Start(
+        string targetAssemblyOrExePath,
+        string? workingDirectory = null,
+        bool useStartupHook = true,
+        string? uiFramework = null) =>
+        StartCore(targetAssemblyOrExePath, workingDirectory, arguments: null, enablePilot: true, useStartupHook, uiFramework);
 
     /// <summary>
     /// Start a generic (non-pilot) process — console hosts, helpers, etc. Does not set
@@ -48,13 +54,15 @@ public static class AppLauncher
         string exePath,
         string? workingDirectory = null,
         string? arguments = null) =>
-        StartCore(exePath, workingDirectory, arguments, enablePilot: false);
+        StartCore(exePath, workingDirectory, arguments, enablePilot: false, useStartupHook: false, uiFramework: null);
 
     private static System.Diagnostics.Process StartCore(
         string targetAssemblyOrExePath,
         string? workingDirectory,
         string? arguments,
-        bool enablePilot)
+        bool enablePilot,
+        bool useStartupHook,
+        string? uiFramework)
     {
         if (string.IsNullOrWhiteSpace(targetAssemblyOrExePath))
             throw new ArgumentException("Target path is required.", nameof(targetAssemblyOrExePath));
@@ -82,6 +90,11 @@ public static class AppLauncher
             // Keep the driven app out of the way so the agent/IDE stays visible. Offscreen screenshots
             // still work while minimized; use the bring_to_front tool to show it on demand.
             psi.Environment["UIPILOT_START_MINIMIZED"] = "1";
+
+            var appDir = workDir ?? Path.GetDirectoryName(fullPath) ?? ".";
+            var hookPath = StartupHookLocator.ApplyTo(psi, appDir, uiFramework, useStartupHook);
+            if (hookPath != null)
+                Debug.WriteLine("[UiPilot.Cli] DOTNET_STARTUP_HOOKS=" + hookPath);
         }
 
         if (File.Exists(exePath))
