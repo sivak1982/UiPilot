@@ -22,6 +22,23 @@ adapter / Cli** rather than working around it in one-off scripts.
 - Run `dotnet test` and ensure **all existing tests pass** before finishing.
 - **Check in** (`git commit`) when pilot code changed — do not leave edits uncommitted.
 
+## Authoring a C# test: prove every step over MCP first
+
+Never write a `UiPilot.Client` test from assumptions about the UI. Selectors, element types, and
+state labels must be observed on the live app before they are committed to code.
+
+1. Start the app(s) over MCP (`start_app` / `start_process` / `wait_for_log`).
+2. Perform **one** test step at a time with MCP tools (`find_elements`, `click`, `type_text`, ...).
+3. After each step, record the exact call that worked and its `UiPilotClient` equivalent, e.g.
+   `find_elements(query: "Operations", exact: true)` returning a `SalienceNavigationButton` becomes
+   `FindElementsAsync("Operations", exact: true)`. Note the element `type`, `id` source
+   (`AutomationId` vs `Name` vs `text`), and the interaction `method` in the response.
+4. Only after every step has been proven live, write the C# test from those recorded calls.
+5. Run the C# test and keep iterating until it passes.
+
+Do not batch-guess a whole test and debug it through `dotnet test` — that hides which step is
+actually wrong and burns full app-startup cycles per attempt.
+
 ## Driving the target app
 
 - Launch with `UIPILOT_START_MINIMIZED=1` (CLI edit loop does this) so the agent/IDE stays visible; use `bring_to_front` only when a human must see the window.

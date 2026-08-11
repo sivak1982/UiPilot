@@ -31,6 +31,18 @@ flowchart LR
 
 MCP is the exploration surface. C# is the durable regression artifact.
 
+Step 2 is mandatory and is done **one test step at a time**: run the MCP call, confirm it did what
+the test case describes, and record the equivalent `UiPilotClient` call before moving on. The
+recorded notes become the test body. Writing the whole test first and debugging it through
+`dotnet test` is slower and hides which step is wrong, because every attempt pays full app startup.
+
+A useful note per step captures the query, whether it needed `exact`, the matched element `type`,
+and the interaction `method` that came back:
+
+| Test step | Proven MCP call | C# | Observed |
+|---|---|---|---|
+| open Alarms | `find_elements(query: "Alarms", exact: true)` then `click(id)` | `FindElementsAsync` + `ClickAsync` | matched `SalienceNavigationButton`; a `TextBlock` also matches and cannot be clicked |
+
 ## Example
 
 After proving the sample flow interactively, save it as:
