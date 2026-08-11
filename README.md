@@ -3,6 +3,9 @@
 In-process automation for **WPF and Avalonia** desktop apps, built for AI coding agents
 (Cursor, Claude, etc.).
 
+> **Repository:** [github.com/sivak1982/UiPilot](https://github.com/sivak1982/UiPilot).
+> Earlier local/GitHub naming used `WpfPilot`; the product, packages, and solution are **UiPilot**.
+
 The automation library runs *inside* your process, so it can inspect the live visual tree, read
 data bindings, capture per-window screenshots, and drive synthetic input, then exposes all of
 that to an agent over MCP. It beats external UI Automation for binding/ViewModel/layout
