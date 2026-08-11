@@ -35,7 +35,7 @@ Agent                  UiPilot.Cli                         App (WPF / Avalonia)
   |-- select_session ------>|                                      |
 ```
 
-Multiple named sessions can be attached at once (Simulation + Operator Interface). See
+Multiple named sessions can be attached at once (e.g. a server UI and a client UI). See
 [05-tools.md](05-tools.md#sessions-multi-app).
 
 ## Try it

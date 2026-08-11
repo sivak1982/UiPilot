@@ -29,7 +29,7 @@ public sealed class ScenarioTools
     [Description("Run a YAML UI-test scenario file deterministically (start apps, click, type, expect) and return a pass/fail report with per-step results and failure screenshots. Scenario docs: docs/08-scenarios.md.")]
     public async Task<CallToolResult> RunScenario(
         [Description("Path to the scenario .yaml file.")] string path,
-        [Description("Optional JSON object of variable overrides, e.g. {\"user\":\"sysadmin\"}.")] string? varsJson = null,
+        [Description("Optional JSON object of variable overrides, e.g. {\"user\":\"alice\"}.")] string? varsJson = null,
         CancellationToken ct = default)
     {
         Dictionary<string, string>? overrides = null;

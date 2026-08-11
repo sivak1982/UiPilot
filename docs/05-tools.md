@@ -10,7 +10,7 @@ Protocol / discovery version: **2.0** (MCP over named pipe).
 ## Sessions (multi-app)
 
 The CLI keeps **named sessions** so an agent can drive more than one pilot app at once
-(e.g. Simulation + Operator Interface):
+(e.g. a server UI and a client UI):
 
 1. `start_app` / `build_and_start` / `attach` with `session: "sim"` and `session: "oi"`.
 2. Call forwarding tools with `session: "oi"` **or** `select_session("oi")` then omit `session`.
@@ -138,14 +138,14 @@ Register on `PilotHost.Tools` / `UiPilot.Avalonia.PilotHost.Tools` after `Start(
 ## Dual-app example
 
 ```text
-start_app(path: ".../AtmosphericAvaloniaSimulation.exe", session: "sim")
-start_process(path: ".../AtmosphericSupervisor.exe", session: "supervisor")
-wait_for_log(pathOrGlob: ".../Runtime/Logs/Supervisor/yyyyMMdd/*.ecflog", pattern: "Startup completed")
-start_app(path: ".../AtmosphericAvaloniaOperatorInterface.exe", session: "oi")
-find_elements(query: "Load", session: "oi")
-click(id: "e12", session: "oi")
-screenshot(session: "sim")
-select_session("oi")          # sticky; later tools may omit session
+start_app(path: ".../ServerUi.exe", session: "server")
+start_process(path: ".../Host.exe", session: "host")
+wait_for_log(pathOrGlob: ".../logs/*/host.log", pattern: "ready")
+start_app(path: ".../ClientUi.exe", session: "client")
+find_elements(query: "Connect", session: "client")
+click(id: "e12", session: "client")
+screenshot(session: "server")
+select_session("client")      # sticky; later tools may omit session
 stop_all()
 ```
 

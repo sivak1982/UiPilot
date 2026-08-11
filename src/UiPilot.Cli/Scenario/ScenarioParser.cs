@@ -11,12 +11,12 @@ namespace UiPilot.Cli.Scenario;
 /// keepOpen: false
 /// foreground: false   # true keeps the app being driven visible and in front
 /// vars:
-///   user: sysadmin
+///   user: alice
 /// steps:
-///   - start_app: { path: "${bin}\\App.exe", session: oi }
-///   - type:  { query: "User Name", text: "${user}", session: oi }
-///   - click: { query: Login, session: oi }
-///   - expect_visible: { query: Initialize, session: oi }
+///   - start_app: { path: "${bin}\\App.exe", session: app }
+///   - type:  { query: "User Name", text: "${user}", session: app }
+///   - click: { query: Login, session: app }
+///   - expect_visible: { query: Dashboard, session: app }
 /// </code>
 /// Variables resolve in precedence order: caller overrides, file <c>vars</c>, environment.
 /// Unknown verbs, missing required properties, and unresolved variables fail at parse time.

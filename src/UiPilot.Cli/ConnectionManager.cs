@@ -29,7 +29,7 @@ public sealed class SessionSnapshot
 /// <summary>
 /// Central state for the CLI: named sessions to pilot-enabled apps, live MCP-over-pipe
 /// connections, and processes launched for build/start/restart. Supports driving multiple
-/// apps (e.g. Simulation + Operator Interface) at once.
+/// apps (e.g. a server UI and a client UI) at once.
 /// </summary>
 public sealed class ConnectionManager : IDisposable
 {

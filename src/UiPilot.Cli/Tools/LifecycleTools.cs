@@ -11,7 +11,7 @@ namespace UiPilot.Cli.Tools;
 /// <summary>
 /// Out-of-process lifecycle tools: discover running apps, attach named sessions, and drive the
 /// AI edit loop by building/launching/restarting target apps. These do not require an attached
-/// app to start. Multiple sessions are supported (e.g. Simulation + Operator Interface).
+/// app to start. Multiple sessions are supported (e.g. a server UI and a client UI).
 /// </summary>
 [McpServerToolType]
 public sealed class LifecycleTools
@@ -152,7 +152,7 @@ public sealed class LifecycleTools
     [McpServerTool(Name = "wait_for_log")]
     [Description("Poll a log file (or the newest file matching a glob/directory) until a regex matches. Generic readiness helper — supply path and pattern; not app-specific.")]
     public async Task<CallToolResult> WaitForLog(
-        [Description("File path, directory (newest file), or simple glob like C:\\logs\\20260811\\*.ecflog.")] string pathOrGlob,
+        [Description("File path, directory (newest file), or simple glob like C:\\logs\\20260811\\*.log.")] string pathOrGlob,
         [Description(".NET regular expression to match in the log content (e.g. 'Startup completed').")] string pattern,
         [Description("Maximum wait time in milliseconds.")] int timeoutMs = 60_000,
         [Description("Delay between polls in milliseconds.")] int pollMs = 200,

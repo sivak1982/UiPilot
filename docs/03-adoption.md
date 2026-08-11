@@ -65,10 +65,10 @@ public override void OnFrameworkInitializationCompleted()
 Typical loop: `build_and_start` or `start_app` → `wait_for_element` / `find_elements` → `click` /
 `type_text` / `screenshot` → `restart_app` after edits.
 
-### Driving two apps (e.g. Simulation + OI)
+### Driving two apps
 
 1. Launch each UI with `start_app` (hooks inject UiPilot) **or** call `PilotHost.Start()` in each process.
-2. `start_app(..., session: "sim")` and `start_app(..., session: "oi")` (or `attach` with session names).
+2. `start_app(..., session: "server")` and `start_app(..., session: "client")` (or `attach` with session names).
 3. For a non-UI host: `start_process(..., session: "host")` then `wait_for_log(pathOrGlob, pattern)` —
    path and regex come from the agent/project rules, not from UiPilot.
 4. Pass `session` on forwarding tools, or `select_session` for a sticky default.

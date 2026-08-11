@@ -21,7 +21,7 @@ Running steps directly through a model (e.g. via Ollama) would make results non-
 the same scenario could pass one run and fail the next for reasons unrelated to the app under
 test. Instead:
 
-- **Authoring**: paste a plain-English description ("log in as sysadmin and open Initialize") at
+- **Authoring**: paste a plain-English description ("type a name and click Greet") at
   an agent, which drafts the YAML for you to review and adjust.
 - **Execution**: `ScenarioRunner` — a plain, deterministic engine — runs the same YAML every time.
 - **Diagnosing a failure**: after a FAIL, feed the report (`report.json` + failure screenshot) to
@@ -110,15 +110,15 @@ Exit code `0` = all passed, `1` = a scenario failed, `2` = usage/parse error (no
 
 ```powershell
 dotnet run --project src/UiPilot.Cli -- run samples/scenarios/avalonia-sample-greet.yaml
-dotnet run --project src/UiPilot.Cli -- run samples/scenarios --var user=sysadmin --var password=sysadmin
-dotnet run --project src/UiPilot.Cli -- run samples/scenarios/atmospheric-load-carrier.yaml --foreground
+dotnet run --project src/UiPilot.Cli -- run samples/scenarios --var name=UiPilot
+dotnet run --project src/UiPilot.Cli -- run samples/scenarios/avalonia-sample-greet.yaml --foreground
 ```
 
 **MCP tool** — `run_scenario(path, varsJson?)`, exposed by `UiPilot.Cli` alongside the lifecycle
 and forwarding tools, so an agent can trigger a scenario and read the structured report directly.
 
 ```json
-{ "path": "samples/scenarios/atmospheric-load-carrier.yaml", "varsJson": "{\"password\":\"sysadmin\"}" }
+{ "path": "samples/scenarios/avalonia-sample-greet.yaml", "varsJson": "{\"name\":\"UiPilot\"}" }
 ```
 
 ## The report
@@ -160,7 +160,5 @@ foreground for that step.
 ## Sample scenarios
 
 - [samples/scenarios/avalonia-sample-greet.yaml](../samples/scenarios/avalonia-sample-greet.yaml) —
-  single-app smoke test against `samples/AvaloniaSampleApp`.
-- [samples/scenarios/atmospheric-load-carrier.yaml](../samples/scenarios/atmospheric-load-carrier.yaml) —
-  multi-process regression against the ECF Atmospheric sample (Simulation + Supervisor + Operator
-  Interface): log in, initialize, place a carrier, load it.
+  single-app smoke test against `samples/AvaloniaSampleApp`. Product-specific multi-app scenarios
+  belong in the product repo (or a private suite), not in UiPilot.

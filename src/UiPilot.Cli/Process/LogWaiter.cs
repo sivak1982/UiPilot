@@ -28,8 +28,8 @@ public static class LogWaiter
     /// </summary>
     /// <param name="pathOrGlob">
     /// A concrete file path, a directory (newest file inside), or a glob such as
-    /// <c>C:\logs\20260811\*.ecflog</c>. A wildcard segment may also appear in an
-    /// intermediate directory (e.g. <c>C:\logs\*\*.ecflog</c> for date-stamped
+    /// <c>C:\logs\20260811\*.log</c>. A wildcard segment may also appear in an
+    /// intermediate directory (e.g. <c>C:\logs\*\*.log</c> for date-stamped
     /// subfolders) — matching files are searched recursively under the nearest
     /// literal ancestor directory.
     /// </param>
@@ -137,7 +137,7 @@ public static class LogWaiter
         }
 
         // The immediate parent isn't a literal directory — the glob likely spans multiple
-        // segments (e.g. Logs\Supervisor\*\*.ecflog for date-stamped subfolders). Walk up to
+        // segments (e.g. Logs\Host\*\*.log for date-stamped subfolders). Walk up to
         // the nearest existing ancestor and match the remaining segments recursively.
         return ResolveAcrossWildcardSegments(trimmed);
     }

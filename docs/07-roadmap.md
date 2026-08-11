@@ -44,7 +44,7 @@ Priority order, following the "thin vertical slice first" principle.
 - `ScenarioParser` (YAML + `${var}` substitution) and `ScenarioRunner` over `ConnectionManager`.
 - CLI `run <file-or-folder>` (exit code) and `run_scenario` MCP tool.
 - Fail-fast execution, failure screenshots, `report.json` artifacts.
-- Sample scenarios for `AvaloniaSampleApp` and the ECF Atmospheric sample.
+- Sample scenario for `AvaloniaSampleApp`.
 
 ## Phase 6 - packaging / extensibility
 

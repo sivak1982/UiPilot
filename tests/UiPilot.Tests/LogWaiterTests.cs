@@ -106,22 +106,21 @@ public class LogWaiterTests
     [Fact]
     public async Task WaitAsync_MatchesFileAcrossWildcardDateFolder()
     {
-        // Mirrors ECF-style logs nested under a date-stamped subfolder, e.g.
-        // Logs\Supervisor\20260811\Supervisor.20260811@114236.ecflog, located via a
-        // glob with a wildcard directory segment: Logs\Supervisor\*\*.ecflog.
+        // Logs nested under a date-stamped subfolder, located via a glob with a
+        // wildcard directory segment: Logs\Host\*\*.log.
         var root = Path.Combine(Path.GetTempPath(), "uipilot-tests", Guid.NewGuid().ToString("N"));
-        var dateDir = Path.Combine(root, "Supervisor", "20260811");
+        var dateDir = Path.Combine(root, "Host", "20260811");
         Directory.CreateDirectory(dateDir);
-        var older = Path.Combine(root, "Supervisor", "20260713");
+        var older = Path.Combine(root, "Host", "20260713");
         Directory.CreateDirectory(older);
-        await File.WriteAllTextAsync(Path.Combine(older, "Supervisor.20260713@053033.ecflog"), "stale, no match");
+        await File.WriteAllTextAsync(Path.Combine(older, "host-20260713.log"), "stale, no match");
 
-        var logPath = Path.Combine(dateDir, "Supervisor.20260811@114236.ecflog");
+        var logPath = Path.Combine(dateDir, "host-20260811.log");
         await File.WriteAllTextAsync(logPath, "boot\nStartup completed\n");
 
         try
         {
-            var glob = Path.Combine(root, "Supervisor", "*", "*.ecflog");
+            var glob = Path.Combine(root, "Host", "*", "*.log");
             var result = await LogWaiter.WaitAsync(glob, "Startup completed", timeoutMs: 5_000, pollMs: 50);
 
             Assert.Equal(Path.GetFullPath(logPath), result.Path);
@@ -141,8 +140,8 @@ public class LogWaiterTests
         var dayTwo = Path.Combine(root, "20260811");
         Directory.CreateDirectory(dayOne);
         Directory.CreateDirectory(dayTwo);
-        var older = Path.Combine(dayOne, "a.ecflog");
-        var newer = Path.Combine(dayTwo, "b.ecflog");
+        var older = Path.Combine(dayOne, "a.log");
+        var newer = Path.Combine(dayTwo, "b.log");
         File.WriteAllText(older, "old");
         File.WriteAllText(newer, "new");
         File.SetLastWriteTimeUtc(older, DateTime.UtcNow.AddHours(-1));
@@ -150,7 +149,7 @@ public class LogWaiterTests
 
         try
         {
-            var resolved = LogWaiter.ResolveNewestFile(Path.Combine(root, "*", "*.ecflog"));
+            var resolved = LogWaiter.ResolveNewestFile(Path.Combine(root, "*", "*.log"));
             Assert.Equal(Path.GetFullPath(newer), resolved);
         }
         finally
