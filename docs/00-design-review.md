@@ -35,4 +35,5 @@ lifecycle and security. The MVP fixes those first and defers multi-transport / m
   host the MCP C# SDK. The CLI remains the agent stdio MCP server and an MCP client to the app
   (plus build/launch lifecycle). See [06-protocol.md](06-protocol.md).
 
-See [02-architecture.md](02-architecture.md) for the full picture.
+See [09-design-diagram.md](09-design-diagram.md) for a diagram overview, and
+[02-architecture.md](02-architecture.md) for the full picture.

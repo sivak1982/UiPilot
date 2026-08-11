@@ -103,9 +103,9 @@ See [docs/08-csharp-tests.md](docs/08-csharp-tests.md).
 | `src/UiPilot.Cli` | Out-of-process stdio MCP bridge + app launcher. |
 | `samples/SampleApp` | Minimal WPF app used to validate the loop. |
 | `samples/AvaloniaSampleApp` | Minimal Avalonia app used to validate the loop. |
-| `docs/` | Design review, architecture, adoption, security, tools, protocol, roadmap, C# tests. |
+| `docs/` | Design review, design diagram, architecture, adoption, security, tools, protocol, roadmap, C# tests. |
 
-Start with [docs/01-overview.md](docs/01-overview.md).
+Start with [docs/01-overview.md](docs/01-overview.md) or the [docs/09-design-diagram.md](docs/09-design-diagram.md).
 
 ## Build
 
