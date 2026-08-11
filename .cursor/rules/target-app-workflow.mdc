@@ -16,6 +16,8 @@ adapter / Cli** rather than working around it in one-off scripts.
 
 - Shared protocol/tools belong in `UiPilot.Core`; WPF-only behavior in `UiPilot.Wpf`; Avalonia-only in `UiPilot.Avalonia`; multi-app lifecycle in `UiPilot.Cli`.
 - Keep changes minimal and reusable for any app on that UI stack.
+- **Never add product-specific selectors, paths, credentials, workflows, scenarios, or tests to UiPilot.**
+  Durable product tests belong in the product repository and reference `UiPilot.Client`.
 - Add or update unit/integration tests for new behavior.
 - Run `dotnet test` and ensure **all existing tests pass** before finishing.
 - **Check in** (`git commit`) when pilot code changed — do not leave edits uncommitted.

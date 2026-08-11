@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace UiPilot.Cli.Process;
+namespace UiPilot.Client.Process;
 
 /// <summary>
 /// Resolves <c>DOTNET_STARTUP_HOOKS</c> assemblies shipped next to the CLI

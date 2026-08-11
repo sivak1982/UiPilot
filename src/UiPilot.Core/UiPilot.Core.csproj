@@ -17,6 +17,7 @@
     <InternalsVisibleTo Include="UiPilot.Wpf" />
     <InternalsVisibleTo Include="UiPilot.Avalonia" />
     <InternalsVisibleTo Include="UiPilot.Cli" />
+    <InternalsVisibleTo Include="UiPilot.Client" />
     <InternalsVisibleTo Include="UiPilot.Tests" />
   </ItemGroup>
 

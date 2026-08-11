@@ -3,7 +3,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
-using UiPilot.Cli.Pipe;
+using UiPilot.Client;
+using UiPilot.Client.Pipe;
 using UiPilot.Tools;
 
 namespace UiPilot.Cli.Tools;

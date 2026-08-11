@@ -1,5 +1,5 @@
 using System.Text.Json;
-using UiPilot.Cli.Pipe;
+using UiPilot.Client.Pipe;
 using UiPilot.Server;
 using UiPilot.Tools;
 using Xunit;

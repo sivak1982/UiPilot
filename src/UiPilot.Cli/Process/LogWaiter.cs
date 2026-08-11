@@ -3,7 +3,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using UiPilot.Tools;
 
-namespace UiPilot.Cli.Process;
+namespace UiPilot.Client.Process;
 
 /// <summary>
 /// Result of a successful <see cref="LogWaiter.WaitAsync"/> call.

@@ -1,5 +1,5 @@
-using UiPilot.Cli;
-using UiPilot.Cli.Process;
+using UiPilot.Client;
+using UiPilot.Client.Process;
 using UiPilot.Tools;
 using Xunit;
 

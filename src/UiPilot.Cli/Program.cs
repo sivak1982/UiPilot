@@ -1,14 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using UiPilot.Cli;
-using UiPilot.Cli.Scenario;
+using UiPilot.Client;
 using UiPilot.Cli.Tools;
-
-// Scenario runner mode: `uipilot run <file-or-folder> [--var name=value ...]`.
-// Prints a report to stdout and exits 0 (pass) / 1 (fail) / 2 (usage or parse error).
-if (args.Length > 0 && string.Equals(args[0], "run", StringComparison.OrdinalIgnoreCase))
-    return await ScenarioCommand.RunAsync(args.Skip(1).ToArray());
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -21,8 +15,7 @@ builder.Services
     .AddMcpServer()
     .WithStdioServerTransport()
     .WithTools<LifecycleTools>()
-    .WithTools<ForwardingTools>()
-    .WithTools<ScenarioTools>();
+    .WithTools<ForwardingTools>();
 
 await builder.Build().RunAsync();
 return 0;

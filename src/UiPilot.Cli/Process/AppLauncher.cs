@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 
-namespace UiPilot.Cli.Process;
+namespace UiPilot.Client.Process;
 
 /// <summary>
 /// Builds and launches a desktop UI app (WPF or Avalonia) for the AI edit loop. All child

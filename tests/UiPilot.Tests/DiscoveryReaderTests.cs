@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using UiPilot.Cli.Discovery;
+using UiPilot.Client.Discovery;
 using UiPilot.Server;
 using Xunit;
 

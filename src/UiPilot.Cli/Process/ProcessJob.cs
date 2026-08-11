@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 
-namespace UiPilot.Cli.Process;
+namespace UiPilot.Client.Process;
 
 /// <summary>
 /// A Windows job object holding a launched process and everything it spawns.
@@ -11,8 +11,8 @@ namespace UiPilot.Cli.Process;
 /// that launches gRPC service hosts). Terminating the job kills every descendant regardless.
 /// </para>
 /// <para>
-/// The job deliberately does not set <c>KILL_ON_JOB_CLOSE</c>: sessions must outlive this CLI
-/// process so <c>keepOpen</c> scenarios and separate <c>attach</c> calls keep working.
+/// The job deliberately does not set <c>KILL_ON_JOB_CLOSE</c>: sessions may intentionally outlive
+/// this CLI process and be picked up later by a separate <c>attach</c> call.
 /// </para>
 /// </summary>
 public sealed class ProcessJob : IDisposable

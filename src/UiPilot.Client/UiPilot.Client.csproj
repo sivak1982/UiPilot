@@ -1,27 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
-    <RootNamespace>UiPilot.Cli</RootNamespace>
-    <AssemblyName>UiPilot.Cli</AssemblyName>
-    <!-- When packaged as a dotnet tool the invocable command is still 'uipilot'. -->
-    <ToolCommandName>uipilot</ToolCommandName>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
-    <!-- MCP stdio servers must never write to stdout except protocol frames. -->
-    <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\UiPilot.Core\UiPilot.Core.csproj" />
-    <ProjectReference Include="..\UiPilot.Client\UiPilot.Client.csproj" />
     <ProjectReference Include="..\UiPilot.Avalonia.StartupHook\UiPilot.Avalonia.StartupHook.csproj">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
@@ -32,17 +23,16 @@
     </ProjectReference>
   </ItemGroup>
 
-  <!-- Compiled into UiPilot.Client so product tests can use lifecycle/transport without
-       referencing this executable host. -->
+  <!-- Lifecycle/transport implementation is shared by the MCP host and typed client.
+       Keeping it in this assembly prevents product tests from depending on the CLI executable. -->
   <ItemGroup>
-    <Compile Remove="ConnectionManager.cs" />
-    <Compile Remove="PilotCliException.cs" />
-    <Compile Remove="Discovery\**\*.cs" />
-    <Compile Remove="Pipe\**\*.cs" />
-    <Compile Remove="Process\**\*.cs" />
+    <Compile Include="..\UiPilot.Cli\ConnectionManager.cs" Link="Infrastructure\ConnectionManager.cs" />
+    <Compile Include="..\UiPilot.Cli\PilotCliException.cs" Link="Infrastructure\PilotCliException.cs" />
+    <Compile Include="..\UiPilot.Cli\Discovery\*.cs" Link="Infrastructure\Discovery\%(Filename)%(Extension)" />
+    <Compile Include="..\UiPilot.Cli\Pipe\*.cs" Link="Infrastructure\Pipe\%(Filename)%(Extension)" />
+    <Compile Include="..\UiPilot.Cli\Process\*.cs" Link="Infrastructure\Process\%(Filename)%(Extension)" />
   </ItemGroup>
 
-  <!-- Ship startup hooks under hooks/avalonia and hooks/wpf next to the CLI. -->
   <Target Name="CopyStartupHooks" AfterTargets="Build">
     <PropertyGroup>
       <_AvaloniaHookOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\UiPilot.Avalonia.StartupHook\bin\$(Configuration)\net8.0'))</_AvaloniaHookOut>
@@ -52,13 +42,11 @@
     </PropertyGroup>
     <MakeDir Directories="$(_HooksAvalonia);$(_HooksWpf)" />
     <ItemGroup>
-      <_AvaloniaHookFiles Include="$(_AvaloniaHookOut)\*.dll" />
-      <_AvaloniaHookFiles Include="$(_AvaloniaHookOut)\*.json" />
-      <_WpfHookFiles Include="$(_WpfHookOut)\*.dll" />
-      <_WpfHookFiles Include="$(_WpfHookOut)\*.json" />
+      <_AvaloniaHookFiles Include="$(_AvaloniaHookOut)\*.dll;$(_AvaloniaHookOut)\*.json" />
+      <_WpfHookFiles Include="$(_WpfHookOut)\*.dll;$(_WpfHookOut)\*.json" />
     </ItemGroup>
-    <Copy SourceFiles="@(_AvaloniaHookFiles)" DestinationFolder="$(_HooksAvalonia)" SkipUnchangedFiles="true" Condition="'@(_AvaloniaHookFiles)' != ''" />
-    <Copy SourceFiles="@(_WpfHookFiles)" DestinationFolder="$(_HooksWpf)" SkipUnchangedFiles="true" Condition="'@(_WpfHookFiles)' != ''" />
+    <Copy SourceFiles="@(_AvaloniaHookFiles)" DestinationFolder="$(_HooksAvalonia)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_WpfHookFiles)" DestinationFolder="$(_HooksWpf)" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

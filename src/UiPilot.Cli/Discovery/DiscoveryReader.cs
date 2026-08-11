@@ -1,7 +1,7 @@
 using System.Text.Json;
 using UiPilot.Server;
 
-namespace UiPilot.Cli.Discovery;
+namespace UiPilot.Client.Discovery;
 
 /// <summary>Reads discovery files and filters out entries whose process is gone.</summary>
 public sealed class DiscoveryReader

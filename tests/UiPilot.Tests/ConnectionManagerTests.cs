@@ -1,6 +1,6 @@
 using System.Reflection;
-using UiPilot.Cli;
-using UiPilot.Cli.Process;
+using UiPilot.Client;
+using UiPilot.Client.Process;
 using UiPilot.Tools;
 using Xunit;
 
@@ -185,7 +185,7 @@ public class AppLauncherTests
         var missing = Path.Combine(Path.GetTempPath(), "uipilot-tests", Guid.NewGuid().ToString("N"), "Nope.exe");
 
         Assert.Throws<FileNotFoundException>(() =>
-            UiPilot.Cli.Process.AppLauncher.Start(missing));
+            UiPilot.Client.Process.AppLauncher.Start(missing));
     }
 
     /// <summary>
@@ -203,7 +203,7 @@ public class AppLauncherTests
         var cmd = Path.Combine(Environment.SystemDirectory, "cmd.exe");
 
         // `start /b` detaches the ping, then cmd itself exits immediately.
-        var parent = UiPilot.Cli.Process.AppLauncher.StartProcess(
+        var parent = UiPilot.Client.Process.AppLauncher.StartProcess(
             cmd, arguments: "/c start /b ping -n 120 127.0.0.1", showWindow: false);
         try
         {
@@ -213,7 +213,7 @@ public class AppLauncherTests
                 TimeSpan.FromSeconds(20));
             Assert.NotNull(grandchild);
 
-            UiPilot.Cli.Process.AppLauncher.KillTree(parent);
+            UiPilot.Client.Process.AppLauncher.KillTree(parent);
 
             var stillAlive = WaitFor(
                 () => PingPids().Contains(grandchild!.Value),
@@ -223,7 +223,7 @@ public class AppLauncherTests
         }
         finally
         {
-            UiPilot.Cli.Process.AppLauncher.KillTree(parent);
+            UiPilot.Client.Process.AppLauncher.KillTree(parent);
             parent.Dispose();
         }
     }
@@ -231,7 +231,7 @@ public class AppLauncherTests
     [Fact]
     public void KillByPid_UnknownPid_DoesNotThrow()
     {
-        UiPilot.Cli.Process.AppLauncher.KillByPid(-1);
+        UiPilot.Client.Process.AppLauncher.KillByPid(-1);
     }
 
     private static HashSet<int> PingPids() =>

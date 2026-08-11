@@ -1,13 +1,13 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using UiPilot.Cli.Discovery;
-using UiPilot.Cli.Pipe;
-using UiPilot.Cli.Process;
+using UiPilot.Client.Discovery;
+using UiPilot.Client.Pipe;
+using UiPilot.Client.Process;
 using UiPilot.Server;
 using UiPilot.Tools;
 
-namespace UiPilot.Cli;
+namespace UiPilot.Client;
 
 /// <summary>
 /// Snapshot of an attached pilot session or a tracked non-pilot process session.

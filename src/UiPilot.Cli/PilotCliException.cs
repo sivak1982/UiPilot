@@ -1,4 +1,4 @@
-namespace UiPilot.Cli;
+namespace UiPilot.Client;
 
 public sealed class PilotCliException : Exception
 {

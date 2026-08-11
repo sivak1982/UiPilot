@@ -17,6 +17,26 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\UiPilot.Core\UiPilot.Core.csproj" />
     <ProjectReference Include="..\..\src\UiPilot.Cli\UiPilot.Cli.csproj" />
+    <ProjectReference Include="..\..\src\UiPilot.Client\UiPilot.Client.csproj" />
+    <ProjectReference Include="..\..\samples\AvaloniaSampleApp\AvaloniaSampleApp.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
   </ItemGroup>
+
+  <!-- Product test projects receive these files from the future UiPilot.Client package.
+       This repository test copies them explicitly to validate zero-edit startup hooks. -->
+  <Target Name="CopyClientTestStartupHooks" AfterTargets="Build">
+    <PropertyGroup>
+      <_AvaloniaHookOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\src\UiPilot.Avalonia.StartupHook\bin\$(Configuration)\net8.0'))</_AvaloniaHookOut>
+      <_WpfHookOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\src\UiPilot.Wpf.StartupHook\bin\$(Configuration)\net8.0'))</_WpfHookOut>
+    </PropertyGroup>
+    <MakeDir Directories="$(OutputPath)hooks\avalonia;$(OutputPath)hooks\wpf" />
+    <ItemGroup>
+      <_ClientAvaloniaHookFiles Include="$(_AvaloniaHookOut)\*.dll;$(_AvaloniaHookOut)\*.json" />
+      <_ClientWpfHookFiles Include="$(_WpfHookOut)\*.dll;$(_WpfHookOut)\*.json" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_ClientAvaloniaHookFiles)" DestinationFolder="$(OutputPath)hooks\avalonia" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_ClientWpfHookFiles)" DestinationFolder="$(OutputPath)hooks\wpf" SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

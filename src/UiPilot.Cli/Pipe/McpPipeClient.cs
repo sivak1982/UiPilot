@@ -4,7 +4,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using UiPilot.Server;
 
-namespace UiPilot.Cli.Pipe;
+namespace UiPilot.Client.Pipe;
 
 /// <summary>
 /// MCP client over a Windows named pipe. Performs the discovery-token auth gate, then speaks

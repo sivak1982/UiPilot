@@ -77,16 +77,13 @@ Cursor/Claude  --stdio MCP-->  UiPilot.Cli  --MCP over named pipe-->  your app (
 
 Full catalog: [docs/05-tools.md](docs/05-tools.md).
 
-## Scenarios: deterministic UI test cases in YAML
+## Durable C# regression tests
 
-Write test cases as plain YAML (`start_app`, `click`, `type`, `expect_visible`, ...) and run them
-with a pass/fail report, no AI in the execution path:
+Use MCP interactively to prove a UI flow, then save the same commands as a normal C# test through
+`UiPilot.Client`. Each call returns a typed response that the test can inspect and assert on.
+Regression runs use `dotnet test` with no agent in the execution path.
 
-```powershell
-dotnet run --project src/UiPilot.Cli -- run samples/scenarios/avalonia-sample-greet.yaml
-```
-
-Or via the `run_scenario(path, varsJson?)` MCP tool. See [docs/08-scenarios.md](docs/08-scenarios.md).
+See [docs/08-csharp-tests.md](docs/08-csharp-tests.md).
 
 ## Security defaults
 
@@ -102,11 +99,11 @@ Or via the `run_scenario(path, varsJson?)` MCP tool. See [docs/08-scenarios.md](
 | `src/UiPilot.Core` | Shared core (protocol + backend contract). |
 | `src/UiPilot.Wpf` | WPF in-process library. |
 | `src/UiPilot.Avalonia` | Avalonia in-process library. |
+| `src/UiPilot.Client` | Typed C# client for deterministic product tests. |
 | `src/UiPilot.Cli` | Out-of-process stdio MCP bridge + app launcher. |
 | `samples/SampleApp` | Minimal WPF app used to validate the loop. |
 | `samples/AvaloniaSampleApp` | Minimal Avalonia app used to validate the loop. |
-| `samples/scenarios` | YAML test scenarios for the sample apps. |
-| `docs/` | Design review, architecture, adoption, security, tools, protocol, roadmap, scenarios. |
+| `docs/` | Design review, architecture, adoption, security, tools, protocol, roadmap, C# tests. |
 
 Start with [docs/01-overview.md](docs/01-overview.md).
 

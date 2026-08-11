@@ -77,3 +77,22 @@ Typical loop: `build_and_start` or `start_app` → `wait_for_element` / `find_el
 Element ids are per process — always pair an id with the session that produced it.
 
 See [05-tools.md](05-tools.md).
+
+## Freezing an explored flow as a C# test
+
+Reference `UiPilot.Client` from the product test project. Its methods mirror MCP tools and return
+typed responses:
+
+```csharp
+await using var pilot = new UiPilotClient();
+await pilot.StartAppAsync(appPath, session: "app");
+
+var button = (await pilot.WaitForElementAsync(
+    "SaveButton", exact: true, session: "app")).Single();
+var clicked = await pilot.ClickAsync(button.Id, session: "app");
+
+Assert.StartsWith("synthetic:", clicked.Method);
+```
+
+Explore first with MCP, then ask the agent to write the equivalent C# test. Product-specific
+selectors and workflows stay in the product repository. See [08-csharp-tests.md](08-csharp-tests.md).

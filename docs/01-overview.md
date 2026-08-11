@@ -42,4 +42,5 @@ Multiple named sessions can be attached at once (e.g. a server UI and a client U
 
 - [03-adoption.md](03-adoption.md) — one-line wiring
 - [05-tools.md](05-tools.md) — full MCP tool catalog
+- [08-csharp-tests.md](08-csharp-tests.md) — explore with MCP, freeze as deterministic C# tests
 - [samples/SampleApp](../samples/SampleApp) / [samples/AvaloniaSampleApp](../samples/AvaloniaSampleApp)
