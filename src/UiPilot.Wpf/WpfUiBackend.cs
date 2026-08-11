@@ -31,8 +31,8 @@ internal sealed class WpfUiBackend : IUiBackend
     public IReadOnlyList<ElementInfo> Find(string? query, int limit, string? rootId) =>
         VisualTreeQuery.Find(Elements, query, limit, rootId);
 
-    public FindPage FindPage(string? query, int limit, int offset, string? rootId) =>
-        VisualTreeQuery.FindPage(Elements, query, limit, offset, rootId);
+    public FindPage FindPage(string? query, int limit, int offset, string? rootId, bool exactMatch = false) =>
+        VisualTreeQuery.FindPage(Elements, query, limit, offset, rootId, exactMatch);
 
     public ElementInfo? Inspect(string id, bool includeChildren, int depth, IReadOnlyList<string>? propertyNames) =>
         VisualTreeQuery.Inspect(Elements, id, includeChildren, depth, propertyNames);

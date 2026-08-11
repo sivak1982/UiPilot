@@ -28,27 +28,59 @@ internal static class VisualTree
         return new List<ElementInfo>(FindPage(registry, query, limit, 0, rootId).Elements);
     }
 
-    public static FindPage FindPage(ElementRegistry registry, string? query, int limit, int offset, string? rootId)
+    /// <summary>
+    /// Finds elements whose type, name, tooltip, AutomationId, or text matches <paramref name="query"/>.
+    /// <paramref name="exactMatch"/> requires whole-value equality, which is what state assertions need:
+    /// a substring "Initialized" also matches a "Not Initialized" label.
+    /// </summary>
+    public static FindPage FindPage(
+        ElementRegistry registry,
+        string? query,
+        int limit,
+        int offset,
+        string? rootId,
+        bool exactMatch = false)
     {
-        var results = new List<ElementInfo>();
         var roots = ResolveRoots(registry, rootId);
         var q = query?.Trim();
         var hasQuery = !string.IsNullOrEmpty(q);
         var safeLimit = Math.Max(0, limit);
         var safeOffset = Math.Max(0, offset);
-        var matched = 0;
 
+        // Ancestor containers can incidentally match on their .NET type name (e.g. a
+        // 'MainLoadPort' user control matching a "load" query) and, being ancestors, are
+        // always visited before the descendant the caller actually meant (e.g. its "Load"
+        // button). When any node is an exact AutomationId match, prefer those exclusively so
+        // a precise identifier always wins over an incidental substring match elsewhere.
+        var exact = new List<Visual>();
+        var loose = new List<Visual>();
         foreach (var root in roots)
         {
             foreach (var node in EnumerateDescendants(root, includeSelf: true))
             {
-                if (!hasQuery || Matches(node, q!))
+                if (!hasQuery)
                 {
-                    if (matched >= safeOffset && results.Count < safeLimit)
-                        results.Add(BuildInfo(node, registry));
-                    matched++;
+                    loose.Add(node);
+                }
+                else if (IsExactAutomationIdMatch(node, q!))
+                {
+                    exact.Add(node);
+                }
+                else if (Matches(node, q!, exactMatch))
+                {
+                    loose.Add(node);
                 }
             }
+        }
+
+        var matches = exact.Count > 0 ? exact : loose;
+        var results = new List<ElementInfo>();
+        var matched = 0;
+        foreach (var node in matches)
+        {
+            if (matched >= safeOffset && results.Count < safeLimit)
+                results.Add(BuildInfo(node, registry));
+            matched++;
         }
 
         return new FindPage
@@ -146,18 +178,27 @@ internal static class VisualTree
         }
     }
 
-    internal static bool Matches(Visual obj, string query)
+    private static bool IsExactAutomationIdMatch(Visual obj, string query) =>
+        obj is Control control &&
+        string.Equals(AutomationProperties.GetAutomationId(control), query, StringComparison.OrdinalIgnoreCase);
+
+    internal static bool Matches(Visual obj, string query, bool exact = false)
     {
-        if (Contains(obj.GetType().Name, query)) return true;
+        if (IsMatch(obj.GetType().Name, query, exact)) return true;
         if (obj is Control control)
         {
-            if (Contains(control.Name, query)) return true;
-            if (Contains(ToolTip.GetTip(control) as string, query)) return true;
-            if (Contains(AutomationProperties.GetAutomationId(control), query)) return true;
+            if (IsMatch(control.Name, query, exact)) return true;
+            if (IsMatch(ToolTip.GetTip(control) as string, query, exact)) return true;
+            if (IsMatch(AutomationProperties.GetAutomationId(control), query, exact)) return true;
         }
-        if (Contains(GetText(obj), query)) return true;
+        if (IsMatch(GetText(obj), query, exact)) return true;
         return false;
     }
+
+    private static bool IsMatch(string? value, string query, bool exact) =>
+        exact
+            ? string.Equals(value, query, StringComparison.OrdinalIgnoreCase)
+            : Contains(value, query);
 
     private static bool Contains(string? value, string query) =>
         !string.IsNullOrEmpty(value) && value!.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;

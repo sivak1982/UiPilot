@@ -31,13 +31,30 @@ Defined in [LifecycleTools.cs](../src/UiPilot.Cli/Tools/LifecycleTools.cs).
 | `select_session` | `session` | Sticky active session for forwarding tools that omit `session`. |
 | `attach` | `pid?`, `processName?`, `uiFramework?`, `session?` | Attach without dropping other sessions. Session defaults to process name. |
 | `detach` | `session?` | Drop one session's pipe without killing the process. |
-| `build_and_start` | `project`, `configuration="Debug"`, `platform?`, `session?` | Build, launch with pilot enabled, attach. Replaces only the same session name. |
-| `start_app` | `path`, `session?`, `workingDirectory?` | Launch a prebuilt `.exe`/`.dll` (no rebuild), attach. |
-| `start_process` | `path`, `session?`, `workingDirectory?`, `arguments?` | Launch a **non-pilot** process; track as `kind: process` (no MCP pipe). |
+| `build_and_start` | `project`, `configuration="Debug"`, `platform?`, `session?`, `foreground=false` | Build, launch with pilot enabled, attach. Replaces only the same session name. |
+| `start_app` | `path`, `session?`, `workingDirectory?`, `foreground=false` | Launch a prebuilt `.exe`/`.dll` (no rebuild), attach. |
+| `start_process` | `path`, `session?`, `workingDirectory?`, `arguments?`, `showWindow=true` | Launch a **non-pilot** process; track as `kind: process` (no MCP pipe). |
 | `wait_for_log` | `pathOrGlob`, `pattern`, `timeoutMs=60000`, `pollMs=200`, `fromEnd=false` | Poll a file / newest glob match until regex matches (generic readiness). |
 | `restart_app` | `session?` | Relaunch a CLI-started session (`build_and_start`, `start_app`, or `start_process`). |
-| `stop_app` | `session?` | Kill one session's process and clear it. |
-| `stop_all` | - | Kill every session. |
+| `stop_app` | `session?` | Kill one session's process tree and clear it. |
+| `stop_all` | - | Kill every session's process tree. |
+
+### Window visibility
+
+UI apps start minimized so the agent/IDE stays visible, and screenshots work anyway (they render
+offscreen). Pass `foreground: true` to `start_app` / `build_and_start` when a human is watching —
+the app then starts visible and is pulled to the front. `bring_to_front` still works on demand.
+
+Process sessions get their own console window by default (`showWindow: true`), so a console host
+like a supervisor appears in the taskbar and its output stays out of the CLI's stdout stream. Pass
+`showWindow: false` to have it share this console instead.
+
+### Stopping spawned processes
+
+`stop_app` / `stop_all` stop everything a session spawned, not just the process UiPilot launched.
+Each launched process is placed in a Windows job object, so service hosts started by a supervisor
+are terminated too — including ones that outlive their parent, which a plain process-tree kill
+cannot reach.
 
 ### Readiness (console / non-UI)
 
@@ -59,9 +76,9 @@ Every forwarding tool accepts optional `session`. Object results are enriched wi
 | Tool | Args | Returns / notes |
 |---|---|---|
 | `list_windows` | `session?` | Windows with identity + bounds. |
-| `find_elements` | `query?`, `limit=50`, `offset=0`, `root?`, `session?` | `{ count, total, hasMore, offset, limit, elements, session }`; `count` is this page, `total` is all matches. |
+| `find_elements` | `query?`, `limit=50`, `offset=0`, `root?`, `exact=false`, `session?` | `{ count, total, hasMore, offset, limit, elements, session }`; `count` is this page, `total` is all matches. |
 | `inspect_element` | `id`, `includeChildren=false`, `depth=1`, `properties?`, `session?` | One element; optional comma-separated property names. |
-| `wait_for_element` | `query`, `root?`, `timeoutMs=10000`, `pollMs=200`, `session?` | Polls until a match appears or times out. |
+| `wait_for_element` | `query`, `root?`, `timeoutMs=10000`, `pollMs=200`, `exact=false`, `session?` | Polls until a match appears or times out. |
 | `click` | `id`, `session?` | `{ method, session }` synthetic click / toggle / expand. |
 | `drag` | start: `id` **or** `fromX`/`fromY`; end: `toId` **or** `toX`/`toY` **or** `dx`/`dy`; optional `grabOffset*`, `steps`, `stepDelayMs`, `settleMs`, `session?` | Real OS mouse drag (Windows SendInput). |
 | `type_text` | `id`, `text`, `session?` | `{ method, session }`. |
@@ -84,6 +101,16 @@ Every forwarding tool accepts optional `session`. Object results are enriched wi
 `find_elements` / `list_windows` / `wait_for_element` return stable `id`s (e.g. `e42`).
 Handles are weak and **scoped to one session**; if collected, tools return structured
 `{ error, code: "stale_element", … }`.
+
+### Matching
+
+`query` matches a case-insensitive substring of an element's type, name, AutomationId, tooltip,
+or text, and an exact AutomationId match always wins over incidental substring matches elsewhere
+in the tree.
+
+Pass `exact: true` when a substring would be ambiguous — most often for state labels that contain
+one another. Asserting `Initialized` also matches a `Not Initialized` label (and an
+`initializedLed` control); `exact: true` requires the whole value to be equal.
 
 ### Interaction fidelity
 

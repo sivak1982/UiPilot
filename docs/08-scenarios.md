@@ -46,7 +46,12 @@ steps:
 
 - **`name`** — used in the report and artifacts folder name; defaults to the file name.
 - **`keepOpen: true`** — leave every started session running after the scenario finishes (default
-  `false`: all sessions are stopped via `stop_all` when the run ends).
+  `false`: all sessions are stopped via `stop_all` when the run ends, including anything they
+  spawned).
+- **`foreground: true`** — start UI sessions visible and pull whichever app is being driven to the
+  front as the scenario moves between sessions, so a human can watch. Default runs minimized (the
+  agent/IDE stays visible; screenshots render offscreen either way). `--foreground` on the CLI turns
+  it on without editing the file, and individual `start_app` steps accept `foreground` too.
 - **`vars`** — a flat map of substitution values. `${name}` in any step property resolves, in
   order, from: a caller-supplied override, `vars`, then an environment variable of that name. An
   unresolved `${...}` fails at parse time (before any app is launched).
@@ -60,23 +65,43 @@ steps:
 
 | Verb | Required properties | Behavior |
 |---|---|---|
-| `start_app` | `path` | `ConnectionManager.StartAppAsync` — launches a pilot-enabled app via `DOTNET_STARTUP_HOOKS`. Optional `session`, `workingDirectory`, `useStartupHook`, `uiFramework`. |
-| `start_process` | `path` | `StartProcessAsync` — tracks a non-pilot process (e.g. a console host) for lifecycle only. Optional `session`, `workingDirectory`, `arguments`. |
+| `start_app` | `path` | `ConnectionManager.StartAppAsync` — launches a pilot-enabled app via `DOTNET_STARTUP_HOOKS`. Optional `session`, `workingDirectory`, `useStartupHook`, `uiFramework`, `foreground`. |
+| `start_process` | `path` | `StartProcessAsync` — tracks a non-pilot process (e.g. a console host) for lifecycle only. Optional `session`, `workingDirectory`, `arguments`, `showWindow` (default `true`: own console window, visible in the taskbar). |
 | `attach` | none | Attaches to an already-running pilot app. Optional `pid`, `processName`, `uiFramework`, `session`. |
 | `wait_for_log` | `pathOrGlob`, `pattern` | Generic readiness wait (`LogWaiter`) — polls a file/glob for a regex match. Optional `timeoutMs` (60000), `pollMs` (200), `fromEnd`. |
-| `wait` / `expect_visible` | `query` | Resolves an element via `wait_for_element`; fails the step if nothing matches within `timeoutMs` (10000). |
+| `wait` | `query` | Resolves an element via `wait_for_element`; fails the step if nothing matches within `timeoutMs` (10000). |
+| `expect_visible` | `query` | Like `wait`, but the match must also be **on screen** — apps often keep both state labels in the tree and toggle visibility. |
 | `expect_not_visible` | `query` | Fails if any match is still visible after `timeoutMs`. |
-| `click` | `query` or `id` | Resolves (if `query`) then `click`s the element. |
+| `click` | `query` or `id` | Resolves (if `query`) then `click`s the element. Optional `untilVisible` (+ `untilExact`, `retryMs` = 2000) re-clicks until that state appears. |
 | `type` | `query`/`id`, `text` | Resolves then `type_text`s. |
 | `press_keys` | `keys` | Sends a key chord; optional `id`/`query` to focus first. |
 | `select_item` | `query`/`id`, `text` or `index` | Resolves then `select_item`s. |
 | `sleep` | `ms` | Plain delay; use sparingly — prefer `wait`/`wait_for_log`. |
 | `screenshot` | none | Saves a named screenshot into the run's artifacts folder. Optional `session`, `name`. |
-| `stop_app` | none | Stops one session (`session`, or the active one). |
-| `stop_all` | none | Stops every session immediately. |
+| `stop_app` | none | Stops one session (`session`, or the active one) and everything it spawned. |
+| `stop_all` | none | Stops every session immediately, including spawned child processes. |
 
 Any verb accepts `session` to target a specific named session. `click`/`type`/`select_item`/`wait`/
 `expect_visible` accept an explicit `id` instead of `query` to skip re-resolving an element handle.
+
+Any verb that takes a `query` also accepts `exact: true`, which requires the query to equal a whole
+name/AutomationId/type/text instead of matching a substring. State assertions usually need it:
+
+```yaml
+- expect_visible: { query: Initialized, exact: true } # without exact, "Not Initialized" matches too
+```
+
+A command-bound button can be present and enabled while its command binding is still pending, in
+which case the click is silently dropped. `untilVisible` makes the step self-correcting by
+re-clicking until the expected state shows up:
+
+```yaml
+- click: { query: Initialize, exact: true, untilVisible: Initialized, untilExact: true, timeoutMs: 60000 }
+```
+
+Step messages in the report name the control that was matched and how an interaction was performed
+(e.g. `Typed into SecurePasswordBox 'passwordBox' id e2 via synthetic:setpassword`), which is the
+quickest way to spot a query that resolved to the wrong control.
 
 ## Running scenarios
 
@@ -86,6 +111,7 @@ Exit code `0` = all passed, `1` = a scenario failed, `2` = usage/parse error (no
 ```powershell
 dotnet run --project src/UiPilot.Cli -- run samples/scenarios/avalonia-sample-greet.yaml
 dotnet run --project src/UiPilot.Cli -- run samples/scenarios --var user=sysadmin --var password=sysadmin
+dotnet run --project src/UiPilot.Cli -- run samples/scenarios/atmospheric-load-carrier.yaml --foreground
 ```
 
 **MCP tool** — `run_scenario(path, varsJson?)`, exposed by `UiPilot.Cli` alongside the lifecycle

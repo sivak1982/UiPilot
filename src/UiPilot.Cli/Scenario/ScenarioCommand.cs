@@ -1,7 +1,8 @@
 namespace UiPilot.Cli.Scenario;
 
 /// <summary>
-/// Console entry point for <c>uipilot run &lt;file-or-folder&gt; [--var name=value ...]</c>.
+/// Console entry point for
+/// <c>uipilot run &lt;file-or-folder&gt; [--var name=value ...] [--foreground]</c>.
 /// Runs one scenario file, or every <c>*.yaml</c>/<c>*.yml</c> in a folder, printing per-step
 /// progress and a final summary. Exit code 0 = all passed, 1 = failure, 2 = usage/parse error.
 /// </summary>
@@ -10,11 +11,16 @@ public static class ScenarioCommand
     public static async Task<int> RunAsync(string[] args, CancellationToken ct = default)
     {
         string? target = null;
+        var foreground = false;
         var overrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         for (var i = 0; i < args.Length; i++)
         {
-            if (args[i] is "--var" or "-v")
+            if (args[i] is "--foreground" or "-f")
+            {
+                foreground = true;
+            }
+            else if (args[i] is "--var" or "-v")
             {
                 if (i + 1 >= args.Length || args[i + 1].IndexOf('=') <= 0)
                 {
@@ -39,7 +45,8 @@ public static class ScenarioCommand
 
         if (target is null)
         {
-            Console.Error.WriteLine("Usage: uipilot run <scenario.yaml | folder> [--var name=value ...]");
+            Console.Error.WriteLine(
+                "Usage: uipilot run <scenario.yaml | folder> [--var name=value ...] [--foreground]");
             return 2;
         }
 
@@ -69,7 +76,7 @@ public static class ScenarioCommand
         var anyFailed = false;
         foreach (var file in files)
         {
-            var passed = await RunOneAsync(file, overrides, ct).ConfigureAwait(false);
+            var passed = await RunOneAsync(file, overrides, foreground, ct).ConfigureAwait(false);
             anyFailed |= !passed;
         }
 
@@ -77,7 +84,7 @@ public static class ScenarioCommand
     }
 
     private static async Task<bool> RunOneAsync(
-        string file, IReadOnlyDictionary<string, string> overrides, CancellationToken ct)
+        string file, IReadOnlyDictionary<string, string> overrides, bool foreground, CancellationToken ct)
     {
         ScenarioDocument document;
         try
@@ -88,6 +95,17 @@ public static class ScenarioCommand
         {
             Console.Error.WriteLine($"PARSE ERROR  {Path.GetFileName(file)}: {ex.Message}");
             return false;
+        }
+
+        if (foreground && !document.Foreground)
+        {
+            document = new ScenarioDocument
+            {
+                Name = document.Name,
+                KeepOpen = document.KeepOpen,
+                Foreground = true,
+                Steps = document.Steps,
+            };
         }
 
         Console.WriteLine($"=== {document.Name} ({document.Steps.Count} steps) ===");

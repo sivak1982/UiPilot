@@ -39,22 +39,36 @@ public static class AppLauncher
     /// When <paramref name="useStartupHook"/> is true (default), sets process-scoped
     /// <c>DOTNET_STARTUP_HOOKS</c> so the app need not call <c>PilotHost.Start</c> itself.
     /// </summary>
+    /// <param name="startMinimized">
+    /// When true (default) the app starts minimized so the agent/IDE stays visible. Pass false to
+    /// drive it in the foreground, e.g. when a human is watching the run.
+    /// </param>
     public static System.Diagnostics.Process Start(
         string targetAssemblyOrExePath,
         string? workingDirectory = null,
         bool useStartupHook = true,
-        string? uiFramework = null) =>
-        StartCore(targetAssemblyOrExePath, workingDirectory, arguments: null, enablePilot: true, useStartupHook, uiFramework);
+        string? uiFramework = null,
+        bool startMinimized = true) =>
+        StartCore(
+            targetAssemblyOrExePath, workingDirectory, arguments: null, enablePilot: true,
+            useStartupHook, uiFramework, startMinimized, showWindow: false);
 
     /// <summary>
     /// Start a generic (non-pilot) process — console hosts, helpers, etc. Does not set
     /// <c>UIPILOT_*</c> env vars and does not wait for a discovery file.
     /// </summary>
+    /// <param name="showWindow">
+    /// When true (default) the process gets its own console window, so it appears in the taskbar
+    /// and its output stays out of this process's stdout. Pass false to inherit this console.
+    /// </param>
     public static System.Diagnostics.Process StartProcess(
         string exePath,
         string? workingDirectory = null,
-        string? arguments = null) =>
-        StartCore(exePath, workingDirectory, arguments, enablePilot: false, useStartupHook: false, uiFramework: null);
+        string? arguments = null,
+        bool showWindow = true) =>
+        StartCore(
+            exePath, workingDirectory, arguments, enablePilot: false, useStartupHook: false,
+            uiFramework: null, startMinimized: false, showWindow);
 
     private static System.Diagnostics.Process StartCore(
         string targetAssemblyOrExePath,
@@ -62,7 +76,9 @@ public static class AppLauncher
         string? arguments,
         bool enablePilot,
         bool useStartupHook,
-        string? uiFramework)
+        string? uiFramework,
+        bool startMinimized,
+        bool showWindow)
     {
         if (string.IsNullOrWhiteSpace(targetAssemblyOrExePath))
             throw new ArgumentException("Target path is required.", nameof(targetAssemblyOrExePath));
@@ -78,7 +94,10 @@ public static class AppLauncher
 
         var psi = new ProcessStartInfo
         {
-            UseShellExecute = false,
+            // ShellExecute gives a console host its own window (and taskbar button) instead of
+            // sharing ours, which also keeps its output out of this process's stdout MCP stream.
+            // It rules out psi.Environment, so it is only used for non-pilot processes.
+            UseShellExecute = showWindow && !enablePilot,
             RedirectStandardOutput = false,
             RedirectStandardError = false,
             WorkingDirectory = workDir,
@@ -89,7 +108,8 @@ public static class AppLauncher
             psi.Environment["UIPILOT_ENABLE"] = "1";
             // Keep the driven app out of the way so the agent/IDE stays visible. Offscreen screenshots
             // still work while minimized; use the bring_to_front tool to show it on demand.
-            psi.Environment["UIPILOT_START_MINIMIZED"] = "1";
+            if (startMinimized)
+                psi.Environment["UIPILOT_START_MINIMIZED"] = "1";
 
             var appDir = workDir ?? Path.GetDirectoryName(fullPath) ?? ".";
             var hookPath = StartupHookLocator.ApplyTo(psi, appDir, uiFramework, useStartupHook);
@@ -120,6 +140,13 @@ public static class AppLauncher
 
         var process = System.Diagnostics.Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start the app process.");
+
+        // Track descendants from the moment the process starts, so stopping the session also stops
+        // whatever it spawns (service hosts, helper processes) even after it has exited itself.
+        var job = ProcessJob.TryCreateFor(process, $"uipilot-{process.Id}");
+        if (job != null)
+            Jobs[process.Id] = job;
+
         return process;
     }
 
@@ -184,6 +211,7 @@ public static class AppLauncher
         if (process == null) return;
         try
         {
+            TerminateJob(process.Id);
             if (!process.HasExited)
                 process.Kill(entireProcessTree: true);
         }
@@ -199,6 +227,7 @@ public static class AppLauncher
     /// </summary>
     public static void KillByPid(int pid)
     {
+        TerminateJob(pid);
         try
         {
             using var process = System.Diagnostics.Process.GetProcessById(pid);
@@ -209,5 +238,15 @@ public static class AppLauncher
         {
             // ignore: already exited, or access denied (CLI not elevated for an elevated target)
         }
+    }
+
+    /// <summary>Jobs for CLI-launched processes, keyed by pid. See <see cref="ProcessJob"/>.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, ProcessJob> Jobs = new();
+
+    private static void TerminateJob(int pid)
+    {
+        if (!Jobs.TryRemove(pid, out var job)) return;
+        job.Terminate();
+        job.Dispose();
     }
 }

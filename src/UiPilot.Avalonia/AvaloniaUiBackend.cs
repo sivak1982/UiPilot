@@ -28,8 +28,8 @@ internal sealed class AvaloniaUiBackend : IUiBackend
     public IReadOnlyList<ElementInfo> Find(string? query, int limit, string? rootId) =>
         VisualTree.Find(Elements, query, limit, rootId);
 
-    public FindPage FindPage(string? query, int limit, int offset, string? rootId) =>
-        VisualTree.FindPage(Elements, query, limit, offset, rootId);
+    public FindPage FindPage(string? query, int limit, int offset, string? rootId, bool exactMatch = false) =>
+        VisualTree.FindPage(Elements, query, limit, offset, rootId, exactMatch);
 
     public ElementInfo? Inspect(string id, bool includeChildren, int depth, IReadOnlyList<string>? propertyNames) =>
         VisualTree.Inspect(Elements, id, includeChildren, depth, propertyNames);

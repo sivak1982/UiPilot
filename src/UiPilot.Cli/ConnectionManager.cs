@@ -160,6 +160,7 @@ public sealed class ConnectionManager : IDisposable
         string configuration,
         string? platform,
         string? session = null,
+        bool foreground = false,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(project))
@@ -177,7 +178,7 @@ public sealed class ConnectionManager : IDisposable
         {
             KillSessionLocked(sessionHint!);
 
-            var launched = AppLauncher.Start(targetPath);
+            var launched = AppLauncher.Start(targetPath, startMinimized: !foreground);
             try
             {
                 var info = await WaitForDiscoveryAsync(launched, launched.Id, TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
@@ -186,8 +187,10 @@ public sealed class ConnectionManager : IDisposable
                 if (!string.Equals(sessionName, sessionHint, StringComparison.OrdinalIgnoreCase))
                     KillSessionLocked(sessionName);
 
-                var source = LaunchSource.FromProject(project, configuration, platform, targetPath);
+                var source = LaunchSource.FromProject(project, configuration, platform, targetPath, foreground);
                 await ConnectSessionLocked(sessionName, info, launched, source, ct).ConfigureAwait(false);
+                if (foreground)
+                    await BringToFrontLocked(sessionName, ct).ConfigureAwait(false);
                 return ToSnapshot(_sessions[sessionName], isActive: true);
             }
             catch
@@ -209,6 +212,7 @@ public sealed class ConnectionManager : IDisposable
         string? workingDirectory = null,
         bool useStartupHook = true,
         string? uiFramework = null,
+        bool foreground = false,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -233,7 +237,7 @@ public sealed class ConnectionManager : IDisposable
             System.Diagnostics.Process launched;
             try
             {
-                launched = AppLauncher.Start(fullPath, workingDirectory, useStartupHook, uiFramework);
+                launched = AppLauncher.Start(fullPath, workingDirectory, useStartupHook, uiFramework, !foreground);
             }
             catch (Exception ex) when (ex is FileNotFoundException or InvalidOperationException)
             {
@@ -247,8 +251,10 @@ public sealed class ConnectionManager : IDisposable
                 if (!string.Equals(sessionName, sessionHint, StringComparison.OrdinalIgnoreCase))
                     KillSessionLocked(sessionName);
 
-                var source = LaunchSource.FromExe(fullPath, workingDirectory, useStartupHook, uiFramework);
+                var source = LaunchSource.FromExe(fullPath, workingDirectory, useStartupHook, uiFramework, foreground);
                 await ConnectSessionLocked(sessionName, info, launched, source, ct).ConfigureAwait(false);
+                if (foreground)
+                    await BringToFrontLocked(sessionName, ct).ConfigureAwait(false);
                 return ToSnapshot(_sessions[sessionName], isActive: true);
             }
             catch
@@ -269,6 +275,7 @@ public sealed class ConnectionManager : IDisposable
         string? session = null,
         string? workingDirectory = null,
         string? arguments = null,
+        bool showWindow = true,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -291,7 +298,7 @@ public sealed class ConnectionManager : IDisposable
             System.Diagnostics.Process launched;
             try
             {
-                launched = AppLauncher.StartProcess(fullPath, workingDirectory, arguments);
+                launched = AppLauncher.StartProcess(fullPath, workingDirectory, arguments, showWindow);
             }
             catch (Exception ex) when (ex is FileNotFoundException or InvalidOperationException or ArgumentException)
             {
@@ -306,7 +313,7 @@ public sealed class ConnectionManager : IDisposable
                     "Check the executable path, working directory, and arguments.");
             }
 
-            var source = LaunchSource.FromProcess(fullPath, workingDirectory, arguments);
+            var source = LaunchSource.FromProcess(fullPath, workingDirectory, arguments, showWindow);
             _sessions[sessionName] = new AppSession
             {
                 Name = sessionName,
@@ -371,9 +378,11 @@ public sealed class ConnectionManager : IDisposable
         finally { _gate.Release(); }
 
         if (source.Kind == LaunchKind.Project)
-            return await BuildAndStartAsync(source.Project!, source.Configuration!, source.Platform, sessionName, ct).ConfigureAwait(false);
+            return await BuildAndStartAsync(
+                source.Project!, source.Configuration!, source.Platform, sessionName, source.Foreground, ct).ConfigureAwait(false);
         if (source.Kind == LaunchKind.Process)
-            return await StartProcessAsync(source.ExePath!, sessionName, source.WorkingDirectory, source.Arguments, ct).ConfigureAwait(false);
+            return await StartProcessAsync(
+                source.ExePath!, sessionName, source.WorkingDirectory, source.Arguments, source.ShowWindow, ct).ConfigureAwait(false);
 
         return await StartAppAsync(
             source.ExePath!,
@@ -381,6 +390,7 @@ public sealed class ConnectionManager : IDisposable
             source.WorkingDirectory,
             source.UseStartupHook,
             source.UiFramework,
+            source.Foreground,
             ct).ConfigureAwait(false);
     }
 
@@ -615,6 +625,22 @@ public sealed class ConnectionManager : IDisposable
         RemoveSessionLocked(sessionName);
     }
 
+    /// <summary>
+    /// Pulls a session's window to the foreground. Call sites already hold <see cref="_gate"/>, so
+    /// this talks to the pipe directly instead of going through <see cref="SendAsync"/>.
+    /// </summary>
+    private async Task BringToFrontLocked(string sessionName, CancellationToken ct)
+    {
+        if (!_sessions.TryGetValue(sessionName, out var session) ||
+            session.Client is not { IsConnected: true })
+        {
+            return;
+        }
+
+        try { await session.Client.CallToolAsync(ToolCatalog.BringToFront, new { }, ct).ConfigureAwait(false); }
+        catch { /* showing the window must never fail the launch */ }
+    }
+
     private void RemoveSessionLocked(string sessionName)
     {
         _sessions.Remove(sessionName);
@@ -754,8 +780,15 @@ public sealed class ConnectionManager : IDisposable
         public string? Arguments { get; private init; }
         public bool UseStartupHook { get; private init; } = true;
         public string? UiFramework { get; private init; }
+        public bool Foreground { get; private init; }
+        public bool ShowWindow { get; private init; } = true;
 
-        public static LaunchSource FromProject(string project, string configuration, string? platform, string targetPath) => new()
+        public static LaunchSource FromProject(
+            string project,
+            string configuration,
+            string? platform,
+            string targetPath,
+            bool foreground = false) => new()
         {
             Kind = LaunchKind.Project,
             Project = project,
@@ -763,28 +796,36 @@ public sealed class ConnectionManager : IDisposable
             Platform = platform,
             ExePath = Path.ChangeExtension(targetPath, ".exe"),
             UseStartupHook = true,
+            Foreground = foreground,
         };
 
         public static LaunchSource FromExe(
             string exePath,
             string? workingDirectory,
             bool useStartupHook = true,
-            string? uiFramework = null) => new()
+            string? uiFramework = null,
+            bool foreground = false) => new()
         {
             Kind = LaunchKind.Exe,
             ExePath = exePath,
             WorkingDirectory = workingDirectory,
             UseStartupHook = useStartupHook,
             UiFramework = uiFramework,
+            Foreground = foreground,
         };
 
-        public static LaunchSource FromProcess(string exePath, string? workingDirectory, string? arguments) => new()
+        public static LaunchSource FromProcess(
+            string exePath,
+            string? workingDirectory,
+            string? arguments,
+            bool showWindow = true) => new()
         {
             Kind = LaunchKind.Process,
             ExePath = exePath,
             WorkingDirectory = workingDirectory,
             Arguments = arguments,
             UseStartupHook = false,
+            ShowWindow = showWindow,
         };
     }
 

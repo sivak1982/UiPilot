@@ -21,14 +21,16 @@ internal static class BuiltInTools
             (ctx, _) => ctx.OnUi(() => new { windows = ctx.Backend.ListWindows() }));
 
         registry.Register(ToolCatalog.FindElements,
-            "Search the visual tree by name, AutomationId, type, or text. Args: query, limit=50, offset=0, root(id).",
+            "Search the visual tree by name, AutomationId, type, or text. "
+            + "Args: query, limit=50, offset=0, root(id), exact=false.",
             (ctx, args) =>
             {
                 var query = args.GetString("query");
                 var limit = args.GetInt("limit", 50);
                 var offset = args.GetInt("offset", 0);
                 var root = args.GetString("root");
-                return OnUi(ctx, () => PageResult(ctx.Backend.FindPage(query, limit, offset, root)));
+                var exact = args.GetBool("exact", false);
+                return OnUi(ctx, () => PageResult(ctx.Backend.FindPage(query, limit, offset, root, exact)));
             });
 
         registry.Register(ToolCatalog.InspectElement,
@@ -48,13 +50,15 @@ internal static class BuiltInTools
             });
 
         registry.Register(ToolCatalog.WaitForElement,
-            "Poll for the first matching element. Args: query, root(id optional), timeoutMs=10000, pollMs=200.",
+            "Poll for the first matching element. "
+            + "Args: query, root(id optional), timeoutMs=10000, pollMs=200, exact=false.",
             (ctx, args) =>
             {
                 var query = args.GetRequiredString("query");
                 var root = args.GetString("root");
                 var timeoutMs = Math.Max(0, args.GetInt("timeoutMs", 10000));
                 var pollMs = Math.Max(1, args.GetInt("pollMs", 200));
+                var exact = args.GetBool("exact", false);
                 var ct = ctx.CancellationToken;
                 var sw = Stopwatch.StartNew();
 
@@ -63,7 +67,7 @@ internal static class BuiltInTools
                     while (true)
                     {
                         ct.ThrowIfCancellationRequested();
-                        var page = OnUi(ctx, () => ctx.Backend.FindPage(query, 1, 0, root));
+                        var page = OnUi(ctx, () => ctx.Backend.FindPage(query, 1, 0, root, exact));
                         if (page.Total > 0 || page.Elements.Count > 0)
                             return PageResult(page);
 

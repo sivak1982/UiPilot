@@ -28,6 +28,42 @@ public class ScenarioParserTests
     }
 
     [Fact]
+    public void Parse_ExactFlag_IsReadableAsBoolean()
+    {
+        var doc = ScenarioParser.Parse(
+            """
+            name: t
+            steps:
+              - expect_visible: { query: Initialized, exact: true }
+              - expect_visible: { query: Initialized }
+            """,
+            fallbackName: "t");
+
+        Assert.True(doc.Steps[0].GetBool("exact", false));
+        Assert.False(doc.Steps[1].GetBool("exact", false));
+    }
+
+    [Fact]
+    public void Parse_ClickUntilVisible_KeepsRetryProperties()
+    {
+        var doc = ScenarioParser.Parse(
+            """
+            name: t
+            steps:
+              - click:
+                  query: Initialize
+                  untilVisible: Initialized
+                  untilExact: true
+                  retryMs: 1500
+            """,
+            fallbackName: "t");
+
+        Assert.Equal("Initialized", doc.Steps[0].Get("untilVisible"));
+        Assert.True(doc.Steps[0].GetBool("untilExact", false));
+        Assert.Equal(1500, doc.Steps[0].GetInt("retryMs", -1));
+    }
+
+    [Fact]
     public void Parse_MissingName_FallsBackToFileName()
     {
         var doc = ScenarioParser.Parse("steps:\n  - stop_all\n", fallbackName: "my-file");
@@ -43,6 +79,39 @@ public class ScenarioParserTests
             "name: t\nkeepOpen: true\nsteps:\n  - stop_all\n", fallbackName: "t");
 
         Assert.True(doc.KeepOpen);
+    }
+
+    [Fact]
+    public void Parse_ForegroundTrue_IsHonored()
+    {
+        var doc = ScenarioParser.Parse(
+            "name: t\nforeground: true\nsteps:\n  - stop_all\n", fallbackName: "t");
+
+        Assert.True(doc.Foreground);
+    }
+
+    [Fact]
+    public void Parse_ForegroundOmitted_DefaultsToMinimized()
+    {
+        var doc = ScenarioParser.Parse("name: t\nsteps:\n  - stop_all\n", fallbackName: "t");
+
+        Assert.False(doc.Foreground);
+    }
+
+    [Fact]
+    public void Parse_StartStepFlags_AreReadableAsBooleans()
+    {
+        var doc = ScenarioParser.Parse(
+            """
+            name: t
+            steps:
+              - start_app: { path: App.exe, session: oi, foreground: true }
+              - start_process: { path: Host.exe, session: sup, showWindow: false }
+            """,
+            fallbackName: "t");
+
+        Assert.True(doc.Steps[0].GetBool("foreground", false));
+        Assert.False(doc.Steps[1].GetBool("showWindow", true));
     }
 
     [Fact]

@@ -92,11 +92,12 @@ public sealed class LifecycleTools
         [Description("Build configuration.")] string configuration = "Debug",
         [Description("Optional MSBuild platform (e.g. 'x64') for projects that require an explicit platform.")] string? platform = null,
         [Description("Optional session name. Defaults to the built assembly name.")] string? session = null,
+        [Description("When true, start the app visible and pull it to the foreground instead of starting minimized. Use when a human is watching the run.")] bool foreground = false,
         CancellationToken ct = default)
     {
         try
         {
-            var info = await _connection.BuildAndStartAsync(project, configuration, platform, session, ct).ConfigureAwait(false);
+            var info = await _connection.BuildAndStartAsync(project, configuration, platform, session, foreground, ct).ConfigureAwait(false);
             return Ok(JsonSerializer.Serialize(new { started = true, session = info }, Json));
         }
         catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
@@ -113,11 +114,12 @@ public sealed class LifecycleTools
         [Description("Optional working directory. Defaults to the directory containing the app.")] string? workingDirectory = null,
         [Description("When true (default), set process-scoped DOTNET_STARTUP_HOOKS so UiPilot starts without editing the app. Set false if the app already calls PilotHost.Start and you want hook injection off.")] bool useStartupHook = true,
         [Description("Optional UI stack override: 'avalonia' or 'wpf'. When omitted, detected from assemblies beside the app.")] string? uiFramework = null,
+        [Description("When true, start the app visible and pull it to the foreground instead of starting minimized. Use when a human is watching the run.")] bool foreground = false,
         CancellationToken ct = default)
     {
         try
         {
-            var info = await _connection.StartAppAsync(path, session, workingDirectory, useStartupHook, uiFramework, ct).ConfigureAwait(false);
+            var info = await _connection.StartAppAsync(path, session, workingDirectory, useStartupHook, uiFramework, foreground, ct).ConfigureAwait(false);
             return Ok(JsonSerializer.Serialize(new { started = true, session = info }, Json));
         }
         catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
@@ -133,11 +135,12 @@ public sealed class LifecycleTools
         [Description("Optional session name. Defaults to the file name without extension.")] string? session = null,
         [Description("Optional working directory. Defaults to the directory containing the exe.")] string? workingDirectory = null,
         [Description("Optional process arguments string.")] string? arguments = null,
+        [Description("When true (default), the process gets its own console window so it shows in the taskbar and its output stays out of this CLI's stdout. Set false to inherit this console.")] bool showWindow = true,
         CancellationToken ct = default)
     {
         try
         {
-            var info = await _connection.StartProcessAsync(path, session, workingDirectory, arguments, ct).ConfigureAwait(false);
+            var info = await _connection.StartProcessAsync(path, session, workingDirectory, arguments, showWindow, ct).ConfigureAwait(false);
             return Ok(JsonSerializer.Serialize(new { started = true, session = info }, Json));
         }
         catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
@@ -216,7 +219,7 @@ public sealed class LifecycleTools
     /// Terminates one launched/attached session process and clears that session.
     /// </summary>
     [McpServerTool(Name = "stop_app")]
-    [Description("Stop one driven session (pilot or process) and clear it. When multiple sessions exist, pass session or select_session first. Terminating an elevated app requires this CLI to run elevated.")]
+    [Description("Stop one driven session (pilot or process), including any processes it spawned, and clear it. When multiple sessions exist, pass session or select_session first. Terminating an elevated app requires this CLI to run elevated.")]
     public CallToolResult StopApp(
         [Description("Optional session name. Defaults to the active session, or the only session.")] string? session = null)
     {
@@ -232,7 +235,7 @@ public sealed class LifecycleTools
     }
 
     [McpServerTool(Name = "stop_all")]
-    [Description("Stop every driven session (pilot and process) and clear all sessions.")]
+    [Description("Stop every driven session (pilot and process), including any processes they spawned, and clear all sessions.")]
     public CallToolResult StopAll()
     {
         try

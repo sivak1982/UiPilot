@@ -104,6 +104,62 @@ public class LogWaiterTests
     }
 
     [Fact]
+    public async Task WaitAsync_MatchesFileAcrossWildcardDateFolder()
+    {
+        // Mirrors ECF-style logs nested under a date-stamped subfolder, e.g.
+        // Logs\Supervisor\20260811\Supervisor.20260811@114236.ecflog, located via a
+        // glob with a wildcard directory segment: Logs\Supervisor\*\*.ecflog.
+        var root = Path.Combine(Path.GetTempPath(), "uipilot-tests", Guid.NewGuid().ToString("N"));
+        var dateDir = Path.Combine(root, "Supervisor", "20260811");
+        Directory.CreateDirectory(dateDir);
+        var older = Path.Combine(root, "Supervisor", "20260713");
+        Directory.CreateDirectory(older);
+        await File.WriteAllTextAsync(Path.Combine(older, "Supervisor.20260713@053033.ecflog"), "stale, no match");
+
+        var logPath = Path.Combine(dateDir, "Supervisor.20260811@114236.ecflog");
+        await File.WriteAllTextAsync(logPath, "boot\nStartup completed\n");
+
+        try
+        {
+            var glob = Path.Combine(root, "Supervisor", "*", "*.ecflog");
+            var result = await LogWaiter.WaitAsync(glob, "Startup completed", timeoutMs: 5_000, pollMs: 50);
+
+            Assert.Equal(Path.GetFullPath(logPath), result.Path);
+            Assert.Equal("Startup completed", result.Match);
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
+    public void ResolveNewestFile_WildcardDirectorySegment_PicksNewestAcrossSubfolders()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "uipilot-tests", Guid.NewGuid().ToString("N"));
+        var dayOne = Path.Combine(root, "20260713");
+        var dayTwo = Path.Combine(root, "20260811");
+        Directory.CreateDirectory(dayOne);
+        Directory.CreateDirectory(dayTwo);
+        var older = Path.Combine(dayOne, "a.ecflog");
+        var newer = Path.Combine(dayTwo, "b.ecflog");
+        File.WriteAllText(older, "old");
+        File.WriteAllText(newer, "new");
+        File.SetLastWriteTimeUtc(older, DateTime.UtcNow.AddHours(-1));
+        File.SetLastWriteTimeUtc(newer, DateTime.UtcNow);
+
+        try
+        {
+            var resolved = LogWaiter.ResolveNewestFile(Path.Combine(root, "*", "*.ecflog"));
+            Assert.Equal(Path.GetFullPath(newer), resolved);
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch { /* ignore */ }
+        }
+    }
+
+    [Fact]
     public void ResolveNewestFile_Directory_ReturnsNewest()
     {
         var dir = Path.Combine(Path.GetTempPath(), "uipilot-tests", Guid.NewGuid().ToString("N"));

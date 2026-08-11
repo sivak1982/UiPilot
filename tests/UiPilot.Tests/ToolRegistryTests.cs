@@ -118,9 +118,58 @@ public class ToolRegistryTests
         Assert.Equal(PilotErrorCodes.InvalidArgs, ex.Code);
     }
 
+    [Fact]
+    public void FindElements_ForwardsExactMatchToBackend()
+    {
+        var backend = new RecordingBackend();
+        var registry = new ToolRegistry(TestSupport.CreateContext(backend));
+        BuiltInTools.RegisterAll(registry);
+
+        registry.Invoke(ToolCatalog.FindElements, TestSupport.Json("""{"query":"Initialized","exact":true}"""));
+
+        Assert.True(backend.LastExactMatch);
+    }
+
+    [Fact]
+    public void FindElements_DefaultsToSubstringMatch()
+    {
+        var backend = new RecordingBackend();
+        var registry = new ToolRegistry(TestSupport.CreateContext(backend));
+        BuiltInTools.RegisterAll(registry);
+
+        registry.Invoke(ToolCatalog.FindElements, TestSupport.Json("""{"query":"Initialized"}"""));
+
+        Assert.False(backend.LastExactMatch);
+    }
+
+    [Fact]
+    public void WaitForElement_ForwardsExactMatchToBackend()
+    {
+        var backend = new RecordingBackend();
+        var registry = new ToolRegistry(TestSupport.CreateContext(backend));
+        BuiltInTools.RegisterAll(registry);
+
+        Assert.Throws<PilotToolException>(() => registry.Invoke(
+            ToolCatalog.WaitForElement,
+            TestSupport.Json("""{"query":"Initialized","exact":true,"timeoutMs":1,"pollMs":1}""")));
+
+        Assert.True(backend.LastExactMatch);
+    }
+
+    private sealed class RecordingBackend : TestSupport.StubBackend
+    {
+        public bool? LastExactMatch { get; private set; }
+
+        public override FindPage FindPage(string? query, int limit, int offset, string? rootId, bool exactMatch = false)
+        {
+            LastExactMatch = exactMatch;
+            return base.FindPage(query, limit, offset, rootId, exactMatch);
+        }
+    }
+
     private sealed class PagedBackend : TestSupport.StubBackend
     {
-        public override FindPage FindPage(string? query, int limit, int offset, string? rootId)
+        public override FindPage FindPage(string? query, int limit, int offset, string? rootId, bool exactMatch = false)
         {
             return new FindPage
             {

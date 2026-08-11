@@ -18,7 +18,20 @@ public sealed class ScenarioRunner
 
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
+    /// <summary>Verbs that drive or read the UI, and so want the window in front in foreground mode.</summary>
+    private static readonly HashSet<string> UiVerbs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ScenarioVerbs.Wait, ScenarioVerbs.Click, ScenarioVerbs.Type, ScenarioVerbs.PressKeys,
+        ScenarioVerbs.SelectItem, ScenarioVerbs.ExpectVisible, ScenarioVerbs.ExpectNotVisible,
+    };
+
     private readonly ConnectionManager _connection;
+
+    /// <summary>Session currently raised in foreground mode, so we only raise on switches.</summary>
+    private string? _frontSession;
+
+    /// <summary>Identity of the element the last query resolved to, for step messages.</summary>
+    private string? _lastResolved;
 
     public ScenarioRunner(ConnectionManager connection) => _connection = connection;
 
@@ -33,6 +46,7 @@ public sealed class ScenarioRunner
         var results = new List<StepResult>(document.Steps.Count);
         var screenshots = new List<string>();
         var failed = false;
+        _frontSession = null;
 
         foreach (var step in document.Steps)
         {
@@ -53,7 +67,7 @@ public sealed class ScenarioRunner
             var stepWatch = Stopwatch.StartNew();
             try
             {
-                var message = await ExecuteStepAsync(step, artifactsDir, ct).ConfigureAwait(false);
+                var message = await ExecuteStepAsync(step, document, artifactsDir, ct).ConfigureAwait(false);
                 Record(results, new StepResult
                 {
                     Index = step.Index,
@@ -120,8 +134,12 @@ public sealed class ScenarioRunner
     }
 
     /// <summary>Runs one step; returns an optional informational message for the report.</summary>
-    private async Task<string?> ExecuteStepAsync(ScenarioStep step, string artifactsDir, CancellationToken ct)
+    private async Task<string?> ExecuteStepAsync(
+        ScenarioStep step, ScenarioDocument document, string artifactsDir, CancellationToken ct)
     {
+        if (document.Foreground)
+            await EnsureForegroundAsync(step, ct).ConfigureAwait(false);
+
         switch (step.Verb)
         {
             case ScenarioVerbs.StartApp:
@@ -132,7 +150,10 @@ public sealed class ScenarioRunner
                     step.Get("workingDirectory"),
                     step.GetBool("useStartupHook", true),
                     step.Get("uiFramework"),
+                    step.GetBool("foreground", document.Foreground),
                     ct).ConfigureAwait(false);
+                if (document.Foreground)
+                    _frontSession = snapshot.Name;
                 return $"Started '{snapshot.ProcessName}' (pid {snapshot.Pid}) as session '{snapshot.Name}'.";
             }
 
@@ -143,6 +164,7 @@ public sealed class ScenarioRunner
                     step.Get("session"),
                     step.Get("workingDirectory"),
                     step.Get("arguments"),
+                    step.GetBool("showWindow", true),
                     ct).ConfigureAwait(false);
                 return $"Started process '{snapshot.ProcessName}' (pid {snapshot.Pid}) as session '{snapshot.Name}'.";
             }
@@ -172,28 +194,29 @@ public sealed class ScenarioRunner
             }
 
             case ScenarioVerbs.Wait:
-            case ScenarioVerbs.ExpectVisible:
             {
                 var element = await ResolveElementAsync(step, ct).ConfigureAwait(false);
-                return $"Element found (id {element}).";
+                return $"Matched {_lastResolved ?? $"id {element}"}.";
             }
+
+            case ScenarioVerbs.ExpectVisible:
+                return await ExpectVisibleAsync(step, ct).ConfigureAwait(false);
 
             case ScenarioVerbs.ExpectNotVisible:
                 await ExpectNotVisibleAsync(step, ct).ConfigureAwait(false);
                 return "No visible match.";
 
             case ScenarioVerbs.Click:
-            {
-                var id = await ResolveElementAsync(step, ct).ConfigureAwait(false);
-                await SendAsync(ToolCatalog.Click, new { id }, step, ct).ConfigureAwait(false);
-                return null;
-            }
+                return step.Get("untilVisible") is { } untilVisible
+                    ? await ClickUntilVisibleAsync(step, untilVisible, ct).ConfigureAwait(false)
+                    : await ClickOnceAsync(step, ct).ConfigureAwait(false);
 
             case ScenarioVerbs.Type:
             {
                 var id = await ResolveElementAsync(step, ct).ConfigureAwait(false);
-                await SendAsync(ToolCatalog.TypeText, new { id, text = step.Require("text") }, step, ct).ConfigureAwait(false);
-                return null;
+                var result = await SendAsync(
+                    ToolCatalog.TypeText, new { id, text = step.Require("text") }, step, ct).ConfigureAwait(false);
+                return $"Typed into {_lastResolved}{Method(result)}.";
             }
 
             case ScenarioVerbs.PressKeys:
@@ -225,7 +248,13 @@ public sealed class ScenarioRunner
             case ScenarioVerbs.Screenshot:
             {
                 var label = step.Get("name") ?? $"step-{step.Index}";
-                var path = await SaveScreenshotAsync(step.Get("session"), artifactsDir, label, ct).ConfigureAwait(false);
+                // An explicit target captures a dialog or element instead of the main window.
+                var hasTarget = step.Get("id") is not null || step.Get("query") is not null;
+                var target = hasTarget
+                    ? await ResolveElementAsync(step, ct).ConfigureAwait(false)
+                    : null;
+                var path = await SaveScreenshotAsync(
+                    step.Get("session"), artifactsDir, label, target, ct).ConfigureAwait(false);
                 return $"Saved {path}.";
             }
 
@@ -243,6 +272,30 @@ public sealed class ScenarioRunner
     }
 
     /// <summary>
+    /// Keeps the app being driven visible: raises a session the first time the scenario touches it,
+    /// and again whenever it switches back from another session.
+    /// </summary>
+    private async Task EnsureForegroundAsync(ScenarioStep step, CancellationToken ct)
+    {
+        if (!UiVerbs.Contains(step.Verb))
+            return;
+
+        var session = step.Get("session") ?? _connection.ActiveSessionName;
+        if (session is null || string.Equals(session, _frontSession, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        try
+        {
+            await _connection.SendAsync(ToolCatalog.BringToFront, new { }, session, ct).ConfigureAwait(false);
+            _frontSession = session;
+        }
+        catch
+        {
+            // A scenario must never fail just because a window could not be raised.
+        }
+    }
+
+    /// <summary>
     /// Waits for the step's <c>query</c> (or takes its explicit <c>id</c>) and returns the element
     /// handle id. Wraps a not-found timeout in a scenario-friendly message.
     /// </summary>
@@ -250,7 +303,10 @@ public sealed class ScenarioRunner
     {
         var explicitId = step.Get("id");
         if (explicitId is not null)
+        {
+            _lastResolved = $"id {explicitId}";
             return explicitId;
+        }
 
         var query = step.Require("query");
         var timeoutMs = step.GetInt("timeoutMs", DefaultWaitMs);
@@ -264,6 +320,7 @@ public sealed class ScenarioRunner
                 root = step.Get("root"),
                 timeoutMs,
                 pollMs = step.GetInt("pollMs", 200),
+                exact = step.GetBool("exact", false),
             }, step, ct).ConfigureAwait(false);
         }
         catch (PilotCliException ex)
@@ -279,6 +336,7 @@ public sealed class ScenarioRunner
             && elements[0].TryGetProperty("id", out var idProp)
             && idProp.GetString() is { Length: > 0 } id)
         {
+            _lastResolved = Describe(elements[0], id);
             return id;
         }
 
@@ -286,16 +344,144 @@ public sealed class ScenarioRunner
             $"Step {step.Index} ({step.Verb}): element '{query}' not found within {timeoutMs} ms.");
     }
 
+    /// <summary>
+    /// How the backend performed an interaction (e.g. <c>synthetic:setpassword</c>), for reports.
+    /// Custom controls take different paths, and knowing which one ran explains a lot on failure.
+    /// </summary>
+    private static string Method(JsonElement result) =>
+        result.TryGetProperty("method", out var method) && method.GetString() is { Length: > 0 } value
+            ? $" via {value}"
+            : "";
+
+    /// <summary>
+    /// Human-readable identity of a matched element, so reports show which control a query hit —
+    /// substring queries can match a different control than intended.
+    /// </summary>
+    private static string Describe(JsonElement element, string id)
+    {
+        var type = element.TryGetProperty("type", out var t) ? t.GetString() : null;
+        var name = element.TryGetProperty("name", out var n) ? n.GetString() : null;
+        var parts = new List<string>();
+        if (!string.IsNullOrEmpty(type)) parts.Add(type!);
+        if (!string.IsNullOrEmpty(name)) parts.Add($"'{name}'");
+        parts.Add($"id {id}");
+        return string.Join(" ", parts);
+    }
+
+    private async Task<string> ClickOnceAsync(ScenarioStep step, CancellationToken ct)
+    {
+        var id = await ResolveElementAsync(step, ct).ConfigureAwait(false);
+        var result = await SendAsync(ToolCatalog.Click, new { id }, step, ct).ConfigureAwait(false);
+        return $"Clicked {_lastResolved}{Method(result)}.";
+    }
+
+    /// <summary>
+    /// Clicks until the expected state shows up, re-clicking every <c>retryMs</c>. A command-bound
+    /// button can exist, be enabled, and still ignore a click while its command binding is pending
+    /// (the click falls back to raising the event, which no-ops), so a single click is not enough
+    /// on a screen that is still wiring itself up.
+    /// </summary>
+    private async Task<string> ClickUntilVisibleAsync(ScenarioStep step, string untilVisible, CancellationToken ct)
+    {
+        var timeoutMs = step.GetInt("timeoutMs", DefaultWaitMs);
+        var retryMs = step.GetInt("retryMs", 2000);
+        var pollMs = step.GetInt("pollMs", 200);
+        var untilExact = step.GetBool("untilExact", step.GetBool("exact", false));
+        var watch = Stopwatch.StartNew();
+        var attempts = 0;
+        string? lastClick = null;
+
+        while (true)
+        {
+            lastClick = await ClickOnceAsync(step, ct).ConfigureAwait(false);
+            attempts++;
+
+            var attemptWatch = Stopwatch.StartNew();
+            while (attemptWatch.ElapsedMilliseconds < retryMs)
+            {
+                var match = await FindVisibleAsync(step, untilVisible, untilExact, ct).ConfigureAwait(false);
+                if (match is not null)
+                {
+                    return $"{lastClick.TrimEnd('.')} on attempt {attempts}; '{untilVisible}' visible ({match}).";
+                }
+
+                if (watch.ElapsedMilliseconds >= timeoutMs)
+                    break;
+
+                await Task.Delay(pollMs, ct).ConfigureAwait(false);
+            }
+
+            if (watch.ElapsedMilliseconds >= timeoutMs)
+                throw new ScenarioException(
+                    $"Step {step.Index} (click): '{untilVisible}' never became visible after " +
+                    $"{attempts} click(s) in {timeoutMs} ms. Last click: {lastClick}");
+        }
+    }
+
+    /// <summary>
+    /// Polls until a match is actually on screen. Matching alone is not enough: apps commonly keep
+    /// both state labels in the tree (e.g. "Initialized" and "Not Initialized") and toggle
+    /// visibility, so an existence check would pass against the hidden one.
+    /// </summary>
+    private async Task<string> ExpectVisibleAsync(ScenarioStep step, CancellationToken ct)
+    {
+        var query = step.Require("query");
+        var timeoutMs = step.GetInt("timeoutMs", DefaultWaitMs);
+        var pollMs = step.GetInt("pollMs", 200);
+        var exact = step.GetBool("exact", false);
+        var watch = Stopwatch.StartNew();
+
+        while (true)
+        {
+            var match = await FindVisibleAsync(step, query, exact, ct).ConfigureAwait(false);
+            if (match is not null)
+                return $"Matched {match}.";
+
+            if (watch.ElapsedMilliseconds >= timeoutMs)
+                throw new ScenarioException(
+                    $"Step {step.Index} (expect_visible): no visible element matching '{query}'" +
+                    (step.Get("session") is { } s ? $" in session '{s}'" : "") +
+                    $" within {timeoutMs} ms.");
+
+            await Task.Delay(pollMs, ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Description of the first on-screen match, or null when nothing visible matches.</summary>
+    private async Task<string?> FindVisibleAsync(
+        ScenarioStep step, string query, bool exact, CancellationToken ct)
+    {
+        var result = await SendAsync(
+            ToolCatalog.FindElements, new { query, limit = 20, exact }, step, ct).ConfigureAwait(false);
+
+        if (result.TryGetProperty("elements", out var elements) && elements.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var element in elements.EnumerateArray())
+            {
+                if (element.TryGetProperty("visible", out var visible) && visible.GetBoolean()
+                    && element.TryGetProperty("id", out var idProp)
+                    && idProp.GetString() is { Length: > 0 } id)
+                {
+                    return Describe(element, id);
+                }
+            }
+        }
+
+        return null;
+    }
+
     private async Task ExpectNotVisibleAsync(ScenarioStep step, CancellationToken ct)
     {
         var query = step.Require("query");
         var timeoutMs = step.GetInt("timeoutMs", DefaultWaitMs);
         var pollMs = step.GetInt("pollMs", 200);
+        var exact = step.GetBool("exact", false);
         var watch = Stopwatch.StartNew();
 
         while (true)
         {
-            var result = await SendAsync(ToolCatalog.FindElements, new { query, limit = 20 }, step, ct).ConfigureAwait(false);
+            var result = await SendAsync(
+                ToolCatalog.FindElements, new { query, limit = 20, exact }, step, ct).ConfigureAwait(false);
 
             var anyVisible = false;
             if (result.TryGetProperty("elements", out var elements) && elements.ValueKind == JsonValueKind.Array)
@@ -332,9 +518,18 @@ public sealed class ScenarioRunner
         {
             try
             {
-                var path = await SaveScreenshotAsync(
-                    session.Name, artifactsDir, $"failure-step{failedStepIndex}-{session.Name}", ct).ConfigureAwait(false);
-                saved.Add(path);
+                // Capture every top-level window, not just the main one: modal dialogs are where
+                // the error message usually is, and they are separate windows.
+                foreach (var (id, label) in await ListWindowsAsync(session.Name, ct).ConfigureAwait(false))
+                {
+                    var path = await SaveScreenshotAsync(
+                        session.Name,
+                        artifactsDir,
+                        $"failure-step{failedStepIndex}-{session.Name}{label}",
+                        id,
+                        ct).ConfigureAwait(false);
+                    saved.Add(path);
+                }
             }
             catch
             {
@@ -345,9 +540,43 @@ public sealed class ScenarioRunner
         return saved;
     }
 
-    private async Task<string> SaveScreenshotAsync(string? session, string artifactsDir, string label, CancellationToken ct)
+    /// <summary>
+    /// Top-level windows of a session as (id, labelSuffix) pairs. Falls back to a single main-window
+    /// capture when the session cannot enumerate windows.
+    /// </summary>
+    private async Task<IReadOnlyList<(string? Id, string Label)>> ListWindowsAsync(
+        string session, CancellationToken ct)
     {
-        var result = await _connection.SendAsync(ToolCatalog.Screenshot, new { }, session, ct).ConfigureAwait(false);
+        try
+        {
+            var result = await _connection.SendAsync(ToolCatalog.ListWindows, new { }, session, ct).ConfigureAwait(false);
+            if (result.TryGetProperty("windows", out var windows) && windows.ValueKind == JsonValueKind.Array)
+            {
+                var list = new List<(string?, string)>();
+                foreach (var window in windows.EnumerateArray())
+                {
+                    var id = window.TryGetProperty("id", out var idProp) ? idProp.GetString() : null;
+                    var type = window.TryGetProperty("type", out var typeProp) ? typeProp.GetString() : null;
+                    if (id is { Length: > 0 })
+                        list.Add((id, string.IsNullOrEmpty(type) ? $"-{id}" : $"-{type}"));
+                }
+
+                if (list.Count > 0)
+                    return list;
+            }
+        }
+        catch
+        {
+            // Fall through to a plain main-window capture.
+        }
+
+        return new (string?, string)[] { (null, "") };
+    }
+
+    private async Task<string> SaveScreenshotAsync(
+        string? session, string artifactsDir, string label, string? id = null, CancellationToken ct = default)
+    {
+        var result = await _connection.SendAsync(ToolCatalog.Screenshot, new { id }, session, ct).ConfigureAwait(false);
         var base64 = result.GetProperty("base64").GetString() ?? "";
         var safeLabel = string.Join("_", label.Split(Path.GetInvalidFileNameChars()));
         var path = Path.Combine(artifactsDir, safeLabel + ".png");

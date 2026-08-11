@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Linq;
 using System.Text.RegularExpressions;
 using UiPilot.Tools;
 
@@ -26,8 +27,11 @@ public static class LogWaiter
     /// Wait until <paramref name="pattern"/> matches content in <paramref name="pathOrGlob"/>.
     /// </summary>
     /// <param name="pathOrGlob">
-    /// A concrete file path, a directory (newest file inside), or a simple glob such as
-    /// <c>C:\logs\20260811\*.ecflog</c>.
+    /// A concrete file path, a directory (newest file inside), or a glob such as
+    /// <c>C:\logs\20260811\*.ecflog</c>. A wildcard segment may also appear in an
+    /// intermediate directory (e.g. <c>C:\logs\*\*.ecflog</c> for date-stamped
+    /// subfolders) — matching files are searched recursively under the nearest
+    /// literal ancestor directory.
     /// </param>
     /// <param name="pattern">.NET regular expression searched in the file content.</param>
     /// <param name="timeoutMs">Maximum wait time.</param>
@@ -123,14 +127,58 @@ public static class LogWaiter
         if (string.IsNullOrEmpty(directory) || string.IsNullOrEmpty(filePattern))
             return null;
 
-        if (!Directory.Exists(directory))
+        if (Directory.Exists(directory))
+        {
+            if (filePattern.IndexOfAny(new[] { '*', '?' }) >= 0)
+                return NewestFile(Directory.EnumerateFiles(directory, filePattern, SearchOption.TopDirectoryOnly));
+
+            var candidate = Path.Combine(directory, filePattern);
+            return File.Exists(candidate) ? Path.GetFullPath(candidate) : null;
+        }
+
+        // The immediate parent isn't a literal directory — the glob likely spans multiple
+        // segments (e.g. Logs\Supervisor\*\*.ecflog for date-stamped subfolders). Walk up to
+        // the nearest existing ancestor and match the remaining segments recursively.
+        return ResolveAcrossWildcardSegments(trimmed);
+    }
+
+    private static string? ResolveAcrossWildcardSegments(string trimmed)
+    {
+        var normalized = trimmed.Replace('/', Path.DirectorySeparatorChar);
+        var root = Path.GetPathRoot(normalized);
+        if (string.IsNullOrEmpty(root))
             return null;
 
-        if (filePattern.IndexOfAny(new[] { '*', '?' }) >= 0)
-            return NewestFile(Directory.EnumerateFiles(directory, filePattern, SearchOption.TopDirectoryOnly));
+        var segments = normalized[root.Length..]
+            .Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
 
-        var candidate = Path.Combine(directory, filePattern);
-        return File.Exists(candidate) ? Path.GetFullPath(candidate) : null;
+        var baseDir = root;
+        var literalCount = 0;
+        foreach (var segment in segments)
+        {
+            if (segment.IndexOfAny(new[] { '*', '?' }) >= 0)
+                break;
+            var candidate = Path.Combine(baseDir, segment);
+            if (!Directory.Exists(candidate))
+                break;
+            baseDir = candidate;
+            literalCount++;
+        }
+
+        var remaining = segments.Skip(literalCount).ToArray();
+        if (remaining.Length == 0 || !Directory.Exists(baseDir))
+            return null;
+
+        var separator = Regex.Escape(Path.DirectorySeparatorChar.ToString());
+        var patternText = "^" + string.Join(
+            separator,
+            remaining.Select(s => Regex.Escape(s).Replace(@"\*", ".*").Replace(@"\?", "."))) + "$";
+        var relativePathPattern = new Regex(patternText, RegexOptions.IgnoreCase);
+
+        var matches = Directory.EnumerateFiles(baseDir, "*", SearchOption.AllDirectories)
+            .Where(f => relativePathPattern.IsMatch(Path.GetRelativePath(baseDir, f)));
+
+        return NewestFile(matches);
     }
 
     private static string? NewestFile(IEnumerable<string> files)

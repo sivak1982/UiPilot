@@ -11,6 +11,12 @@ public sealed class ScenarioDocument
     /// <summary>When true, sessions are left running after the scenario finishes.</summary>
     public bool KeepOpen { get; init; }
 
+    /// <summary>
+    /// When true, UI sessions start visible and the app being driven is pulled to the foreground as
+    /// the scenario moves between sessions, so a human can watch. Default runs minimized.
+    /// </summary>
+    public bool Foreground { get; init; }
+
     public required IReadOnlyList<ScenarioStep> Steps { get; init; }
 }
 

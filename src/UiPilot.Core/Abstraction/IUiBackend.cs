@@ -21,7 +21,12 @@ public interface IUiBackend
 
     IReadOnlyList<ElementInfo> Find(string? query, int limit, string? rootId);
 
-    FindPage FindPage(string? query, int limit, int offset, string? rootId);
+    /// <summary>
+    /// Paged element search. <paramref name="exactMatch"/> requires the query to equal a whole
+    /// value instead of matching a substring, so assertions can distinguish states whose labels
+    /// contain one another (e.g. "Initialized" vs "Not Initialized").
+    /// </summary>
+    FindPage FindPage(string? query, int limit, int offset, string? rootId, bool exactMatch = false);
 
     ElementInfo? Inspect(string id, bool includeChildren, int depth, IReadOnlyList<string>? propertyNames);
 

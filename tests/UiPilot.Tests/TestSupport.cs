@@ -28,7 +28,7 @@ internal static class TestSupport
         public ElementRegistry Elements { get; } = new ElementRegistry();
         public IReadOnlyList<ElementInfo> ListWindows() => System.Array.Empty<ElementInfo>();
         public IReadOnlyList<ElementInfo> Find(string? query, int limit, string? rootId) => System.Array.Empty<ElementInfo>();
-        public virtual FindPage FindPage(string? query, int limit, int offset, string? rootId) =>
+        public virtual FindPage FindPage(string? query, int limit, int offset, string? rootId, bool exactMatch = false) =>
             new FindPage { Elements = System.Array.Empty<ElementInfo>(), Count = 0, Total = 0, HasMore = false, Offset = offset, Limit = limit };
         public ElementInfo? Inspect(string id, bool includeChildren, int depth, IReadOnlyList<string>? propertyNames) => null;
         public string Click(string id) => "stub";

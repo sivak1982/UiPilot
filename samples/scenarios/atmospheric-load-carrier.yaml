@@ -10,46 +10,71 @@
 #     --var logsDir="C:\ECF\EquipmentControlFoundation\Samples\Atmospheric\Runtime\Logs"
 name: atmospheric-load-carrier
 keepOpen: true # leave sim/supervisor/OI running after the scenario for manual follow-up
+foreground: true # keep whichever UI is being driven visible and in front (also --foreground)
 
 vars:
   binDir: C:\ECF\EquipmentControlFoundation\Samples\Atmospheric\Bin
   logsDir: C:\ECF\EquipmentControlFoundation\Samples\Atmospheric\Runtime\Logs
   username: sysadmin
   password: sysadmin
-  carrierId: LP100001
 
 steps:
   # 1. Simulation (Avalonia UI, pilot-enabled).
   - start_app: { path: "${binDir}\\AtmosphericAvaloniaSimulation.exe", session: sim }
 
-  # 2. Supervisor (console host, no UI) — track it as a process and wait for its
-  #    readiness line in the daily log instead of polling the UI.
+  # 2. Supervisor (console host, no UI) — tracked as a process session with its own
+  #    console window, and stopped together with the service hosts it spawns.
   - start_process: { path: "${binDir}\\AtmosphericSupervisor.exe", session: supervisor }
+
+  #    Wait for the readiness line. fromEnd skips content already in the file: a previous
+  #    run's log would otherwise match instantly and the OI would start too early, before
+  #    EquipmentConnect is ready, leaving the OI's session Disconnected.
   - wait_for_log:
       pathOrGlob: "${logsDir}\\Supervisor\\*\\*.ecflog"
       pattern: "Startup completed"
-      timeoutMs: 120000
+      timeoutMs: 180000
+      fromEnd: true
 
   # 3. Operator Interface (Avalonia UI, pilot-enabled) — log in and initialize.
   - start_app: { path: "${binDir}\\AtmosphericAvaloniaOperatorInterface.exe", session: oi }
-  - wait: { query: "User Name", session: oi, timeoutMs: 30000 }
-  - type: { query: "User Name", text: "${username}", session: oi }
-  - type: { query: Password, text: "${password}", session: oi }
-  - click: { query: Login, session: oi }
-  - expect_visible: { query: Initialize, session: oi, timeoutMs: 15000 }
-  - click: { query: Initialize, session: oi }
-  - expect_visible: { query: Initialized, session: oi, timeoutMs: 15000 }
+  #    The toolbar shows Session: Connected once the gRPC session is up; the login
+  #    fields stay disabled until then.
+  - wait: { query: Connected, session: oi, timeoutMs: 60000 }
+  #    The OI opens the "Connect and Login" dialog itself on startup (a separate
+  #    window), so wait for its fields rather than clicking the padlock toolbar
+  #    button — that would toggle the dialog closed again.
+  - wait: { query: passwordBox, session: oi, timeoutMs: 20000 }
+  - type: { query: userNameTextBox, text: "${username}", session: oi }
+  #    passwordBox is a SecurePasswordBox: Text holds only mask characters, so the
+  #    pilot calls its SetPassword instead of assigning Text.
+  - type: { query: passwordBox, text: "${password}", session: oi }
+  - click: { query: "Log In", session: oi }
+  #    exact matters here: the OI keeps both state labels in the tree and toggles their
+  #    visibility, so a substring "Initialized" also matches "Not Initialized".
+  - expect_visible: { query: Initialize, exact: true, session: oi, timeoutMs: 30000 }
+  #    untilVisible re-clicks until the state actually changes: right after login the button is
+  #    present and enabled while its command binding is still pending, and that first click is
+  #    silently dropped.
+  - click:
+      query: Initialize
+      exact: true
+      untilVisible: Initialized
+      untilExact: true
+      session: oi
+      timeoutMs: 60000
 
-  # 4. Place a carrier on LP1 in the Simulation.
+  # 4. Place a carrier on LP1 in the Simulation (LP1 is the default tab, and the
+  #    Carrier ID field is pre-filled).
   - click: { query: "Load Ports", session: sim }
-  - click: { query: LP1, session: sim }
   - click: { query: "Place Carrier", session: sim }
-  - type: { query: "Carrier Id", text: "${carrierId}", session: sim }
-  - click: { query: Proceed, session: sim }
-  - expect_visible: { query: Placed, session: sim }
+  #    Placing the carrier drives the load port to ReadyToLoad, which is what the OI needs
+  #    before Load does anything.
+  - expect_visible: { query: ReadyToLoad, exact: true, session: sim, timeoutMs: 30000 }
 
   # 5. Load the carrier from the Operator Interface.
-  - click: { query: LP1, session: oi }
-  - click: { query: Load, session: oi }
-  - click: { query: Proceed, session: oi }
-  - expect_visible: { query: Docked, session: oi, timeoutMs: 30000 }
+  #    exact matters again: a substring "load" also matches the MainLoadPort user control that
+  #    owns the button, and a container cannot be clicked.
+  - click: { query: Load, exact: true, session: oi }
+  #    The load port clamps the carrier, which blocks further AMHS transfer.
+  - expect_visible: { query: TransferBlocked, exact: true, session: sim, timeoutMs: 30000 }
+  - screenshot: { session: oi, name: after-load }

@@ -9,6 +9,7 @@ namespace UiPilot.Cli.Scenario;
 /// <code>
 /// name: my-test
 /// keepOpen: false
+/// foreground: false   # true keeps the app being driven visible and in front
 /// vars:
 ///   user: sysadmin
 /// steps:
@@ -51,6 +52,7 @@ public static class ScenarioParser
 
         var name = GetScalar(map, "name") ?? fallbackName;
         var keepOpen = string.Equals(GetScalar(map, "keepOpen"), "true", StringComparison.OrdinalIgnoreCase);
+        var foreground = string.Equals(GetScalar(map, "foreground"), "true", StringComparison.OrdinalIgnoreCase);
         var vars = ReadVars(map, overrides);
 
         if (!TryGet(map, "steps", out var stepsNode) || stepsNode is not List<object?> stepList)
@@ -64,6 +66,7 @@ public static class ScenarioParser
         {
             Name = Substitute(name, vars, context: "name"),
             KeepOpen = keepOpen,
+            Foreground = foreground,
             Steps = steps,
         };
     }

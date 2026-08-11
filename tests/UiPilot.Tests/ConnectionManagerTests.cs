@@ -187,6 +187,67 @@ public class AppLauncherTests
         Assert.Throws<FileNotFoundException>(() =>
             UiPilot.Cli.Process.AppLauncher.Start(missing));
     }
+
+    /// <summary>
+    /// A supervisor-style host spawns service processes and can exit before them. Once the direct
+    /// child is gone the parent/child link is too, so <c>Kill(entireProcessTree)</c> cannot reach
+    /// the survivors — the job object created at launch can.
+    /// </summary>
+    [Fact]
+    public void KillTree_StopsDetachedGrandchildren()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var before = PingPids();
+        var cmd = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+
+        // `start /b` detaches the ping, then cmd itself exits immediately.
+        var parent = UiPilot.Cli.Process.AppLauncher.StartProcess(
+            cmd, arguments: "/c start /b ping -n 120 127.0.0.1", showWindow: false);
+        try
+        {
+            var grandchild = WaitFor(
+                () => PingPids().Except(before).Cast<int?>().FirstOrDefault(),
+                pid => pid is not null,
+                TimeSpan.FromSeconds(20));
+            Assert.NotNull(grandchild);
+
+            UiPilot.Cli.Process.AppLauncher.KillTree(parent);
+
+            var stillAlive = WaitFor(
+                () => PingPids().Contains(grandchild!.Value),
+                alive => !alive,
+                TimeSpan.FromSeconds(20));
+            Assert.False(stillAlive, "the detached grandchild was still running after KillTree.");
+        }
+        finally
+        {
+            UiPilot.Cli.Process.AppLauncher.KillTree(parent);
+            parent.Dispose();
+        }
+    }
+
+    [Fact]
+    public void KillByPid_UnknownPid_DoesNotThrow()
+    {
+        UiPilot.Cli.Process.AppLauncher.KillByPid(-1);
+    }
+
+    private static HashSet<int> PingPids() =>
+        System.Diagnostics.Process.GetProcessesByName("PING").Select(p => p.Id).ToHashSet();
+
+    private static T WaitFor<T>(Func<T> read, Func<T, bool> done, TimeSpan timeout)
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        while (true)
+        {
+            var value = read();
+            if (done(value) || watch.Elapsed >= timeout)
+                return value;
+            Thread.Sleep(100);
+        }
+    }
 }
 
 public class StartupHookLocatorTests

@@ -40,9 +40,10 @@ public sealed class ForwardingTools
         [Description("Maximum number of elements to return.")] int limit = 50,
         [Description("Number of matching elements to skip before returning this page.")] int offset = 0,
         [Description("Optional element handle id to scope the search to a subtree.")] string? root = null,
+        [Description("When true, the query must equal a whole name/AutomationId/type/text instead of matching a substring. Use it to tell apart labels that contain each other, e.g. 'Initialized' vs 'Not Initialized'.")] bool exact = false,
         [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default) =>
-        Forward(ToolCatalog.FindElements, new { query, limit, offset, root }, session, ct);
+        Forward(ToolCatalog.FindElements, new { query, limit, offset, root, exact }, session, ct);
 
     [McpServerTool(Name = ToolCatalog.InspectElement)]
     [Description("Get detailed info for one element by handle id, optionally including child summaries and named properties. Result includes session.")]
@@ -62,9 +63,10 @@ public sealed class ForwardingTools
         [Description("Optional element handle id to scope polling to a subtree.")] string? root = null,
         [Description("Maximum time to wait, in milliseconds.")] int timeoutMs = 10000,
         [Description("Delay between polls, in milliseconds.")] int pollMs = 200,
+        [Description("When true, the query must equal a whole name/AutomationId/type/text instead of matching a substring. Use it to tell apart labels that contain each other, e.g. 'Initialized' vs 'Not Initialized'.")] bool exact = false,
         [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default) =>
-        Forward(ToolCatalog.WaitForElement, new { query, root, timeoutMs, pollMs }, session, ct);
+        Forward(ToolCatalog.WaitForElement, new { query, root, timeoutMs, pollMs, exact }, session, ct);
 
     [McpServerTool(Name = ToolCatalog.Click)]
     [Description("Synthetically click an element (automation invoke / control click fallback). Result includes session.")]
