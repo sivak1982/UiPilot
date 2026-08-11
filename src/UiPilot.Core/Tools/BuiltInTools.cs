@@ -49,6 +49,30 @@ internal static class BuiltInTools
                 });
             });
 
+        registry.Register(ToolCatalog.FindAncestor,
+            "Walk up from an element to the nearest ancestor of a given type. "
+            + "Args: id, type(optional), maxDepth=25.",
+            (ctx, args) =>
+            {
+                var id = args.GetRequiredString("id");
+                var type = args.GetString("type");
+                var maxDepth = Math.Max(1, args.GetInt("maxDepth", 25));
+                return OnUi<object>(ctx, () =>
+                {
+                    var info = ctx.Backend.FindAncestor(id, type, maxDepth);
+                    if (info == null)
+                    {
+                        throw new PilotToolException(
+                            PilotErrorCodes.NotFound,
+                            $"No ancestor of type '{type}' within {maxDepth} levels of '{id}'.",
+                            "Inspect the element with includeChildren to confirm the type name, "
+                            + "or raise maxDepth.");
+                    }
+
+                    return info;
+                });
+            });
+
         registry.Register(ToolCatalog.WaitForElement,
             "Poll for the first matching element. "
             + "Args: query, root(id optional), timeoutMs=10000, pollMs=200, exact=false.",

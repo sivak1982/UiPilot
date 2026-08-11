@@ -57,6 +57,16 @@ public sealed class ForwardingTools
         CancellationToken ct = default) =>
         Forward(ToolCatalog.InspectElement, new { id, includeChildren, depth, properties = ParseProperties(properties) }, session, ct);
 
+    [McpServerTool(Name = ToolCatalog.FindAncestor)]
+    [Description("Walk up from an element to the nearest ancestor of a given type. Use it when a search matched a templated control's label (a nested TextBlock) but the ancestor is what carries the enabled state and handles the click. Result includes session.")]
+    public Task<CallToolResult> FindAncestor(
+        [Description("Element handle id to start walking up from.")] string id,
+        [Description("Ancestor type name to stop at, e.g. 'Button'. Omit to return the immediate parent.")] string? type = null,
+        [Description("How many levels to walk up before giving up.")] int maxDepth = 25,
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
+        CancellationToken ct = default) =>
+        Forward(ToolCatalog.FindAncestor, new { id, type, maxDepth }, session, ct);
+
     [McpServerTool(Name = ToolCatalog.WaitForElement)]
     [Description("Poll until the first matching element appears, returning the same paged shape as find_elements. Result includes session.")]
     public Task<CallToolResult> WaitForElement(

@@ -30,6 +30,14 @@ public interface IUiBackend
 
     ElementInfo? Inspect(string id, bool includeChildren, int depth, IReadOnlyList<string>? propertyNames);
 
+    /// <summary>
+    /// Walks up from <paramref name="id"/> to the nearest ancestor whose type matches
+    /// <paramref name="type"/>. Templated controls surface their label as a deeply nested
+    /// TextBlock, so a text search finds the label while only the ancestor carries the
+    /// enabled state and the click handler.
+    /// </summary>
+    ElementInfo? FindAncestor(string id, string? type, int maxDepth);
+
     string Click(string id);
 
     string TypeText(string id, string text);

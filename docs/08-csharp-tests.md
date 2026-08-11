@@ -99,6 +99,7 @@ The C# names intentionally mirror MCP rather than introducing another test DSL.
 | `find_elements` | `FindElementsAsync` | `ElementPageResult` |
 | `wait_for_element` | `WaitForElementAsync` | `ElementPageResult` |
 | `inspect_element` | `InspectElementAsync` | `ElementResult` |
+| `find_ancestor` | `FindAncestorAsync` | `ElementResult` |
 | `click` | `ClickAsync` | `InteractionResult` |
 | `type_text` | `TypeTextAsync` | `InteractionResult` |
 | `screenshot` | `ScreenshotAsync` | `ScreenshotResult` |

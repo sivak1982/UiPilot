@@ -147,6 +147,23 @@ public sealed class UiPilotClient : IDisposable, IAsyncDisposable
             session,
             ct);
 
+    /// <summary>
+    /// Walks up from <paramref name="id"/> to the nearest ancestor of <paramref name="type"/>.
+    /// Use it when a search matches a templated control's label: the label is a nested TextBlock,
+    /// while the ancestor carries the enabled state and handles the click.
+    /// </summary>
+    public Task<ElementResult> FindAncestorAsync(
+        string id,
+        string? type = null,
+        int maxDepth = 25,
+        string? session = null,
+        CancellationToken ct = default) =>
+        SendAsync<ElementResult>(
+            ToolCatalog.FindAncestor,
+            new { id, type, maxDepth },
+            session,
+            ct);
+
     public Task<InteractionResult> ClickAsync(
         string id,
         string? session = null,

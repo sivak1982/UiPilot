@@ -78,6 +78,7 @@ Every forwarding tool accepts optional `session`. Object results are enriched wi
 | `list_windows` | `session?` | Windows with identity + bounds. |
 | `find_elements` | `query?`, `limit=50`, `offset=0`, `root?`, `exact=false`, `session?` | `{ count, total, hasMore, offset, limit, elements, session }`; `count` is this page, `total` is all matches. |
 | `inspect_element` | `id`, `includeChildren=false`, `depth=1`, `properties?`, `session?` | One element; optional comma-separated property names. |
+| `find_ancestor` | `id`, `type?`, `maxDepth=25`, `session?` | Nearest ancestor of `type`. Use when a search matched a templated control's label (a nested TextBlock) but the ancestor carries the enabled state and the click. |
 | `wait_for_element` | `query`, `root?`, `timeoutMs=10000`, `pollMs=200`, `exact=false`, `session?` | Polls until a match appears or times out. |
 | `click` | `id`, `session?` | `{ method, session }` synthetic click / toggle / expand. |
 | `drag` | start: `id` **or** `fromX`/`fromY`; end: `toId` **or** `toX`/`toY` **or** `dx`/`dy`; optional `grabOffset*`, `steps`, `stepDelayMs`, `settleMs`, `session?` | Real OS mouse drag (Windows SendInput). |

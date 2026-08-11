@@ -34,6 +34,9 @@ internal sealed class AvaloniaUiBackend : IUiBackend
     public ElementInfo? Inspect(string id, bool includeChildren, int depth, IReadOnlyList<string>? propertyNames) =>
         VisualTree.Inspect(Elements, id, includeChildren, depth, propertyNames);
 
+    public ElementInfo? FindAncestor(string id, string? type, int maxDepth) =>
+        VisualTree.FindAncestor(Elements, id, type, maxDepth);
+
     public string Click(string id) => Input.Click(Require(id));
 
     public string TypeText(string id, string text) => Input.TypeText(Require(id), text);

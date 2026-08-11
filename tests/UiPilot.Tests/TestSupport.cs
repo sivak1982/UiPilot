@@ -31,6 +31,7 @@ internal static class TestSupport
         public virtual FindPage FindPage(string? query, int limit, int offset, string? rootId, bool exactMatch = false) =>
             new FindPage { Elements = System.Array.Empty<ElementInfo>(), Count = 0, Total = 0, HasMore = false, Offset = offset, Limit = limit };
         public ElementInfo? Inspect(string id, bool includeChildren, int depth, IReadOnlyList<string>? propertyNames) => null;
+        public virtual ElementInfo? FindAncestor(string id, string? type, int maxDepth) => null;
         public string Click(string id) => "stub";
         public string TypeText(string id, string text) => "stub";
         public string PressKeys(string? id, string keys) => "stub";

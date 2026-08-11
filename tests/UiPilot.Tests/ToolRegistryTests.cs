@@ -156,6 +156,51 @@ public class ToolRegistryTests
         Assert.True(backend.LastExactMatch);
     }
 
+    [Fact]
+    public void FindAncestor_ForwardsTypeAndDepthToBackend()
+    {
+        var backend = new AncestorBackend();
+        var registry = new ToolRegistry(TestSupport.CreateContext(backend));
+        BuiltInTools.RegisterAll(registry);
+
+        var result = registry.Invoke(
+            ToolCatalog.FindAncestor,
+            TestSupport.Json("""{"id":"e9","type":"Button","maxDepth":5}"""));
+
+        Assert.Equal("e9", backend.LastId);
+        Assert.Equal("Button", backend.LastType);
+        Assert.Equal(5, backend.LastMaxDepth);
+        Assert.Equal("e2", Assert.IsType<ElementInfo>(result).Id);
+    }
+
+    [Fact]
+    public void FindAncestor_WithoutMatch_ThrowsNotFound()
+    {
+        var registry = new ToolRegistry(TestSupport.CreateContext());
+        BuiltInTools.RegisterAll(registry);
+
+        var ex = Assert.Throws<PilotToolException>(() =>
+            registry.Invoke(ToolCatalog.FindAncestor, TestSupport.Json("""{"id":"e9","type":"Button"}""")));
+
+        Assert.Equal(PilotErrorCodes.NotFound, ex.Code);
+        Assert.NotNull(ex.Hint);
+    }
+
+    private sealed class AncestorBackend : TestSupport.StubBackend
+    {
+        public string? LastId { get; private set; }
+        public string? LastType { get; private set; }
+        public int LastMaxDepth { get; private set; }
+
+        public override ElementInfo? FindAncestor(string id, string? type, int maxDepth)
+        {
+            LastId = id;
+            LastType = type;
+            LastMaxDepth = maxDepth;
+            return new ElementInfo { Id = "e2", Type = type ?? "Border" };
+        }
+    }
+
     private sealed class RecordingBackend : TestSupport.StubBackend
     {
         public bool? LastExactMatch { get; private set; }

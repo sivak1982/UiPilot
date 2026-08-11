@@ -115,6 +115,43 @@ public static class VisualTreeQuery
         return info;
     }
 
+    public static ElementInfo? FindAncestor(
+        ElementRegistry registry,
+        string id,
+        string? type,
+        int maxDepth)
+    {
+        var obj = registry.Resolve<DependencyObject>(id);
+        if (obj == null) return null;
+
+        var wanted = type?.Trim();
+        var current = GetParent(obj);
+        for (var depth = 0; current != null && depth < maxDepth; depth++)
+        {
+            if (string.IsNullOrEmpty(wanted) ||
+                string.Equals(current.GetType().Name, wanted, StringComparison.OrdinalIgnoreCase))
+            {
+                return BuildInfo(current, registry);
+            }
+
+            current = GetParent(current);
+        }
+
+        return null;
+    }
+
+    /// <summary>Visual parent when there is one; logical parent keeps popup/menu content walkable.</summary>
+    private static DependencyObject? GetParent(DependencyObject obj)
+    {
+        if (IsVisual(obj))
+        {
+            var visual = VisualTreeHelper.GetParent(obj);
+            if (visual != null) return visual;
+        }
+
+        return LogicalTreeHelper.GetParent(obj);
+    }
+
     private static List<ElementInfo>? BuildChildren(DependencyObject obj, ElementRegistry registry, int depth)
     {
         if (depth <= 0 || !IsVisual(obj)) return null;

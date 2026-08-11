@@ -111,6 +111,31 @@ internal static class VisualTree
         return info;
     }
 
+    public static ElementInfo? FindAncestor(
+        ElementRegistry registry,
+        string id,
+        string? type,
+        int maxDepth)
+    {
+        var obj = registry.Resolve<Visual>(id);
+        if (obj == null) return null;
+
+        var wanted = type?.Trim();
+        var current = obj.GetVisualParent();
+        for (var depth = 0; current != null && depth < maxDepth; depth++)
+        {
+            if (string.IsNullOrEmpty(wanted) ||
+                string.Equals(current.GetType().Name, wanted, StringComparison.OrdinalIgnoreCase))
+            {
+                return BuildInfo(current, registry);
+            }
+
+            current = current.GetVisualParent();
+        }
+
+        return null;
+    }
+
     private static List<ElementInfo>? BuildChildren(Visual obj, ElementRegistry registry, int depth)
     {
         if (depth <= 0) return null;

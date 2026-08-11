@@ -37,6 +37,9 @@ internal sealed class WpfUiBackend : IUiBackend
     public ElementInfo? Inspect(string id, bool includeChildren, int depth, IReadOnlyList<string>? propertyNames) =>
         VisualTreeQuery.Inspect(Elements, id, includeChildren, depth, propertyNames);
 
+    public ElementInfo? FindAncestor(string id, string? type, int maxDepth) =>
+        VisualTreeQuery.FindAncestor(Elements, id, type, maxDepth);
+
     public string Click(string id) => SyntheticInput.Click(Require(id));
 
     public string TypeText(string id, string text) => SyntheticInput.TypeText(Require(id), text);
