@@ -39,6 +39,13 @@ Priority order, following the "thin vertical slice first" principle.
 - `UiPilot.Avalonia` + sample app.
 - Discovery `uiFramework`; env `UIPILOT_ENABLE` / `UIPILOT_START_MINIMIZED` only (no legacy aliases).
 
+## Phase 5.5 - scenario runner - done
+
+- `ScenarioParser` (YAML + `${var}` substitution) and `ScenarioRunner` over `ConnectionManager`.
+- CLI `run <file-or-folder>` (exit code) and `run_scenario` MCP tool.
+- Fail-fast execution, failure screenshots, `report.json` artifacts.
+- Sample scenarios for `AvaloniaSampleApp` and the ECF Atmospheric sample.
+
 ## Phase 6 - packaging / extensibility
 
 - `[PilotTool]` discovery + auto-registration.

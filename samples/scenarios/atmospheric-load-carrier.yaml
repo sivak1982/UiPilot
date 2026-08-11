@@ -1,0 +1,55 @@
+# End-to-end regression for the ECF Atmospheric sample: brings up Simulation,
+# Supervisor, and the Operator Interface, logs into the OI, initializes it,
+# places a carrier on LP1 in the Simulation, and loads it from the OI.
+#
+# Requires the Atmospheric sample already built (see ECF's
+# Clean-BuildFolders.ps1 / ECF.sln). Adjust `binDir` if your checkout lives
+# elsewhere:
+#   dotnet run --project src/UiPilot.Cli -- run samples/scenarios/atmospheric-load-carrier.yaml \
+#     --var binDir="C:\ECF\EquipmentControlFoundation\Samples\Atmospheric\Bin" \
+#     --var logsDir="C:\ECF\EquipmentControlFoundation\Samples\Atmospheric\Runtime\Logs"
+name: atmospheric-load-carrier
+keepOpen: true # leave sim/supervisor/OI running after the scenario for manual follow-up
+
+vars:
+  binDir: C:\ECF\EquipmentControlFoundation\Samples\Atmospheric\Bin
+  logsDir: C:\ECF\EquipmentControlFoundation\Samples\Atmospheric\Runtime\Logs
+  username: sysadmin
+  password: sysadmin
+  carrierId: LP100001
+
+steps:
+  # 1. Simulation (Avalonia UI, pilot-enabled).
+  - start_app: { path: "${binDir}\\AtmosphericAvaloniaSimulation.exe", session: sim }
+
+  # 2. Supervisor (console host, no UI) — track it as a process and wait for its
+  #    readiness line in the daily log instead of polling the UI.
+  - start_process: { path: "${binDir}\\AtmosphericSupervisor.exe", session: supervisor }
+  - wait_for_log:
+      pathOrGlob: "${logsDir}\\Supervisor\\*\\*.ecflog"
+      pattern: "Startup completed"
+      timeoutMs: 120000
+
+  # 3. Operator Interface (Avalonia UI, pilot-enabled) — log in and initialize.
+  - start_app: { path: "${binDir}\\AtmosphericAvaloniaOperatorInterface.exe", session: oi }
+  - wait: { query: "User Name", session: oi, timeoutMs: 30000 }
+  - type: { query: "User Name", text: "${username}", session: oi }
+  - type: { query: Password, text: "${password}", session: oi }
+  - click: { query: Login, session: oi }
+  - expect_visible: { query: Initialize, session: oi, timeoutMs: 15000 }
+  - click: { query: Initialize, session: oi }
+  - expect_visible: { query: Initialized, session: oi, timeoutMs: 15000 }
+
+  # 4. Place a carrier on LP1 in the Simulation.
+  - click: { query: "Load Ports", session: sim }
+  - click: { query: LP1, session: sim }
+  - click: { query: "Place Carrier", session: sim }
+  - type: { query: "Carrier Id", text: "${carrierId}", session: sim }
+  - click: { query: Proceed, session: sim }
+  - expect_visible: { query: Placed, session: sim }
+
+  # 5. Load the carrier from the Operator Interface.
+  - click: { query: LP1, session: oi }
+  - click: { query: Load, session: oi }
+  - click: { query: Proceed, session: oi }
+  - expect_visible: { query: Docked, session: oi, timeoutMs: 30000 }

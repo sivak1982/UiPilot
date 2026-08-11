@@ -77,6 +77,17 @@ Cursor/Claude  --stdio MCP-->  UiPilot.Cli  --MCP over named pipe-->  your app (
 
 Full catalog: [docs/05-tools.md](docs/05-tools.md).
 
+## Scenarios: deterministic UI test cases in YAML
+
+Write test cases as plain YAML (`start_app`, `click`, `type`, `expect_visible`, ...) and run them
+with a pass/fail report, no AI in the execution path:
+
+```powershell
+dotnet run --project src/UiPilot.Cli -- run samples/scenarios/avalonia-sample-greet.yaml
+```
+
+Or via the `run_scenario(path, varsJson?)` MCP tool. See [docs/08-scenarios.md](docs/08-scenarios.md).
+
 ## Security defaults
 
 - Disabled unless `#if DEBUG`, env `UIPILOT_ENABLE=1`, or an explicit `Start(force: true)`.
@@ -94,7 +105,8 @@ Full catalog: [docs/05-tools.md](docs/05-tools.md).
 | `src/UiPilot.Cli` | Out-of-process stdio MCP bridge + app launcher. |
 | `samples/SampleApp` | Minimal WPF app used to validate the loop. |
 | `samples/AvaloniaSampleApp` | Minimal Avalonia app used to validate the loop. |
-| `docs/` | Design review, architecture, adoption, security, tools, protocol, roadmap. |
+| `samples/scenarios` | YAML test scenarios for the sample apps. |
+| `docs/` | Design review, architecture, adoption, security, tools, protocol, roadmap, scenarios. |
 
 Start with [docs/01-overview.md](docs/01-overview.md).
 
