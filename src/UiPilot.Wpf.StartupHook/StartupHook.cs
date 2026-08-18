@@ -17,6 +17,9 @@ internal static class StartupHook
 {
     private const int PollMs = 50;
     private const int MaxAttempts = 600; // ~30s
+    private const int DispatcherReadMs = 250;
+
+    private static string? _lastPollError;
 
     public static void Initialize()
     {
@@ -46,7 +49,13 @@ internal static class StartupHook
             }
             catch (Exception ex)
             {
-                Log("poll: " + ex);
+                // The same failure repeats every poll; log it once so the log stays readable.
+                var text = ex.ToString();
+                if (!string.Equals(text, _lastPollError, StringComparison.Ordinal))
+                {
+                    _lastPollError = text;
+                    Log("poll: " + text);
+                }
             }
 
             Thread.Sleep(PollMs);
@@ -63,12 +72,45 @@ internal static class StartupHook
         return appType.GetProperty("Current", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
     }
 
+    /// <summary>
+    /// Reads <c>Application.MainWindow</c>. <c>Application</c> is a <c>DispatcherObject</c>, so
+    /// reading it from this polling thread throws "The calling thread cannot access this object".
+    /// The read is marshalled onto the app's dispatcher and bounded by a timeout: while the
+    /// message loop has not started pumping yet the queued read simply does not complete, and
+    /// returning null lets the caller retry on the next poll.
+    /// </summary>
     private static object? TryGetWpfMainWindow()
     {
         var app = TryGetWpfApplicationCurrent();
         if (app is null)
             return null;
-        return app.GetType().GetProperty("MainWindow")?.GetValue(app);
+
+        var mainWindow = app.GetType().GetProperty("MainWindow");
+        if (mainWindow is null)
+            return null;
+
+        var dispatcher = app.GetType().GetProperty("Dispatcher")?.GetValue(app);
+        if (dispatcher is null)
+            return null;
+
+        var beginInvoke = dispatcher.GetType().GetMethod(
+            "BeginInvoke", new[] { typeof(Delegate), typeof(object[]) });
+        if (beginInvoke is null)
+            return null;
+
+        object? window = null;
+        // Not disposed on purpose: a read that completes after the timeout still signals it.
+        var completed = new ManualResetEventSlim(false);
+        var read = new Action(() =>
+        {
+            try { window = mainWindow.GetValue(app); }
+            catch { window = null; }
+            finally { completed.Set(); }
+        });
+
+        beginInvoke.Invoke(dispatcher, new object[] { read, Array.Empty<object>() });
+
+        return completed.Wait(DispatcherReadMs) ? window : null;
     }
 
     private static void StartPilot()

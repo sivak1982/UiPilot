@@ -9,6 +9,14 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <!-- Allow net*-windows TFMs to restore/build on Linux CI/agents. -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!--
+      The CLI is launched as an MCP stdio server via `dotnet run`. MSBuild/NuGet write
+      warnings to stdout, which corrupts the JSON-RPC stream the MCP client reads and
+      surfaces as "Connection closed / failed during live tool discovery". NU1507 fires
+      because the ambient NuGet.config defines multiple sources under central package
+      management; it is benign here, so suppress it to keep the MCP stdout channel clean.
+    -->
+    <NoWarn>$(NoWarn);NU1507</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup Label="Package metadata">
