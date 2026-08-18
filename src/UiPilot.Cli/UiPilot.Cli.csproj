@@ -61,4 +61,17 @@
     <Copy SourceFiles="@(_WpfHookFiles)" DestinationFolder="$(_HooksWpf)" SkipUnchangedFiles="true" Condition="'@(_WpfHookFiles)' != ''" />
   </Target>
 
+  <!-- Build places hooks under TargetDir; publish must preserve that sibling layout because
+       StartupHookLocator resolves hooks relative to the installed CLI. -->
+  <Target Name="CopyStartupHooksToPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <_PublishedStartupHookFiles Include="$(TargetDir)hooks\**\*" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(_PublishedStartupHookFiles)"
+      DestinationFiles="@(_PublishedStartupHookFiles->'$(PublishDir)hooks\%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+      Condition="'@(_PublishedStartupHookFiles)' != ''" />
+  </Target>
+
 </Project>

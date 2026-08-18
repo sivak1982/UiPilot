@@ -114,3 +114,13 @@ dotnet build UiPilot.sln
 ```
 
 On non-Windows hosts, `EnableWindowsTargeting` is set so WPF TFMs restore; full WPF runtime still requires Windows.
+
+## Build the Windows installer
+
+```powershell
+.\installer\build-installer.ps1
+```
+
+The generated per-user installer bundle checks the required .NET runtime, installs the CLI and
+both startup hooks, and merges UiPilot into Cursor's MCP configuration. See
+[installer/README.md](installer/README.md) for installation, prerequisites, and uninstall details.
