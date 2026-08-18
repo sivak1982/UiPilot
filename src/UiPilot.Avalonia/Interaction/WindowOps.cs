@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using global::Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.VisualTree;
+using UiPilot.Abstraction;
 using UiPilot.Inspection;
 using UiPilot.Media;
 
@@ -64,5 +65,41 @@ internal static class WindowOps
             return Foreground(window);
 
         return window.WindowState.ToString().ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Restore to normal if needed, apply size (and optional position), then return applied bounds.
+    /// </summary>
+    public static WindowBounds Resize(Window window, double width, double height, double? x, double? y, bool activate)
+    {
+        if (width <= 0 || height <= 0)
+            throw new ArgumentOutOfRangeException(nameof(width), "Width and height must be positive.");
+
+        if (window.WindowState != WindowState.Normal)
+            window.WindowState = WindowState.Normal;
+
+        window.Width = width;
+        window.Height = height;
+
+        if (x.HasValue || y.HasValue)
+        {
+            var pos = window.Position;
+            var newX = x.HasValue ? (int)Math.Round(x.Value) : pos.X;
+            var newY = y.HasValue ? (int)Math.Round(y.Value) : pos.Y;
+            window.Position = new PixelPoint(newX, newY);
+        }
+
+        if (activate)
+            Foreground(window);
+
+        var applied = window.Position;
+        return new WindowBounds
+        {
+            X = applied.X,
+            Y = applied.Y,
+            Width = window.Width,
+            Height = window.Height,
+            State = window.WindowState.ToString().ToLowerInvariant(),
+        };
     }
 }

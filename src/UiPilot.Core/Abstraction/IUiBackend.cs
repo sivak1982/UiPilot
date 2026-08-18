@@ -56,6 +56,12 @@ public interface IUiBackend
 
     string SetWindowState(string? id, string state, bool activate);
 
+    /// <summary>
+    /// Restore to normal (if minimized/maximized), set outer size, optionally move, and
+    /// optionally activate. Returns the applied bounds.
+    /// </summary>
+    WindowBounds ResizeWindow(string? id, double width, double height, double? x, double? y, bool activate);
+
     string BringToFront(string? id);
 
     IReadOnlyList<string> GetBindingErrors();
@@ -108,4 +114,14 @@ public readonly struct ScreenPoint
 
     public double X { get; }
     public double Y { get; }
+}
+
+/// <summary>Applied window placement after <see cref="IUiBackend.ResizeWindow"/>.</summary>
+public sealed class WindowBounds
+{
+    [JsonPropertyName("x")] public double X { get; init; }
+    [JsonPropertyName("y")] public double Y { get; init; }
+    [JsonPropertyName("width")] public double Width { get; init; }
+    [JsonPropertyName("height")] public double Height { get; init; }
+    [JsonPropertyName("state")] public string State { get; init; } = "normal";
 }

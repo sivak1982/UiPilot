@@ -90,6 +90,7 @@ Every forwarding tool accepts optional `session`. Object results are enriched wi
 | `invoke_command` | `id`, `session?` | Execute bound `ICommand`. |
 | `screenshot` | `id?`, `session?` | MCP **image content** + `{ path, width, height, session }` text. |
 | `set_window_state` | `id?`, `state`, `activate=false`, `session?` | `minimized` \| `normal` \| `maximized`. |
+| `resize_window` | `width`, `height`, `id?`, `x?`, `y?`, `activate=false`, `session?` | Restores to normal if needed, sets size (optional position); returns `{ x, y, width, height, state, session }`. |
 | `bring_to_front` | `id?`, `session?` | Restore + activate for human viewing. |
 | `get_binding_errors` | `clear=false`, `session?` | Captured binding warnings/errors. |
 | `analyze_layout` | `root?`, `session?` | `zero_size`, `off_screen`, `overlap`. |

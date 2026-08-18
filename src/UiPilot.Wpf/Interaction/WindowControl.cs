@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using System.Windows.Media;
+using UiPilot.Abstraction;
 using UiPilot.Inspection;
 using UiPilot.Media;
 
@@ -83,5 +84,37 @@ public static class WindowControl
             return Foreground(window);
 
         return window.WindowState.ToString().ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Restore to normal if needed, apply size (and optional position), then return applied bounds.
+    /// </summary>
+    public static WindowBounds Resize(Window window, double width, double height, double? x, double? y, bool activate)
+    {
+        if (width <= 0 || height <= 0)
+            throw new ArgumentOutOfRangeException(nameof(width), "Width and height must be positive.");
+
+        if (window.WindowState != WindowState.Normal)
+            window.WindowState = WindowState.Normal;
+
+        window.Width = width;
+        window.Height = height;
+
+        if (x.HasValue)
+            window.Left = x.Value;
+        if (y.HasValue)
+            window.Top = y.Value;
+
+        if (activate)
+            Foreground(window);
+
+        return new WindowBounds
+        {
+            X = window.Left,
+            Y = window.Top,
+            Width = window.Width,
+            Height = window.Height,
+            State = window.WindowState.ToString().ToLowerInvariant(),
+        };
     }
 }

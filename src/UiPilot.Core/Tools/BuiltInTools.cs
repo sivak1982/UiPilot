@@ -267,6 +267,20 @@ internal static class BuiltInTools
                 return OnUi<object>(ctx, () => new { state = ctx.Backend.SetWindowState(id, state, activate) });
             });
 
+        registry.Register(ToolCatalog.ResizeWindow,
+            "Restore a window to normal (if needed) and set its size. Optionally move it and/or activate. "
+            + "Args: width, height, id (optional), x (optional), y (optional), activate=false.",
+            (ctx, args) =>
+            {
+                var width = RequirePositiveSize(args, "width");
+                var height = RequirePositiveSize(args, "height");
+                var id = args.GetString("id");
+                var x = args.GetDouble("x");
+                var y = args.GetDouble("y");
+                var activate = args.GetBool("activate", false);
+                return OnUi<object>(ctx, () => ctx.Backend.ResizeWindow(id, width, height, x, y, activate));
+            });
+
         registry.Register(ToolCatalog.BringToFront,
             "Restore (if minimized) and pull a window to the foreground so a human can see it. Args: id (optional, defaults to main window).",
             (ctx, args) =>
@@ -360,5 +374,15 @@ internal static class BuiltInTools
             v.TryGetInt32(out var i))
             return i;
         return null;
+    }
+
+    private static double RequirePositiveSize(System.Text.Json.JsonElement args, string name)
+    {
+        var value = args.GetDouble(name);
+        if (value == null)
+            throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Missing required number argument '{name}'.");
+        if (value.Value <= 0 || double.IsNaN(value.Value) || double.IsInfinity(value.Value))
+            throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Argument '{name}' must be a positive number.");
+        return value.Value;
     }
 }

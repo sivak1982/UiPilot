@@ -67,6 +67,13 @@ internal sealed class AvaloniaUiBackend : IUiBackend
         return WindowOps.SetState(window, state, activate);
     }
 
+    public WindowBounds ResizeWindow(string? id, double width, double height, double? x, double? y, bool activate)
+    {
+        var window = WindowOps.Resolve(id == null ? null : Require(id))
+            ?? throw new InvalidOperationException("No window to resize.");
+        return WindowOps.Resize(window, width, height, x, y, activate);
+    }
+
     public string BringToFront(string? id)
     {
         var window = WindowOps.Resolve(id == null ? null : Require(id))

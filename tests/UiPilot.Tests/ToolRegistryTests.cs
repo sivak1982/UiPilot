@@ -186,6 +186,70 @@ public class ToolRegistryTests
         Assert.NotNull(ex.Hint);
     }
 
+    [Fact]
+    public void ResizeWindow_ForwardsSizeAndPositionToBackend()
+    {
+        var backend = new ResizeBackend();
+        var registry = new ToolRegistry(TestSupport.CreateContext(backend));
+        BuiltInTools.RegisterAll(registry);
+
+        var result = registry.Invoke(
+            ToolCatalog.ResizeWindow,
+            TestSupport.Json("""{"width":1200,"height":800,"x":40,"y":50,"activate":true}"""));
+
+        Assert.Equal(1200, backend.LastWidth);
+        Assert.Equal(800, backend.LastHeight);
+        Assert.Equal(40, backend.LastX);
+        Assert.Equal(50, backend.LastY);
+        Assert.True(backend.LastActivate);
+        var bounds = Assert.IsType<WindowBounds>(result);
+        Assert.Equal(1200, bounds.Width);
+        Assert.Equal(800, bounds.Height);
+    }
+
+    [Fact]
+    public void ResizeWindow_MissingWidth_ThrowsInvalidArgs()
+    {
+        var registry = new ToolRegistry(TestSupport.CreateContext());
+        BuiltInTools.RegisterAll(registry);
+
+        var ex = Assert.Throws<PilotToolException>(() =>
+            registry.Invoke(ToolCatalog.ResizeWindow, TestSupport.Json("""{"height":800}""")));
+
+        Assert.Equal(PilotErrorCodes.InvalidArgs, ex.Code);
+    }
+
+    [Fact]
+    public void ResizeWindow_NonPositiveHeight_ThrowsInvalidArgs()
+    {
+        var registry = new ToolRegistry(TestSupport.CreateContext());
+        BuiltInTools.RegisterAll(registry);
+
+        var ex = Assert.Throws<PilotToolException>(() =>
+            registry.Invoke(ToolCatalog.ResizeWindow, TestSupport.Json("""{"width":1200,"height":0}""")));
+
+        Assert.Equal(PilotErrorCodes.InvalidArgs, ex.Code);
+    }
+
+    private sealed class ResizeBackend : TestSupport.StubBackend
+    {
+        public double LastWidth { get; private set; }
+        public double LastHeight { get; private set; }
+        public double? LastX { get; private set; }
+        public double? LastY { get; private set; }
+        public bool LastActivate { get; private set; }
+
+        public override WindowBounds ResizeWindow(string? id, double width, double height, double? x, double? y, bool activate)
+        {
+            LastWidth = width;
+            LastHeight = height;
+            LastX = x;
+            LastY = y;
+            LastActivate = activate;
+            return new WindowBounds { X = x ?? 0, Y = y ?? 0, Width = width, Height = height, State = "normal" };
+        }
+    }
+
     private sealed class AncestorBackend : TestSupport.StubBackend
     {
         public string? LastId { get; private set; }

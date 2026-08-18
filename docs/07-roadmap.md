@@ -19,7 +19,7 @@ Priority order, following the "thin vertical slice first" principle.
 ## Phase 3 - agent loop ergonomics - largely done
 
 - `wait_for_element`, pagination (`offset` / `hasMore`).
-- Window control over MCP (`set_window_state`, `bring_to_front`).
+- Window control over MCP (`set_window_state`, `resize_window`, `bring_to_front`).
 - `press_keys`, `scroll`, `focus`, `select_item`.
 - `describe_app_tools` / `invoke_app_tool` for custom handlers.
 - `detach` + attach filters (`processName`, `uiFramework`).

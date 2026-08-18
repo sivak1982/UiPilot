@@ -82,6 +82,14 @@ internal sealed class WpfUiBackend : IUiBackend
         return WindowControl.SetState(window, state, activate);
     }
 
+    public WindowBounds ResizeWindow(string? id, double width, double height, double? x, double? y, bool activate)
+    {
+        var target = id == null ? null : Require(id);
+        var window = WindowControl.ResolveWindow(target)
+            ?? throw new InvalidOperationException("No window to resize.");
+        return WindowControl.Resize(window, width, height, x, y, activate);
+    }
+
     public string BringToFront(string? id)
     {
         var target = id == null ? null : Require(id);

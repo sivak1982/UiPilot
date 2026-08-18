@@ -25,6 +25,14 @@ public sealed class UiPilotClientTests
         await using var pilot = new UiPilotClient();
         await pilot.StartAppAsync(app, session: "sample");
 
+        var resized = await pilot.ResizeWindowAsync(
+            width: 900,
+            height: 650,
+            session: "sample");
+        Assert.Equal("normal", resized.State);
+        Assert.Equal(900, resized.Width);
+        Assert.Equal(650, resized.Height);
+
         var nameBox = (await pilot.WaitForElementAsync(
             "NameBox", exact: true, session: "sample")).Single();
         var typed = await pilot.TypeTextAsync(nameBox.Id, "UiPilot", session: "sample");

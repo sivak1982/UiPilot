@@ -171,6 +171,19 @@ public sealed class ForwardingTools
         CancellationToken ct = default) =>
         Forward(ToolCatalog.SetWindowState, new { id, state, activate }, session, ct);
 
+    [McpServerTool(Name = ToolCatalog.ResizeWindow)]
+    [Description("Restore a window to normal if needed and set its width/height. Optionally move it with x/y and/or activate it. Result includes applied bounds and session.")]
+    public Task<CallToolResult> ResizeWindow(
+        [Description("Target window width in device-independent pixels.")] double width,
+        [Description("Target window height in device-independent pixels.")] double height,
+        [Description("Optional window element id; omit for the main window.")] string? id = null,
+        [Description("Optional new left/X position in screen pixels.")] double? x = null,
+        [Description("Optional new top/Y position in screen pixels.")] double? y = null,
+        [Description("Bring the window to the foreground after resizing.")] bool activate = false,
+        [Description("Optional session name when multiple apps are attached.")] string? session = null,
+        CancellationToken ct = default) =>
+        Forward(ToolCatalog.ResizeWindow, new { id, width, height, x, y, activate }, session, ct);
+
     [McpServerTool(Name = ToolCatalog.BringToFront)]
     [Description("Restore, if minimized, and bring a WPF or Avalonia window to the foreground so a human can see it. Result includes session.")]
     public Task<CallToolResult> BringToFront(

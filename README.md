@@ -67,7 +67,7 @@ Cursor/Claude  --stdio MCP-->  UiPilot.Cli  --MCP over named pipe-->  your app (
 ## Agent-facing highlights (protocol 2.0)
 
 - `wait_for_element`, paged `find_elements` (`offset` / `hasMore`)
-- Window control: `set_window_state`, `bring_to_front`, `detach`
+- Window control: `set_window_state`, `resize_window`, `bring_to_front`, `detach`
 - Input: `press_keys`, `scroll`, `focus`, `select_item`, real-mouse `drag`
 - **Multi-session**: `list_sessions` / `select_session`, optional `session` on every forwarding tool,
   `start_app` for prebuilt exes, `start_process` + `wait_for_log` for non-UI readiness, `stop_all`

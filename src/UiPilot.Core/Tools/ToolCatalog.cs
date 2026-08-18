@@ -20,6 +20,7 @@ public static class ToolCatalog
     public const string InvokeCommand = "invoke_command";
     public const string Screenshot = "screenshot";
     public const string SetWindowState = "set_window_state";
+    public const string ResizeWindow = "resize_window";
     public const string BringToFront = "bring_to_front";
     public const string GetBindingErrors = "get_binding_errors";
     public const string AnalyzeLayout = "analyze_layout";
@@ -42,6 +43,7 @@ public static class ToolCatalog
         InvokeCommand,
         Screenshot,
         SetWindowState,
+        ResizeWindow,
         BringToFront,
         GetBindingErrors,
         AnalyzeLayout,

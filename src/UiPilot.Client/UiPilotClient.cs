@@ -264,6 +264,18 @@ public sealed class UiPilotClient : IDisposable, IAsyncDisposable
         SendAsync<WindowStateResult>(
             ToolCatalog.SetWindowState, new { id, state, activate }, session, ct);
 
+    public Task<ResizeWindowResult> ResizeWindowAsync(
+        double width,
+        double height,
+        string? id = null,
+        double? x = null,
+        double? y = null,
+        bool activate = false,
+        string? session = null,
+        CancellationToken ct = default) =>
+        SendAsync<ResizeWindowResult>(
+            ToolCatalog.ResizeWindow, new { id, width, height, x, y, activate }, session, ct);
+
     public Task<WindowStateResult> BringToFrontAsync(
         string? id = null,
         string? session = null,

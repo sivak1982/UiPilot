@@ -103,6 +103,16 @@ public sealed class WindowStateResult
     [JsonPropertyName("session")] public string? Session { get; init; }
 }
 
+public sealed class ResizeWindowResult
+{
+    [JsonPropertyName("x")] public double X { get; init; }
+    [JsonPropertyName("y")] public double Y { get; init; }
+    [JsonPropertyName("width")] public double Width { get; init; }
+    [JsonPropertyName("height")] public double Height { get; init; }
+    [JsonPropertyName("state")] public string State { get; init; } = "";
+    [JsonPropertyName("session")] public string? Session { get; init; }
+}
+
 public sealed class BindingErrorsResult
 {
     [JsonPropertyName("count")] public int Count { get; init; }
