@@ -7,7 +7,11 @@
     Scope="perUser"
     Compressed="yes">
     <SummaryInformation Description="Per-user UiPilot CLI, startup hooks, and Cursor integration." />
-    <MajorUpgrade DowngradeErrorMessage="A newer version of UiPilot is already installed." />
+    <!-- MSI compares only major.minor.patch; allow a new package with a different UiPilot
+         build number to replace the installed package at the same semantic version. -->
+    <MajorUpgrade
+      AllowSameVersionUpgrades="yes"
+      DowngradeErrorMessage="A newer version of UiPilot is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
     <StandardDirectory Id="LocalAppDataFolder">

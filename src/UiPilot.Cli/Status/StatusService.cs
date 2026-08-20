@@ -11,6 +11,8 @@ namespace UiPilot.Cli.Status;
 
 public sealed class StatusService : BackgroundService
 {
+    private static readonly TimeSpan SessionPollInterval = TimeSpan.FromMilliseconds(500);
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -163,19 +165,36 @@ public sealed class StatusService : BackgroundService
 
             var lastSessions = snapshot.Sessions;
             var lastActiveSession = snapshot.ActiveSession;
+            using var pollTimer = new PeriodicTimer(SessionPollInterval);
+            var operationReady = subscription.Reader.WaitToReadAsync(closed.Token).AsTask();
+            var pollReady = pollTimer.WaitForNextTickAsync(closed.Token).AsTask();
 
-            await foreach (var operationEvent in subscription.Reader
-                               .ReadAllAsync(closed.Token)
-                               .ConfigureAwait(false))
+            while (socket.State == WebSocketState.Open)
             {
+                var completed = await Task.WhenAny(operationReady, pollReady).ConfigureAwait(false);
+                if (completed == operationReady)
+                {
+                    if (!await operationReady.ConfigureAwait(false))
+                        break;
+
+                    while (subscription.Reader.TryRead(out var operationEvent))
+                    {
+                        await SendAsync(socket, StatusMessage.OperationUpdate(operationEvent), closed.Token)
+                            .ConfigureAwait(false);
+                    }
+                    operationReady = subscription.Reader.WaitToReadAsync(closed.Token).AsTask();
+                }
+
+                if (completed == pollReady)
+                {
+                    if (!await pollReady.ConfigureAwait(false))
+                        break;
+                    pollReady = pollTimer.WaitForNextTickAsync(closed.Token).AsTask();
+                }
+
                 if (socket.State != WebSocketState.Open)
                     break;
 
-                await SendAsync(socket, StatusMessage.OperationUpdate(operationEvent), closed.Token)
-                    .ConfigureAwait(false);
-
-                // Sessions only change as a side effect of an operation, so this is the cheapest
-                // point at which a change can be detected without polling.
                 var sessions = _source.ListSessions();
                 var activeSession = _source.ActiveSession;
                 if (SessionsChanged(lastSessions, lastActiveSession, sessions, activeSession))

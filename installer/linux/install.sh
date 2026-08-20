@@ -40,6 +40,7 @@ VSIX_PATH="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$V
 required=(
   "$PAYLOAD_DIR/UiPilot.Cli"
   "$PAYLOAD_DIR/UiPilot.Cli.dll"
+  "$PAYLOAD_DIR/version.txt"
   "$PAYLOAD_DIR/hooks/UiPilot.StartupHook.dll"
   "$PAYLOAD_DIR/hooks/avalonia/UiPilot.Avalonia.dll"
 )
@@ -52,6 +53,7 @@ TOKEN="$(uipilot_read_status_token "$MCP_CONFIG")"
 if [[ -z "$TOKEN" ]]; then
   TOKEN="$(uipilot_new_status_token)"
 fi
+VERSION="$(tr -d '[:space:]' < "$PAYLOAD_DIR/version.txt")"
 
 STAGING="$INSTALL_DIR.installing-$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
 echo "Installing UiPilot to $INSTALL_DIR"
@@ -63,15 +65,17 @@ cp -a "$SCRIPT_DIR/UiPilot.Installer.Common.sh" "$STAGING/"
 cp -a "$VSIX_PATH" "$STAGING/UiPilot.Status.vsix"
 chmod +x "$STAGING/UiPilot.Cli" "$STAGING/uninstall.sh"
 
-python3 - "$STAGING/install-manifest.json" "$INSTALL_DIR" "$MCP_CONFIG" "$CURSOR_SETTINGS" <<'PY'
+python3 - "$STAGING/install-manifest.json" "$INSTALL_DIR" "$MCP_CONFIG" "$CURSOR_SETTINGS" "$VERSION" <<'PY'
 import json, sys, datetime
-path, install_dir, mcp, settings = sys.argv[1:]
+path, install_dir, mcp, settings, version = sys.argv[1:]
 manifest = {
     "installedAtUtc": datetime.datetime.utcnow().isoformat() + "Z",
     "installDirectory": install_dir,
     "mcpConfigPath": mcp,
     "cursorSettingsPath": settings,
     "command": f"{install_dir}/UiPilot.Cli",
+    "mcpServerName": f"uipilot-{version}",
+    "version": version,
     "requiredRuntime": "8.0",
 }
 with open(path, "w", encoding="utf-8", newline="\n") as handle:
@@ -84,7 +88,7 @@ if [[ -e "$INSTALL_DIR" ]]; then
 fi
 mv "$STAGING" "$INSTALL_DIR"
 
-uipilot_merge_mcp "$MCP_CONFIG" "$INSTALL_DIR/UiPilot.Cli" "$TOKEN"
+uipilot_merge_mcp "$MCP_CONFIG" "$INSTALL_DIR/UiPilot.Cli" "$TOKEN" "$VERSION"
 uipilot_merge_settings "$CURSOR_SETTINGS" "$TOKEN"
 uipilot_install_extension "$INSTALL_DIR/UiPilot.Status.vsix"
 

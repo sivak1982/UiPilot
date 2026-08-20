@@ -8,6 +8,7 @@ param(
     [string]$RuntimeIdentifier = "win-x64",
     [string]$Configuration = "Release",
     [string]$OutputDirectory = "",
+    [int]$BuildNumber = $(if ($env:BUILD_BUILDID) { [int]$env:BUILD_BUILDID } elseif ($env:GITHUB_RUN_NUMBER) { [int]$env:GITHUB_RUN_NUMBER } else { 0 }),
     [switch]$SkipTests
 )
 
@@ -36,8 +37,9 @@ $version = if ($null -ne $versionNode) { [string]$versionNode.InnerText } else {
 if ([string]::IsNullOrWhiteSpace($version)) {
     throw "Could not read UiPilot's version from Directory.Build.props."
 }
+$fullVersion = "$version.$BuildNumber"
 
-$bundleName = "UiPilot-$version-$RuntimeIdentifier"
+$bundleName = "UiPilot-$fullVersion-$RuntimeIdentifier"
 # Windows uses this only as MSI staging; Linux ships it as the ZIP bundle.
 $bundleRoot = Join-Path $OutputDirectory $bundleName
 $payloadDirectory = Join-Path $bundleRoot "payload"
@@ -47,7 +49,7 @@ $extensionDirectory = Join-Path $repoRoot "extensions\uipilot-status"
 $extensionVsix = Join-Path $bundleRoot "UiPilot.Status.vsix"
 
 Write-Host "Using .NET SDK $sdk"
-Write-Host "Building UiPilot $version for $RuntimeIdentifier"
+Write-Host "Building UiPilot $fullVersion for $RuntimeIdentifier"
 
 if (Test-Path -LiteralPath $bundleRoot) {
     Remove-Item -LiteralPath $bundleRoot -Recurse -Force
@@ -104,11 +106,16 @@ if (-not $SkipTests) {
     --self-contained false `
     -p:DebugType=None `
     -p:DebugSymbols=false `
+    -p:BuildNumber=$BuildNumber `
     --output $payloadDirectory `
     --nologo
 if ($LASTEXITCODE -ne 0) {
     throw "UiPilot.Cli publish failed."
 }
+[IO.File]::WriteAllText(
+    (Join-Path $payloadDirectory "version.txt"),
+    $fullVersion + [Environment]::NewLine,
+    (New-Object Text.UTF8Encoding($false)))
 
 Get-ChildItem -LiteralPath $payloadDirectory -Filter *.pdb -Recurse -ErrorAction SilentlyContinue |
     Remove-Item -Force
@@ -154,7 +161,7 @@ if (-not $isWindowsRid) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "linux\UiPilot.Installer.Common.sh") -Destination $bundleRoot
 
     @"
-UiPilot $version ($RuntimeIdentifier)
+UiPilot $fullVersion ($RuntimeIdentifier)
 
 Extract this ZIP and run:
   chmod +x install.sh uninstall.sh payload/UiPilot.Cli

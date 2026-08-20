@@ -50,6 +50,10 @@ verifies the hook payloads, and writes artifacts under `artifacts/installer/`:
 - `UiPilot-<version>-win-x64.msi`
 - `UiPilot-<version>-linux-x64.zip` (when a Linux RID is selected)
 
+Installer versions use `major.minor.patch.build`. Pass `-BuildNumber 123` on Windows or set
+`BUILD_NUMBER=123` on Linux; Azure Pipelines `BUILD_BUILDID` and GitHub `GITHUB_RUN_NUMBER` are
+used automatically. Local builds default to build `0`.
+
 Options:
 
 ```powershell
@@ -71,6 +75,8 @@ Reinstalling a newer version performs a major upgrade in place.
 Existing Cursor MCP and user settings are preserved and backed up before modification. The
 installer generates a random status token on first install, preserves it on reinstall, writes the
 matching extension settings, and installs the bundled VSIX through the Cursor CLI when available.
+The Cursor MCP entry includes the complete build version, for example `uipilot-0.1.0.123`;
+upgrades replace the prior entry for the same installation.
 If `cursor` is not on `PATH`, it prints the exact VSIX path for manual installation. Restart
 Cursor after installation.
 

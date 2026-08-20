@@ -27,10 +27,18 @@ try {
     $token = Get-OrCreateUiPilotStatusToken -ConfigPath $mcpPath
     Assert-Equal 64 $token.Length "Generated status token must be 32 bytes of hex."
 
+    $legacy = Read-UiPilotJson -Path $mcpPath
+    $legacy.mcpServers | Add-Member -MemberType NoteProperty -Name "uipilot" -Value ([pscustomobject]@{
+        command = "C:\UiPilot\UiPilot.Cli.exe"
+        env = [pscustomobject]@{ UIPILOT_STATUS_TOKEN = $token }
+    }) -Force
+    Write-UiPilotJson -Path $mcpPath -Value $legacy
+
     Set-UiPilotMcpServer `
         -ConfigPath $mcpPath `
         -CommandPath "C:\UiPilot\UiPilot.Cli.exe" `
-        -StatusToken $token
+        -StatusToken $token `
+        -Version "0.1.0.42"
     Set-UiPilotExtensionSettings `
         -SettingsPath $settingsPath `
         -StatusToken $token
@@ -38,17 +46,24 @@ try {
     $mcp = Read-UiPilotJson -Path $mcpPath
     Assert-Equal "other.exe" $mcp.mcpServers.other.command "Unrelated MCP server was changed."
     Assert-Equal $true $mcp.unrelated "Unrelated MCP setting was changed."
-    Assert-Equal $token $mcp.mcpServers.uipilot.env.UIPILOT_STATUS_TOKEN "MCP token mismatch."
-    Assert-Equal "17831" $mcp.mcpServers.uipilot.env.UIPILOT_STATUS_PORT "MCP port mismatch."
+    Assert-Equal $token $mcp.mcpServers."uipilot-0.1.0.42".env.UIPILOT_STATUS_TOKEN "MCP token mismatch."
+    Assert-Equal "17831" $mcp.mcpServers."uipilot-0.1.0.42".env.UIPILOT_STATUS_PORT "MCP port mismatch."
+    if ($null -ne $mcp.mcpServers.PSObject.Properties["uipilot"]) {
+        throw "Registration must migrate the legacy unversioned MCP entry."
+    }
 
-    $mcp.mcpServers.uipilot.env | Add-Member -MemberType NoteProperty -Name "CUSTOM_ENV" -Value "keep-me" -Force
+    $mcp.mcpServers."uipilot-0.1.0.42".env | Add-Member -MemberType NoteProperty -Name "CUSTOM_ENV" -Value "keep-me" -Force
     Write-UiPilotJson -Path $mcpPath -Value $mcp
     Set-UiPilotMcpServer `
         -ConfigPath $mcpPath `
         -CommandPath "C:\UiPilot\UiPilot.Cli.exe" `
-        -StatusToken $token
+        -StatusToken $token `
+        -Version "0.1.0.43"
     $mcp = Read-UiPilotJson -Path $mcpPath
-    Assert-Equal "keep-me" $mcp.mcpServers.uipilot.env.CUSTOM_ENV "Unrelated MCP environment was changed."
+    Assert-Equal "keep-me" $mcp.mcpServers."uipilot-0.1.0.43".env.CUSTOM_ENV "Unrelated MCP environment was changed."
+    if ($null -ne $mcp.mcpServers.PSObject.Properties["uipilot-0.1.0.42"]) {
+        throw "Upgrade must remove the prior versioned MCP entry."
+    }
 
     $settings = Read-UiPilotJson -Path $settingsPath
     Assert-Equal 15 $settings."editor.fontSize" "Unrelated Cursor setting was changed."
@@ -96,6 +111,7 @@ try {
     $installDirectory = Join-Path $root "install"
     New-Item -ItemType Directory -Path $installDirectory -Force | Out-Null
     [IO.File]::WriteAllText((Join-Path $installDirectory "UiPilot.Cli.exe"), "")
+    [IO.File]::WriteAllText((Join-Path $installDirectory "version.txt"), "0.1.0.99")
     $registerScript = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\Register-Cursor.ps1"))
     $installedCommand = Join-Path $installDirectory "UiPilot.Cli.exe"
     $manifestPath = Join-Path $installDirectory "install-manifest.json"
@@ -107,9 +123,9 @@ try {
         -CursorSettingsPath $settingsPath
 
     $mcp = Read-UiPilotJson -Path $mcpPath
-    Assert-Equal $installedCommand $mcp.mcpServers.uipilot.command "MSI registration must point at the installed CLI."
+    Assert-Equal $installedCommand $mcp.mcpServers."uipilot-0.1.0.99".command "MSI registration must point at the installed CLI."
     Assert-Equal "other.exe" $mcp.mcpServers.other.command "MSI registration changed an unrelated MCP server."
-    Assert-Equal $token $mcp.mcpServers.uipilot.env.UIPILOT_STATUS_TOKEN "MSI registration must preserve the status token."
+    Assert-Equal $token $mcp.mcpServers."uipilot-0.1.0.99".env.UIPILOT_STATUS_TOKEN "MSI registration must preserve the status token."
     if (-not (Test-Path -LiteralPath $manifestPath)) {
         throw "Registration must write install-manifest.json for uninstall."
     }
@@ -120,8 +136,8 @@ try {
     & $registerScript -Action Unregister -InstallDirectory $installDirectory
 
     $mcp = Read-UiPilotJson -Path $mcpPath
-    if ($null -ne $mcp.mcpServers.PSObject.Properties["uipilot"]) {
-        throw "Uninstall must remove Cursor's 'uipilot' MCP entry."
+    if ($null -ne $mcp.mcpServers.PSObject.Properties["uipilot-0.1.0.99"]) {
+        throw "Uninstall must remove Cursor's versioned UiPilot MCP entry."
     }
     Assert-Equal "other.exe" $mcp.mcpServers.other.command "Uninstall changed an unrelated MCP server."
     if (Test-Path -LiteralPath $manifestPath) {

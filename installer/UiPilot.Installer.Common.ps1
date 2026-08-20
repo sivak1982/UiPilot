@@ -129,6 +129,7 @@ function Set-UiPilotMcpServer {
         [Parameter(Mandatory = $true)][string]$ConfigPath,
         [Parameter(Mandatory = $true)][string]$CommandPath,
         [Parameter(Mandatory = $true)][string]$StatusToken,
+        [Parameter(Mandatory = $true)][string]$Version,
         [int]$StatusPort = $script:UiPilotStatusPort
     )
 
@@ -138,8 +139,12 @@ function Set-UiPilotMcpServer {
         $config | Add-Member -MemberType NoteProperty -Name "mcpServers" -Value ([pscustomobject]@{}) -Force
     }
 
+    $serverName = Get-UiPilotMcpServerName -Version $Version
     $serverEnvironment = [pscustomobject]@{}
-    $existingServerProperty = $config.mcpServers.PSObject.Properties["uipilot"]
+    $existingServerProperty = @(
+        $config.mcpServers.PSObject.Properties |
+            Where-Object { $_.Name -eq $serverName -or $_.Name -eq "uipilot" -or $_.Name.StartsWith("uipilot-") }
+    ) | Select-Object -First 1
     if ($null -ne $existingServerProperty -and
         $null -ne $existingServerProperty.Value -and
         $null -ne $existingServerProperty.Value.PSObject.Properties["env"] -and
@@ -160,8 +165,27 @@ function Set-UiPilotMcpServer {
         args = @()
         env = $serverEnvironment
     }
-    $config.mcpServers | Add-Member -MemberType NoteProperty -Name "uipilot" -Value $server -Force
+    foreach ($property in @($config.mcpServers.PSObject.Properties)) {
+        if (($property.Name -eq "uipilot" -or $property.Name.StartsWith("uipilot-")) -and
+            $property.Name -ne $serverName) {
+            $configuredCommand = [string]$property.Value.command
+            if ($property.Name -eq "uipilot" -or
+                [string]::Equals($configuredCommand, $CommandPath, [StringComparison]::OrdinalIgnoreCase)) {
+                $config.mcpServers.PSObject.Properties.Remove($property.Name)
+            }
+        }
+    }
+    $config.mcpServers | Add-Member -MemberType NoteProperty -Name $serverName -Value $server -Force
     Write-UiPilotJson -Path $ConfigPath -Value $config
+}
+
+function Get-UiPilotMcpServerName {
+    param([Parameter(Mandatory = $true)][string]$Version)
+
+    if ($Version -notmatch "^\d+\.\d+\.\d+\.\d+$") {
+        throw "UiPilot MCP version '$Version' must use major.minor.patch.build format."
+    }
+    return "uipilot-$Version"
 }
 
 function New-UiPilotStatusToken {
@@ -182,9 +206,12 @@ function Get-OrCreateUiPilotStatusToken {
     $config = Read-UiPilotJson -Path $ConfigPath
     $server = $null
     if ($null -ne $config.PSObject.Properties["mcpServers"] -and
-        $null -ne $config.mcpServers -and
-        $null -ne $config.mcpServers.PSObject.Properties["uipilot"]) {
-        $server = $config.mcpServers.uipilot
+        $null -ne $config.mcpServers) {
+        $server = @(
+            $config.mcpServers.PSObject.Properties |
+                Where-Object { $_.Name -eq "uipilot" -or $_.Name.StartsWith("uipilot-") } |
+                ForEach-Object { $_.Value }
+        ) | Select-Object -First 1
     }
 
     if ($null -ne $server -and
@@ -230,21 +257,30 @@ function Remove-UiPilotMcpServer {
         return $false
     }
 
-    $property = $config.mcpServers.PSObject.Properties["uipilot"]
-    if ($null -eq $property) {
+    $removed = $false
+    foreach ($property in @($config.mcpServers.PSObject.Properties)) {
+        if ($property.Name -ne "uipilot" -and -not $property.Name.StartsWith("uipilot-")) {
+            continue
+        }
+
+        $configuredCommand = [string]$property.Value.command
+        if ([string]::IsNullOrWhiteSpace($configuredCommand) -or
+            -not [string]::Equals(
+                [IO.Path]::GetFullPath($configuredCommand),
+                [IO.Path]::GetFullPath($InstalledCommandPath),
+                [StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
+
+        $config.mcpServers.PSObject.Properties.Remove($property.Name)
+        $removed = $true
+    }
+
+    if (-not $removed) {
+        Write-Warning "Cursor's UiPilot MCP entries point elsewhere; they were left unchanged."
         return $false
     }
 
-    $configuredCommand = $property.Value.command
-    if (-not [string]::Equals(
-        [IO.Path]::GetFullPath([string]$configuredCommand),
-        [IO.Path]::GetFullPath($InstalledCommandPath),
-        [StringComparison]::OrdinalIgnoreCase)) {
-        Write-Warning "Cursor's 'uipilot' MCP entry points elsewhere; it was left unchanged."
-        return $false
-    }
-
-    $config.mcpServers.PSObject.Properties.Remove("uipilot")
     Write-UiPilotJson -Path $ConfigPath -Value $config
     return $true
 }
@@ -264,6 +300,19 @@ function Get-UiPilotInstalledCommandPath {
     }
 
     return (Join-Path $InstallDirectory "UiPilot.Cli")
+}
+
+function Get-UiPilotInstalledVersion {
+    param([Parameter(Mandatory = $true)][string]$InstallDirectory)
+
+    $versionPath = Join-Path $InstallDirectory "version.txt"
+    if (-not (Test-Path -LiteralPath $versionPath -PathType Leaf)) {
+        throw "UiPilot version metadata was not found at '$versionPath'."
+    }
+
+    $version = [IO.File]::ReadAllText($versionPath).Trim()
+    $null = Get-UiPilotMcpServerName -Version $version
+    return $version
 }
 
 function Install-UiPilotCursorExtension {
@@ -329,8 +378,13 @@ function Register-UiPilotCursorIntegration {
     }
 
     $commandPath = Get-UiPilotInstalledCommandPath -InstallDirectory $InstallDirectory
+    $version = Get-UiPilotInstalledVersion -InstallDirectory $InstallDirectory
     $statusToken = Get-OrCreateUiPilotStatusToken -ConfigPath $McpConfigPath
-    Set-UiPilotMcpServer -ConfigPath $McpConfigPath -CommandPath $commandPath -StatusToken $statusToken
+    Set-UiPilotMcpServer `
+        -ConfigPath $McpConfigPath `
+        -CommandPath $commandPath `
+        -StatusToken $statusToken `
+        -Version $version
     Set-UiPilotExtensionSettings -SettingsPath $CursorSettingsPath -StatusToken $statusToken
 
     # Uninstall reads this back so it can clean up non-default Cursor config locations.
@@ -340,6 +394,8 @@ function Register-UiPilotCursorIntegration {
         mcpConfigPath = $McpConfigPath
         cursorSettingsPath = $CursorSettingsPath
         command = $commandPath
+        mcpServerName = Get-UiPilotMcpServerName -Version $version
+        version = $version
         requiredRuntime = "$script:UiPilotRequiredRuntimeMajor.0"
     }
     [IO.File]::WriteAllText(

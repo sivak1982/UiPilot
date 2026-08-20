@@ -113,6 +113,35 @@ public class ConnectionManagerTests
     }
 
     [Fact]
+    public async Task ListSessions_RemovesProcessClosedOutsideUiPilot()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var manager = new ConnectionManager();
+        var command = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+        var started = await manager.StartProcessAsync(
+            command,
+            session: "external-close",
+            arguments: "/c ping -n 120 127.0.0.1",
+            showWindow: false);
+
+        using (var process = System.Diagnostics.Process.GetProcessById(started.Pid))
+        {
+            process.Kill(entireProcessTree: true);
+            Assert.True(process.WaitForExit(10_000));
+        }
+
+        Assert.Empty(manager.ListSessions());
+        Assert.Null(manager.ActiveSessionName);
+
+        var restarted = await manager.RestartAsync("external-close");
+        Assert.Equal("external-close", restarted.Name);
+        Assert.Contains(manager.ListSessions(), session => session.Name == "external-close");
+        manager.StopAll();
+    }
+
+    [Fact]
     public void Detach_WhenEmpty_ReturnsNull()
     {
         using var manager = new ConnectionManager();

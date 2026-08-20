@@ -24,8 +24,11 @@ root = ET.parse("$REPO_ROOT/Directory.Build.props").getroot()
 print(next(node.text for node in root.iter() if node.tag.endswith("Version") and node.text))
 PY
 )"
+BUILD_NUMBER="${BUILD_NUMBER:-${BUILD_BUILDID:-${GITHUB_RUN_NUMBER:-0}}}"
+[[ "$BUILD_NUMBER" =~ ^[0-9]+$ ]] || uipilot_die "build number must be a non-negative integer"
+FULL_VERSION="$VERSION.$BUILD_NUMBER"
 OUT_DIR="${OUTPUT_DIRECTORY:-$REPO_ROOT/artifacts/installer}"
-BUNDLE_NAME="UiPilot-$VERSION-$RID"
+BUNDLE_NAME="UiPilot-$FULL_VERSION-$RID"
 BUNDLE_ROOT="$OUT_DIR/$BUNDLE_NAME"
 PAYLOAD="$BUNDLE_ROOT/payload"
 ARCHIVE="$OUT_DIR/$BUNDLE_NAME.zip"
@@ -55,8 +58,10 @@ dotnet publish "$REPO_ROOT/src/UiPilot.Cli/UiPilot.Cli.csproj" \
   --self-contained false \
   -p:DebugType=None \
   -p:DebugSymbols=false \
+  -p:BuildNumber="$BUILD_NUMBER" \
   --output "$PAYLOAD" \
   --nologo
+printf '%s\n' "$FULL_VERSION" > "$PAYLOAD/version.txt"
 
 find "$PAYLOAD" -name '*.pdb' -delete
 chmod +x "$PAYLOAD/UiPilot.Cli"
@@ -64,6 +69,7 @@ chmod +x "$PAYLOAD/UiPilot.Cli"
 required=(
   "$PAYLOAD/UiPilot.Cli"
   "$PAYLOAD/UiPilot.Cli.dll"
+  "$PAYLOAD/version.txt"
   "$PAYLOAD/hooks/UiPilot.StartupHook.dll"
   "$PAYLOAD/hooks/avalonia/UiPilot.Avalonia.dll"
   "$VSIX"
@@ -78,7 +84,7 @@ cp "$SCRIPT_DIR/linux/UiPilot.Installer.Common.sh" "$BUNDLE_ROOT/"
 chmod +x "$BUNDLE_ROOT/install.sh" "$BUNDLE_ROOT/uninstall.sh"
 
 cat > "$BUNDLE_ROOT/README.txt" <<EOF
-UiPilot $VERSION ($RID)
+UiPilot $FULL_VERSION ($RID)
 
 Extract this ZIP and run:
   chmod +x install.sh uninstall.sh payload/UiPilot.Cli

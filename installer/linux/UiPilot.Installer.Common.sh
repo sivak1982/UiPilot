@@ -65,10 +65,15 @@ uipilot_merge_mcp() {
   local config_path="$1"
   local command_path="$2"
   local status_token="$3"
-  local status_port="${4:-$UIPILOT_STATUS_PORT}"
-  python3 - "$config_path" "$command_path" "$status_token" "$status_port" <<'PY'
+  local version="$4"
+  local status_port="${5:-$UIPILOT_STATUS_PORT}"
+  python3 - "$config_path" "$command_path" "$status_token" "$version" "$status_port" <<'PY'
 import json, os, shutil, sys, datetime
-path, command, token, port = sys.argv[1:]
+path, command, token, version, port = sys.argv[1:]
+parts = version.split(".")
+if len(parts) != 4 or not all(part.isdigit() for part in parts):
+    raise SystemExit(f"UiPilot MCP version '{version}' must use major.minor.patch.build format")
+server_name = f"uipilot-{version}"
 data = {}
 if os.path.isfile(path):
     with open(path, "r", encoding="utf-8") as handle:
@@ -79,13 +84,23 @@ if os.path.isfile(path):
     shutil.copy2(path, backup)
     print(f"Backed up existing JSON configuration to {backup}")
 servers = data.setdefault("mcpServers", {})
-existing = servers.get("uipilot") if isinstance(servers, dict) else None
+uipilot_names = [
+    name for name in servers
+    if name == "uipilot" or name.startswith("uipilot-")
+] if isinstance(servers, dict) else []
+existing = servers.get(server_name)
+if not isinstance(existing, dict) and uipilot_names:
+    existing = servers.get(uipilot_names[0])
 env = {}
 if isinstance(existing, dict) and isinstance(existing.get("env"), dict):
     env.update(existing["env"])
 env["UIPILOT_STATUS_PORT"] = str(port)
 env["UIPILOT_STATUS_TOKEN"] = token
-servers["uipilot"] = {"command": command, "args": [], "env": env}
+for name in uipilot_names:
+    configured = str((servers.get(name) or {}).get("command") or "")
+    if name == "uipilot" or os.path.normpath(configured) == os.path.normpath(command):
+        del servers[name]
+servers[server_name] = {"command": command, "args": [], "env": env}
 os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
 with open(path, "w", encoding="utf-8", newline="\n") as handle:
     json.dump(data, handle, indent=2)
@@ -105,9 +120,12 @@ with open(path, "r", encoding="utf-8") as handle:
     if not text:
         sys.exit(0)
     data = json.loads(text)
-token = (
-    ((data.get("mcpServers") or {}).get("uipilot") or {}).get("env") or {}
-).get("UIPILOT_STATUS_TOKEN")
+servers = data.get("mcpServers") or {}
+server = next((
+    value for name, value in servers.items()
+    if name == "uipilot" or name.startswith("uipilot-")
+), {})
+token = (server.get("env") or {}).get("UIPILOT_STATUS_TOKEN")
 if token:
     print(token)
 PY
@@ -150,15 +168,22 @@ if not os.path.isfile(path):
 with open(path, "r", encoding="utf-8") as handle:
     data = json.loads(handle.read() or "{}")
 servers = data.get("mcpServers")
-if not isinstance(servers, dict) or "uipilot" not in servers:
+if not isinstance(servers, dict):
     sys.exit(1)
-command = str((servers.get("uipilot") or {}).get("command") or "")
-if os.path.normpath(command) != os.path.normpath(installed):
-    print("warning: Cursor's 'uipilot' MCP entry points elsewhere; it was left unchanged.", file=sys.stderr)
+matching = []
+for name, server in servers.items():
+    if name != "uipilot" and not name.startswith("uipilot-"):
+        continue
+    command = str((server or {}).get("command") or "")
+    if os.path.normpath(command) == os.path.normpath(installed):
+        matching.append(name)
+if not matching:
+    print("warning: Cursor's UiPilot MCP entries point elsewhere; they were left unchanged.", file=sys.stderr)
     sys.exit(2)
 backup = f"{path}.backup-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
 shutil.copy2(path, backup)
-del servers["uipilot"]
+for name in matching:
+    del servers[name]
 with open(path, "w", encoding="utf-8", newline="\n") as handle:
     json.dump(data, handle, indent=2)
     handle.write("\n")

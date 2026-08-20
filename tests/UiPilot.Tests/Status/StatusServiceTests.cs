@@ -146,6 +146,35 @@ public sealed class StatusServiceTests
     }
 
     [Fact]
+    public async Task WebSocket_SendsSessionUpdateWhenAppClosesWithoutOperation()
+    {
+        var port = StatusTestSupport.ReservePort();
+        var source = new FakeSnapshotSource();
+        source.Set("sim", [Session("sim", isActive: true)], [App(4242, "SampleApp")]);
+        using var service = CreateService(port, source, new OperationHub());
+        await service.StartAsync(CancellationToken.None);
+
+        try
+        {
+            using var socket = await ConnectAsync(port);
+            using var hello = await StatusTestSupport.ReceiveMessageAsync(socket, ReceiveTimeout);
+            Assert.Equal("hello", hello.RootElement.GetProperty("type").GetString());
+
+            source.Set(null, [], []);
+
+            using var sessions = await StatusTestSupport.ReceiveMessageAsync(socket, ReceiveTimeout);
+            Assert.Equal("sessions", sessions.RootElement.GetProperty("type").GetString());
+            var payload = sessions.RootElement.GetProperty("sessions");
+            Assert.False(payload.TryGetProperty("activeSession", out _));
+            Assert.Empty(payload.GetProperty("sessions").EnumerateArray());
+        }
+        finally
+        {
+            await service.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task WebSocket_WithoutBearerToken_IsRejected()
     {
         var port = StatusTestSupport.ReservePort();
