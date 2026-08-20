@@ -3,7 +3,7 @@ using System;
 namespace UiPilot;
 
 /// <summary>
-/// Shared configuration for in-process pilot hosts (WPF and Avalonia). Framework packages
+/// Shared configuration for in-process pilot hosts (WPF, Avalonia, and WinForms). Framework packages
 /// expose typed options wrappers that map onto this.
 /// </summary>
 public sealed class PilotOptions
@@ -51,4 +51,5 @@ public static class UiFrameworks
 {
     public const string Wpf = "wpf";
     public const string Avalonia = "avalonia";
+    public const string WinForms = "winforms";
 }

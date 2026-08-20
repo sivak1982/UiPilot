@@ -285,6 +285,22 @@ public class StartupHookLocatorTests
     }
 
     [Fact]
+    public void DetectUiFramework_FindsWinForms()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "uipilot-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            File.WriteAllBytes(Path.Combine(dir, "System.Windows.Forms.dll"), Array.Empty<byte>());
+            Assert.Equal(UiFrameworks.WinForms, StartupHookLocator.DetectUiFramework(dir));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ApplyTo_SetsDotnetStartupHooks()
     {
         var root = Path.Combine(Path.GetTempPath(), "uipilot-tests", Guid.NewGuid().ToString("N"));
@@ -296,6 +312,37 @@ public class StartupHookLocatorTests
         {
             File.WriteAllBytes(Path.Combine(appDir, "Avalonia.dll"), Array.Empty<byte>());
             var hookDll = Path.Combine(hookDir, "UiPilot.Avalonia.StartupHook.dll");
+            File.WriteAllBytes(hookDll, Array.Empty<byte>());
+
+            var psi = new System.Diagnostics.ProcessStartInfo();
+            var applied = StartupHookLocator.ApplyTo(
+                psi,
+                appDir,
+                uiFramework: null,
+                useStartupHook: true,
+                baseDirectory: Path.Combine(root, "cli"));
+
+            Assert.Equal(hookDll, applied);
+            Assert.Equal(hookDll, psi.Environment[StartupHookLocator.EnvVarName]);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ApplyTo_SetsWinFormsStartupHook()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "uipilot-tests", Guid.NewGuid().ToString("N"));
+        var appDir = Path.Combine(root, "app");
+        var hookDir = Path.Combine(root, "cli", "hooks", "winforms");
+        Directory.CreateDirectory(appDir);
+        Directory.CreateDirectory(hookDir);
+        try
+        {
+            File.WriteAllBytes(Path.Combine(appDir, "System.Windows.Forms.dll"), Array.Empty<byte>());
+            var hookDll = Path.Combine(hookDir, "UiPilot.WinForms.StartupHook.dll");
             File.WriteAllBytes(hookDll, Array.Empty<byte>());
 
             var psi = new System.Diagnostics.ProcessStartInfo();

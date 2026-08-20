@@ -5,13 +5,14 @@ Target apps                         UiPilot.Core
 ────────────                        ────────────
 WPF: PilotHost.Start() ──┐          PilotRuntime
 Avalonia: PilotHost.Start()┤          ├─ McpPipeServer (MCP over named pipe)
-  (or DOTNET_STARTUP_HOOKS)├────────► ├─ ToolRegistry + BuiltInTools
-                           │          ├─ IUiBackend
+WinForms: PilotHost.Start()┤          ├─ ToolRegistry + BuiltInTools
+  (or DOTNET_STARTUP_HOOKS)├────────► ├─ IUiBackend
                            │          └─ DiscoveryFile
                            │
 Framework adapters                  Agent side
 ──────────────────                  ──────────
-WpfUiBackend / AvaloniaUiBackend    Cursor/Claude
+WpfUiBackend / AvaloniaUiBackend / WinFormsUiBackend
+                                      Cursor/Claude
         ▲                             │ MCP stdio
         └──── IUiBackend ──────────── UiPilot.Cli
                                         ├─ MCP server (stdio) for agents
@@ -39,6 +40,7 @@ Real-input `drag` runs off the UI thread under its own lock.
 
 - **WPF** (`net8.0-windows`) — visual/logical tree, UIA peers, binding trace, adorners, DPI-aware screenshots.
 - **Avalonia** (`net8.0`) — split under `Inspection/` + `Interaction/` + `Media/`; chained log sink for binding capture.
+- **WinForms** (`net8.0-windows`) — controls and ToolStrip trees, WinForms-native interactions, `DrawToBitmap`/`PrintWindow` screenshots.
 
 ## CLI
 

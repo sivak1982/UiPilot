@@ -1,6 +1,6 @@
 # UiPilot
 
-In-process automation for **WPF and Avalonia** desktop apps, built for AI coding agents
+In-process automation for **WPF, Avalonia, and WinForms** desktop apps, built for AI coding agents
 (Cursor, Claude, etc.).
 
 > **Repository:** [github.com/sivak1982/UiPilot](https://github.com/sivak1982/UiPilot).
@@ -46,12 +46,20 @@ public override void OnFrameworkInitializationCompleted()
 }
 ```
 
+**WinForms**
+
+```csharp
+// Program.cs, after ApplicationConfiguration.Initialize()
+UiPilot.WinForms.PilotHost.Start();
+Application.Run(new MainForm());
+```
+
 That's it. No DI, no Generic Host, no attributes, no TCP port. Same agent tools either way.
 
 ## How it fits together
 
 ```text
-Cursor/Claude  --stdio MCP-->  UiPilot.Cli  --MCP over named pipe-->  your app (UiPilot.Wpf or UiPilot.Avalonia)
+Cursor/Claude  --stdio MCP-->  UiPilot.Cli  --MCP over named pipe-->  your app (WPF, Avalonia, or WinForms adapter)
                                     |
                                     +-- build / launch / restart your app (the AI edit loop)
 ```
@@ -61,6 +69,7 @@ Cursor/Claude  --stdio MCP-->  UiPilot.Cli  --MCP over named pipe-->  your app (
 | **`UiPilot.Core`** | Shared protocol, discovery, named pipe, tool registry, `IUiBackend` contract. |
 | **`UiPilot.Wpf`** | WPF adapter + `PilotHost.Start()` (`net8.0-windows`). |
 | **`UiPilot.Avalonia`** | Avalonia adapter + `PilotHost.Start()` (`net8.0`). |
+| **`UiPilot.WinForms`** | WinForms adapter + `PilotHost.Start()` (`net8.0-windows`). |
 | **`UiPilot.*.StartupHook`** | `DOTNET_STARTUP_HOOKS` injectors (copied under CLI `hooks/`). |
 | **`UiPilot.Cli`** | Out-of-process stdio MCP bridge + app launcher (framework-agnostic). |
 
@@ -90,7 +99,7 @@ See [docs/08-csharp-tests.md](docs/08-csharp-tests.md).
 - Disabled unless `#if DEBUG`, env `UIPILOT_ENABLE=1`, or an explicit `Start(force: true)`.
 - Named pipe only. No TCP, no remote surface by default.
 - Per-run auth token written to `%TEMP%/uipilot/<pid>.json`; every request must present it.
-- Discovery files include `uiFramework` (`wpf` or `avalonia`) so agents know which stack is attached.
+- Discovery files include `uiFramework` (`wpf`, `avalonia`, or `winforms`) so agents know which stack is attached.
 
 ## Repo layout
 
@@ -99,10 +108,12 @@ See [docs/08-csharp-tests.md](docs/08-csharp-tests.md).
 | `src/UiPilot.Core` | Shared core (protocol + backend contract). |
 | `src/UiPilot.Wpf` | WPF in-process library. |
 | `src/UiPilot.Avalonia` | Avalonia in-process library. |
+| `src/UiPilot.WinForms` | WinForms in-process library. |
 | `src/UiPilot.Client` | Typed C# client for deterministic product tests. |
 | `src/UiPilot.Cli` | Out-of-process stdio MCP bridge + app launcher. |
 | `samples/SampleApp` | Minimal WPF app used to validate the loop. |
 | `samples/AvaloniaSampleApp` | Minimal Avalonia app used to validate the loop. |
+| `samples/WinFormsSampleApp` | Minimal WinForms app used to validate controls, menus, and the startup hook. |
 | `docs/` | Design review, design diagram, architecture, adoption, security, tools, protocol, roadmap, C# tests. |
 
 Start with [docs/01-overview.md](docs/01-overview.md) or the [docs/09-design-diagram.md](docs/09-design-diagram.md).
@@ -113,7 +124,7 @@ Start with [docs/01-overview.md](docs/01-overview.md) or the [docs/09-design-dia
 dotnet build UiPilot.sln
 ```
 
-On non-Windows hosts, `EnableWindowsTargeting` is set so WPF TFMs restore; full WPF runtime still requires Windows.
+On non-Windows hosts, `EnableWindowsTargeting` is set so Windows desktop TFMs restore; WPF and WinForms runtime automation still requires Windows.
 
 ## Build the Windows installer
 
@@ -122,5 +133,5 @@ On non-Windows hosts, `EnableWindowsTargeting` is set so WPF TFMs restore; full 
 ```
 
 The generated per-user installer bundle checks the required .NET runtime, installs the CLI and
-both startup hooks, and merges UiPilot into Cursor's MCP configuration. See
+all startup hooks, and merges UiPilot into Cursor's MCP configuration. See
 [installer/README.md](installer/README.md) for installation, prerequisites, and uninstall details.

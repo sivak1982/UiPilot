@@ -1,11 +1,13 @@
 using System.Diagnostics;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
 
 namespace UiPilot.Client.Process;
 
 /// <summary>
 /// Resolves <c>DOTNET_STARTUP_HOOKS</c> assemblies shipped next to the CLI
-/// (<c>hooks/avalonia</c>, <c>hooks/wpf</c>) for zero-edit target-app adoption.
+/// (<c>hooks/avalonia</c>, <c>hooks/wpf</c>, <c>hooks/winforms</c>) for zero-edit target-app adoption.
 /// </summary>
 public static class StartupHookLocator
 {
@@ -25,7 +27,7 @@ public static class StartupHookLocator
     }
 
     /// <summary>
-    /// Infer <c>avalonia</c> or <c>wpf</c> from assemblies beside the target app.
+    /// Infer a supported UI framework from assemblies beside the target app.
     /// </summary>
     public static string? DetectUiFramework(string appDirectory)
     {
@@ -45,6 +47,29 @@ public static class StartupHookLocator
             return UiFrameworks.Wpf;
         }
 
+        if (File.Exists(Path.Combine(appDirectory, "System.Windows.Forms.dll")))
+            return UiFrameworks.WinForms;
+
+        // Framework-dependent desktop apps do not copy WindowsDesktop assemblies beside the exe.
+        // Inspect managed assembly references so a plain WinForms output directory is still
+        // auto-detected without requiring callers to pass uiFramework explicitly.
+        foreach (var assemblyPath in Directory.EnumerateFiles(appDirectory, "*.dll")
+                     .Concat(Directory.EnumerateFiles(appDirectory, "*.exe")))
+        {
+            if (ReferencesAssembly(assemblyPath, "Avalonia")
+                || ReferencesAssembly(assemblyPath, "Avalonia.Controls"))
+            {
+                return UiFrameworks.Avalonia;
+            }
+            if (ReferencesAssembly(assemblyPath, "PresentationFramework")
+                || ReferencesAssembly(assemblyPath, "PresentationCore"))
+            {
+                return UiFrameworks.Wpf;
+            }
+            if (ReferencesAssembly(assemblyPath, "System.Windows.Forms"))
+                return UiFrameworks.WinForms;
+        }
+
         return null;
     }
 
@@ -61,13 +86,18 @@ public static class StartupHookLocator
             ? "wpf"
             : string.Equals(uiFramework, UiFrameworks.Avalonia, StringComparison.OrdinalIgnoreCase)
                 ? "avalonia"
-                : null;
+                : string.Equals(uiFramework, UiFrameworks.WinForms, StringComparison.OrdinalIgnoreCase)
+                    ? "winforms"
+                    : null;
         if (folder is null)
             return null;
 
-        var fileName = folder == "wpf"
-            ? "UiPilot.Wpf.StartupHook.dll"
-            : "UiPilot.Avalonia.StartupHook.dll";
+        var fileName = folder switch
+        {
+            "wpf" => "UiPilot.Wpf.StartupHook.dll",
+            "avalonia" => "UiPilot.Avalonia.StartupHook.dll",
+            _ => "UiPilot.WinForms.StartupHook.dll",
+        };
 
         var path = Path.GetFullPath(Path.Combine(root, "hooks", folder, fileName));
         return File.Exists(path) ? path : null;
@@ -110,4 +140,37 @@ public static class StartupHookLocator
 
     private static char PathListSeparator =>
         RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ';' : ':';
+
+    private static bool ReferencesAssembly(string path, string assemblyName)
+    {
+        try
+        {
+            using var stream = File.OpenRead(path);
+            using var pe = new PEReader(stream);
+            if (!pe.HasMetadata)
+                return false;
+            var metadata = pe.GetMetadataReader();
+            foreach (var handle in metadata.AssemblyReferences)
+            {
+                var reference = metadata.GetAssemblyReference(handle);
+                if (string.Equals(
+                        metadata.GetString(reference.Name),
+                        assemblyName,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+        catch (BadImageFormatException)
+        {
+            // Native executable or malformed file; it cannot carry managed assembly references.
+        }
+        catch (IOException)
+        {
+            // Best-effort detection. The explicit uiFramework parameter remains available.
+        }
+
+        return false;
+    }
 }

@@ -21,6 +21,10 @@
     <ProjectReference Include="..\..\samples\AvaloniaSampleApp\AvaloniaSampleApp.csproj">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
+    <ProjectReference Include="..\..\samples\WinFormsSampleApp\WinFormsSampleApp.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
+    </ProjectReference>
   </ItemGroup>
 
   <!-- Product test projects receive these files from the future UiPilot.Client package.
@@ -29,14 +33,17 @@
     <PropertyGroup>
       <_AvaloniaHookOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\src\UiPilot.Avalonia.StartupHook\bin\$(Configuration)\net8.0'))</_AvaloniaHookOut>
       <_WpfHookOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\src\UiPilot.Wpf.StartupHook\bin\$(Configuration)\net8.0'))</_WpfHookOut>
+      <_WinFormsHookOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\src\UiPilot.WinForms.StartupHook\bin\$(Configuration)\net8.0'))</_WinFormsHookOut>
     </PropertyGroup>
-    <MakeDir Directories="$(OutputPath)hooks\avalonia;$(OutputPath)hooks\wpf" />
+    <MakeDir Directories="$(OutputPath)hooks\avalonia;$(OutputPath)hooks\wpf;$(OutputPath)hooks\winforms" />
     <ItemGroup>
       <_ClientAvaloniaHookFiles Include="$(_AvaloniaHookOut)\*.dll;$(_AvaloniaHookOut)\*.json" />
       <_ClientWpfHookFiles Include="$(_WpfHookOut)\*.dll;$(_WpfHookOut)\*.json" />
+      <_ClientWinFormsHookFiles Include="$(_WinFormsHookOut)\*.dll;$(_WinFormsHookOut)\*.json" />
     </ItemGroup>
     <Copy SourceFiles="@(_ClientAvaloniaHookFiles)" DestinationFolder="$(OutputPath)hooks\avalonia" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_ClientWpfHookFiles)" DestinationFolder="$(OutputPath)hooks\wpf" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_ClientWinFormsHookFiles)" DestinationFolder="$(OutputPath)hooks\winforms" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

@@ -33,10 +33,11 @@ Priority order, following the "thin vertical slice first" principle.
 - Broader real-input mode / FlaUI parity still optional.
 - Non-Windows input backends for Avalonia (deferred).
 
-## Phase 5 - multi-UI - done for Avalonia
+## Phase 5 - multi-UI - done for Avalonia and WinForms
 
 - `UiPilot.Core` + `IUiBackend`.
 - `UiPilot.Avalonia` + sample app.
+- `UiPilot.WinForms` + startup hook + sample app (modern .NET on Windows).
 - Discovery `uiFramework`; env `UIPILOT_ENABLE` / `UIPILOT_START_MINIMIZED` only (no legacy aliases).
 
 ## Phase 5.5 - typed C# regression client - done

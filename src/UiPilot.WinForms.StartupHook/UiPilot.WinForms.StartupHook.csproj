@@ -3,15 +3,15 @@
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <RootNamespace></RootNamespace>
-    <AssemblyName>UiPilot.Wpf.StartupHook</AssemblyName>
+    <AssemblyName>UiPilot.WinForms.StartupHook</AssemblyName>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <IsPackable>false</IsPackable>
-    <Description>DOTNET_STARTUP_HOOKS assembly that starts UiPilot.Wpf without editing the target app.</Description>
+    <Description>DOTNET_STARTUP_HOOKS assembly that starts UiPilot.WinForms without editing the target app.</Description>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\UiPilot.Wpf\UiPilot.Wpf.csproj">
+    <ProjectReference Include="..\UiPilot.WinForms\UiPilot.WinForms.csproj">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <Private>false</Private>
       <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
@@ -22,14 +22,14 @@
 
   <Target Name="CopyPilotPayload" AfterTargets="Build">
     <PropertyGroup>
-      <_WpfOutBase>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\UiPilot.Wpf\bin\$(Configuration)\net8.0-windows'))</_WpfOutBase>
-      <_WpfOut Condition="'$(RuntimeIdentifier)' == ''">$(_WpfOutBase)</_WpfOut>
-      <_WpfOut Condition="'$(RuntimeIdentifier)' != ''">$(_WpfOutBase)\$(RuntimeIdentifier)</_WpfOut>
+      <_WinFormsOutBase>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\UiPilot.WinForms\bin\$(Configuration)\net8.0-windows'))</_WinFormsOutBase>
+      <_WinFormsOut Condition="'$(RuntimeIdentifier)' == ''">$(_WinFormsOutBase)</_WinFormsOut>
+      <_WinFormsOut Condition="'$(RuntimeIdentifier)' != ''">$(_WinFormsOutBase)\$(RuntimeIdentifier)</_WinFormsOut>
     </PropertyGroup>
     <ItemGroup>
-      <_Copy Include="$(_WpfOut)\*.dll"
-             Exclude="$(_WpfOut)\UiPilot.Wpf.StartupHook.dll" />
-      <_Copy Include="$(_WpfOut)\UiPilot.Wpf.deps.json" />
+      <_Copy Include="$(_WinFormsOut)\*.dll"
+             Exclude="$(_WinFormsOut)\UiPilot.WinForms.StartupHook.dll" />
+      <_Copy Include="$(_WinFormsOut)\UiPilot.WinForms.deps.json" />
     </ItemGroup>
     <Copy SourceFiles="@(_Copy)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="'@(_Copy)' != ''" />
   </Target>

@@ -5,7 +5,7 @@
     <RootNamespace>UiPilot</RootNamespace>
     <AssemblyName>UiPilot.Core</AssemblyName>
     <PackageId>UiPilot.Core</PackageId>
-    <Description>Shared MCP-over-pipe protocol, discovery, and UI-backend contracts for UiPilot (WPF and Avalonia).</Description>
+    <Description>Shared MCP-over-pipe protocol, discovery, and UI-backend contracts for UiPilot (WPF, Avalonia, and WinForms).</Description>
     <IsPackable>true</IsPackable>
   </PropertyGroup>
 
@@ -16,6 +16,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="UiPilot.Wpf" />
     <InternalsVisibleTo Include="UiPilot.Avalonia" />
+    <InternalsVisibleTo Include="UiPilot.WinForms" />
     <InternalsVisibleTo Include="UiPilot.Cli" />
     <InternalsVisibleTo Include="UiPilot.Client" />
     <InternalsVisibleTo Include="UiPilot.Tests" />

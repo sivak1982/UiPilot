@@ -68,7 +68,8 @@ $requiredFiles = @(
     (Join-Path $payloadDirectory "UiPilot.Cli.exe"),
     (Join-Path $payloadDirectory "UiPilot.Cli.dll"),
     (Join-Path $payloadDirectory "hooks\wpf\UiPilot.Wpf.StartupHook.dll"),
-    (Join-Path $payloadDirectory "hooks\avalonia\UiPilot.Avalonia.StartupHook.dll")
+    (Join-Path $payloadDirectory "hooks\avalonia\UiPilot.Avalonia.StartupHook.dll"),
+    (Join-Path $payloadDirectory "hooks\winforms\UiPilot.WinForms.StartupHook.dll")
 )
 foreach ($requiredFile in $requiredFiles) {
     if (-not (Test-Path -LiteralPath $requiredFile)) {

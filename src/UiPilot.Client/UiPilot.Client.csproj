@@ -21,6 +21,10 @@
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
     </ProjectReference>
+    <ProjectReference Include="..\UiPilot.WinForms.StartupHook\UiPilot.WinForms.StartupHook.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
+    </ProjectReference>
   </ItemGroup>
 
   <!-- Lifecycle/transport implementation is shared by the MCP host and typed client.
@@ -35,18 +39,23 @@
 
   <Target Name="CopyStartupHooks" AfterTargets="Build">
     <PropertyGroup>
-      <_AvaloniaHookOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\UiPilot.Avalonia.StartupHook\bin\$(Configuration)\net8.0'))</_AvaloniaHookOut>
-      <_WpfHookOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\UiPilot.Wpf.StartupHook\bin\$(Configuration)\net8.0'))</_WpfHookOut>
+      <_HookRidSuffix Condition="'$(RuntimeIdentifier)' != ''">\$(RuntimeIdentifier)</_HookRidSuffix>
+      <_AvaloniaHookOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\UiPilot.Avalonia.StartupHook\bin\$(Configuration)\net8.0$(_HookRidSuffix)'))</_AvaloniaHookOut>
+      <_WpfHookOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\UiPilot.Wpf.StartupHook\bin\$(Configuration)\net8.0$(_HookRidSuffix)'))</_WpfHookOut>
+      <_WinFormsHookOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\UiPilot.WinForms.StartupHook\bin\$(Configuration)\net8.0$(_HookRidSuffix)'))</_WinFormsHookOut>
       <_HooksAvalonia>$(OutputPath)hooks\avalonia\</_HooksAvalonia>
       <_HooksWpf>$(OutputPath)hooks\wpf\</_HooksWpf>
+      <_HooksWinForms>$(OutputPath)hooks\winforms\</_HooksWinForms>
     </PropertyGroup>
-    <MakeDir Directories="$(_HooksAvalonia);$(_HooksWpf)" />
+    <MakeDir Directories="$(_HooksAvalonia);$(_HooksWpf);$(_HooksWinForms)" />
     <ItemGroup>
       <_AvaloniaHookFiles Include="$(_AvaloniaHookOut)\*.dll;$(_AvaloniaHookOut)\*.json" />
       <_WpfHookFiles Include="$(_WpfHookOut)\*.dll;$(_WpfHookOut)\*.json" />
+      <_WinFormsHookFiles Include="$(_WinFormsHookOut)\*.dll;$(_WinFormsHookOut)\*.json" />
     </ItemGroup>
     <Copy SourceFiles="@(_AvaloniaHookFiles)" DestinationFolder="$(_HooksAvalonia)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_WpfHookFiles)" DestinationFolder="$(_HooksWpf)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_WinFormsHookFiles)" DestinationFolder="$(_HooksWinForms)" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>
