@@ -3,12 +3,14 @@
 ## Zero-edit launch (recommended for agents)
 
 `start_app` / `build_and_start` set process-scoped `DOTNET_STARTUP_HOOKS` to
-`UiPilot.*.StartupHook.dll` (shipped under the CLI's `hooks/avalonia` or `hooks/wpf`).
-The hook waits for `Application.Current`, then calls `PilotHost.Start(force: true)`.
+`UiPilot.StartupHook.dll`. The generic hook observes the target process, waits for the first live
+WPF main window, Avalonia main window, or WinForms form, then loads that adapter from its isolated
+`hooks/{framework}` payload and calls `PilotHost.Start(force: true)`.
 
 - No project reference or `PilotHost.Start()` in the target app is required.
-- Framework is auto-detected from assemblies beside the exe (`Avalonia.dll` → avalonia,
-  `PresentationFramework.dll` → wpf), or pass `uiFramework`.
+- No assembly-folder guessing is used. Selection is based on the live UI inside the process.
+- For mixed-framework applications, pass `uiFramework` to restrict detection to `wpf`,
+  `avalonia`, or `winforms`; otherwise the first ready UI wins.
 - Disable with `useStartupHook: false` on `start_app`, or env `UIPILOT_STARTUP_HOOK=0`.
 - The hook clears `DOTNET_STARTUP_HOOKS` in-process so child processes do not inherit it.
 
@@ -18,7 +20,7 @@ Still supported and **idempotent** with the hook (`PilotHost.Start` is a no-op w
 
 ### Contract
 
-1. Reference `UiPilot.Wpf` or `UiPilot.Avalonia` (Core comes transitively) **or** launch via CLI hooks.
+1. Reference `UiPilot.Wpf`, `UiPilot.Avalonia`, or `UiPilot.WinForms` (Core comes transitively) **or** launch via CLI hooks.
 2. Call `Start()` once at startup **or** rely on `DOTNET_STARTUP_HOOKS` from the CLI.
 3. Point your agent at `UiPilot.Cli` as an MCP server.
 4. No attributes required for basic automation.
@@ -46,6 +48,21 @@ public override void OnFrameworkInitializationCompleted()
     base.OnFrameworkInitializationCompleted();
 }
 ```
+
+### WinForms
+
+```csharp
+[STAThread]
+static void Main()
+{
+    ApplicationConfiguration.Initialize();
+    UiPilot.WinForms.PilotHost.Start();
+    Application.Run(new MainForm());
+}
+```
+
+WinForms startup-hook injection supports modern .NET applications. Legacy .NET Framework is not supported.
+`Control.Name` is the preferred stable selector; UiPilot also surfaces text and accessibility metadata.
 
 `Start()` is idempotent and a no-op in Release unless `UIPILOT_ENABLE=1` or `Force=true`. See [04-security.md](04-security.md).
 

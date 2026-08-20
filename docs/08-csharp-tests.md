@@ -108,6 +108,10 @@ The C# names intentionally mirror MCP rather than introducing another test DSL.
 `UiPilotClient` also exposes the remaining built-in MCP operations: windows, drag, keys, scroll,
 focus, selection, commands, window state, binding errors, layout analysis, and highlighting.
 
+Repository coverage includes both Avalonia and WinForms sample flows. The WinForms regression
+test also exercises `Control.Name` selectors, ComboBox selection, MenuStrip navigation, resize,
+and screenshots in normal and minimized states.
+
 ## Assertions, retries, and reusable flows
 
 Use the product's normal test framework. UiPilot does not define `expect_visible` or

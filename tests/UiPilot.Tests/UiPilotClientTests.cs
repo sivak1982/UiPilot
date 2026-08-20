@@ -23,7 +23,8 @@ public sealed class UiPilotClientTests
         Assert.True(File.Exists(app), $"Sample app was not built: {app}");
 
         await using var pilot = new UiPilotClient();
-        await pilot.StartAppAsync(app, session: "sample");
+        var session = await pilot.StartAppAsync(app, session: "sample");
+        Assert.Equal("avalonia", session.UiFramework);
 
         var resized = await pilot.ResizeWindowAsync(
             width: 900,

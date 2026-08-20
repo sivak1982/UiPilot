@@ -28,7 +28,7 @@ Otherwise `Start()` logs and returns without opening anything. A developer who s
 build with `Start()` still in startup code does **not** expose an automation surface.
 
 The CLI sets `UIPILOT_ENABLE=1` (and `UIPILOT_START_MINIMIZED=1`) on apps it launches via
-`build_and_start`, so the loop works for WPF and Avalonia hosts regardless of build configuration.
+`build_and_start`, so the loop works for WPF, Avalonia, and WinForms hosts regardless of build configuration.
 
 ## Transport and auth
 

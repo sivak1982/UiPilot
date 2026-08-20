@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>UiPilot.WinForms</RootNamespace>
+    <AssemblyName>UiPilot.WinForms</AssemblyName>
+    <PackageId>UiPilot.WinForms</PackageId>
+    <Description>In-process Windows Forms automation for AI agents, exposed over MCP on a named pipe.</Description>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\UiPilot.Core\UiPilot.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="UiPilot.Tests" />
+  </ItemGroup>
+
+</Project>

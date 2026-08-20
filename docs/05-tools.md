@@ -87,12 +87,12 @@ Every forwarding tool accepts optional `session`. Object results are enriched wi
 | `scroll` | `id`, `dx=0`, `dy=0`, `session?` | Synthetic wheel scroll. |
 | `focus` | `id`, `session?` | Focus the element. |
 | `select_item` | `id`, `text?`, `index?`, `session?` | Select in lists/combos/tabs. |
-| `invoke_command` | `id`, `session?` | Execute bound `ICommand`. |
+| `invoke_command` | `id`, `session?` | Execute bound `ICommand` (unsupported by WinForms). |
 | `screenshot` | `id?`, `session?` | MCP **image content** + `{ path, width, height, session }` text. |
 | `set_window_state` | `id?`, `state`, `activate=false`, `session?` | `minimized` \| `normal` \| `maximized`. |
 | `resize_window` | `width`, `height`, `id?`, `x?`, `y?`, `activate=false`, `session?` | Restores to normal if needed, sets size (optional position); returns `{ x, y, width, height, state, session }`. |
 | `bring_to_front` | `id?`, `session?` | Restore + activate for human viewing. |
-| `get_binding_errors` | `clear=false`, `session?` | Captured binding warnings/errors. |
+| `get_binding_errors` | `clear=false`, `session?` | Captured binding warnings/errors; WinForms currently returns an empty list. |
 | `analyze_layout` | `root?`, `session?` | `zero_size`, `off_screen`, `overlap`. |
 | `highlight_element` | `id`, `durationMs=1500`, `session?` | Brief red overlay. |
 | `describe_app_tools` | `session?` | Pipe `describe` — built-in + any custom `Tools.Register` handlers. |
@@ -118,7 +118,8 @@ one another. Asserting `Initialized` also matches a `Not Initialized` label (and
 
 - Default click/type/keys/scroll/select are **synthetic** (automation peers / routed events).
 - `drag` uses **real OS mouse input** (Windows) so hit-testing and mouse capture run.
-- Screenshots use `RenderTargetBitmap` and work while minimized.
+- WPF/Avalonia screenshots use `RenderTargetBitmap`; WinForms uses `DrawToBitmap` with a
+  `PrintWindow` fallback. Owner-drawn or hosted native content may not capture completely.
 
 ### Structured errors
 
@@ -133,7 +134,7 @@ Common codes: `stale_element`, `not_found`, `ambiguous`, `not_attached`, `invali
 
 ## Custom domain tools
 
-Register on `PilotHost.Tools` / `UiPilot.Avalonia.PilotHost.Tools` after `Start()`, or annotate with
+Register on the matching adapter's `PilotHost.Tools` after `Start()`, or annotate with
 `[PilotTool]` (discovery wiring is still post-MVP; use
 `describe_app_tools` + `invoke_app_tool` once registered manually).
 

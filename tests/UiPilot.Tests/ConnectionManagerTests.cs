@@ -253,49 +253,16 @@ public class AppLauncherTests
 public class StartupHookLocatorTests
 {
     [Fact]
-    public void DetectUiFramework_FindsAvalonia()
-    {
-        var dir = Path.Combine(Path.GetTempPath(), "uipilot-tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        try
-        {
-            File.WriteAllBytes(Path.Combine(dir, "Avalonia.dll"), Array.Empty<byte>());
-            Assert.Equal(UiFrameworks.Avalonia, StartupHookLocator.DetectUiFramework(dir));
-        }
-        finally
-        {
-            Directory.Delete(dir, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void DetectUiFramework_FindsWpf()
-    {
-        var dir = Path.Combine(Path.GetTempPath(), "uipilot-tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        try
-        {
-            File.WriteAllBytes(Path.Combine(dir, "PresentationFramework.dll"), Array.Empty<byte>());
-            Assert.Equal(UiFrameworks.Wpf, StartupHookLocator.DetectUiFramework(dir));
-        }
-        finally
-        {
-            Directory.Delete(dir, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void ApplyTo_SetsDotnetStartupHooks()
+    public void ApplyTo_SetsGenericStartupHook_WithoutFrameworkFiles()
     {
         var root = Path.Combine(Path.GetTempPath(), "uipilot-tests", Guid.NewGuid().ToString("N"));
-        var appDir = Path.Combine(root, "app");
-        var hookDir = Path.Combine(root, "cli", "hooks", "avalonia");
+        var appDir = Path.Combine(root, "empty-app");
+        var hookDir = Path.Combine(root, "cli", "hooks");
         Directory.CreateDirectory(appDir);
         Directory.CreateDirectory(hookDir);
         try
         {
-            File.WriteAllBytes(Path.Combine(appDir, "Avalonia.dll"), Array.Empty<byte>());
-            var hookDll = Path.Combine(hookDir, "UiPilot.Avalonia.StartupHook.dll");
+            var hookDll = Path.Combine(hookDir, "UiPilot.StartupHook.dll");
             File.WriteAllBytes(hookDll, Array.Empty<byte>());
 
             var psi = new System.Diagnostics.ProcessStartInfo();
@@ -308,6 +275,61 @@ public class StartupHookLocatorTests
 
             Assert.Equal(hookDll, applied);
             Assert.Equal(hookDll, psi.Environment[StartupHookLocator.EnvVarName]);
+            Assert.False(psi.Environment.ContainsKey(StartupHookLocator.FrameworkOverrideEnvVarName));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ApplyTo_SetsExplicitFrameworkOverride()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "uipilot-tests", Guid.NewGuid().ToString("N"));
+        var appDir = Path.Combine(root, "app");
+        var hookDir = Path.Combine(root, "cli", "hooks");
+        Directory.CreateDirectory(appDir);
+        Directory.CreateDirectory(hookDir);
+        try
+        {
+            var hookDll = Path.Combine(hookDir, "UiPilot.StartupHook.dll");
+            File.WriteAllBytes(hookDll, Array.Empty<byte>());
+
+            var psi = new System.Diagnostics.ProcessStartInfo();
+            var applied = StartupHookLocator.ApplyTo(
+                psi,
+                appDir,
+                uiFramework: "WinForms",
+                useStartupHook: true,
+                baseDirectory: Path.Combine(root, "cli"));
+
+            Assert.Equal(hookDll, applied);
+            Assert.Equal(hookDll, psi.Environment[StartupHookLocator.EnvVarName]);
+            Assert.Equal("winforms", psi.Environment[StartupHookLocator.FrameworkOverrideEnvVarName]);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ApplyTo_RejectsUnknownFrameworkOverride()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "uipilot-tests", Guid.NewGuid().ToString("N"));
+        var hookDir = Path.Combine(root, "cli", "hooks");
+        Directory.CreateDirectory(hookDir);
+        try
+        {
+            File.WriteAllBytes(Path.Combine(hookDir, "UiPilot.StartupHook.dll"), Array.Empty<byte>());
+            var psi = new System.Diagnostics.ProcessStartInfo();
+            Assert.Throws<ArgumentException>(() => StartupHookLocator.ApplyTo(
+                psi,
+                root,
+                uiFramework: "unknown",
+                useStartupHook: true,
+                baseDirectory: Path.Combine(root, "cli")));
         }
         finally
         {

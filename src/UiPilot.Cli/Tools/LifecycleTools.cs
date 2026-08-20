@@ -67,11 +67,11 @@ public sealed class LifecycleTools
     }
 
     [McpServerTool(Name = "attach")]
-    [Description("Attach to a running pilot app (WPF or Avalonia) as a named session. If pid is omitted, optional processName/uiFramework filters are applied before requiring exactly one match. Does not disconnect other sessions.")]
+    [Description("Attach to a running pilot app (WPF, Avalonia, or WinForms) as a named session. If pid is omitted, optional processName/uiFramework filters are applied before requiring exactly one match. Does not disconnect other sessions.")]
     public async Task<CallToolResult> Attach(
         [Description("Process id of the target app. Optional when filters identify exactly one app.")] int? pid = null,
         [Description("Optional case-insensitive substring filter for process name when pid is omitted.")] string? processName = null,
-        [Description("Optional exact UI framework filter when pid is omitted, e.g. 'wpf' or 'avalonia'.")] string? uiFramework = null,
+        [Description("Optional exact UI framework filter when pid is omitted: 'wpf', 'avalonia', or 'winforms'.")] string? uiFramework = null,
         [Description("Optional session name. Defaults to the process name. Use short names like 'sim' and 'oi' when driving two apps.")] string? session = null,
         CancellationToken ct = default)
     {
@@ -87,7 +87,7 @@ public sealed class LifecycleTools
     }
 
     [McpServerTool(Name = "build_and_start")]
-    [Description("Build a WPF or Avalonia project and launch it with UiPilot enabled (DOTNET_STARTUP_HOOKS by default), then attach as a named session. Only replaces an existing session with the same name; other sessions stay up.")]
+    [Description("Build a WPF, Avalonia, or WinForms project and launch it with UiPilot enabled (DOTNET_STARTUP_HOOKS by default), then attach as a named session. Only replaces an existing session with the same name; other sessions stay up.")]
     public async Task<CallToolResult> BuildAndStart(
         [Description("Path to the .csproj (or a directory/solution the SDK can build) of the target app.")] string project,
         [Description("Build configuration.")] string configuration = "Debug",
@@ -114,7 +114,7 @@ public sealed class LifecycleTools
         [Description("Optional session name. Defaults to the file name without extension (e.g. 'sim').")] string? session = null,
         [Description("Optional working directory. Defaults to the directory containing the app.")] string? workingDirectory = null,
         [Description("When true (default), set process-scoped DOTNET_STARTUP_HOOKS so UiPilot starts without editing the app. Set false if the app already calls PilotHost.Start and you want hook injection off.")] bool useStartupHook = true,
-        [Description("Optional UI stack override: 'avalonia' or 'wpf'. When omitted, detected from assemblies beside the app.")] string? uiFramework = null,
+        [Description("Optional UI stack override: 'wpf', 'avalonia', or 'winforms'. When omitted, the generic hook selects the first live UI at runtime.")] string? uiFramework = null,
         [Description("When true, start the app visible and pull it to the foreground instead of starting minimized. Use when a human is watching the run.")] bool foreground = false,
         CancellationToken ct = default)
     {

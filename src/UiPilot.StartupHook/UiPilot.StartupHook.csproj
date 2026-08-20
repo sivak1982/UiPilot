@@ -1,0 +1,75 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace></RootNamespace>
+    <AssemblyName>UiPilot.StartupHook</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <Description>Generic DOTNET_STARTUP_HOOKS assembly that selects and starts the live UiPilot UI adapter.</Description>
+  </PropertyGroup>
+
+  <!-- Build each adapter as a payload only; the hook itself has no UI-framework references. -->
+  <ItemGroup>
+    <ProjectReference Include="..\UiPilot.Avalonia\UiPilot.Avalonia.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <Private>false</Private>
+      <AdditionalProperties>CopyLocalLockFileAssemblies=true</AdditionalProperties>
+    </ProjectReference>
+    <ProjectReference Include="..\UiPilot.Wpf\UiPilot.Wpf.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <Private>false</Private>
+      <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
+      <SetTargetFramework>TargetFramework=net8.0-windows</SetTargetFramework>
+      <AdditionalProperties>CopyLocalLockFileAssemblies=true;TargetFramework=net8.0-windows</AdditionalProperties>
+    </ProjectReference>
+    <ProjectReference Include="..\UiPilot.WinForms\UiPilot.WinForms.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <Private>false</Private>
+      <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
+      <SetTargetFramework>TargetFramework=net8.0-windows</SetTargetFramework>
+      <AdditionalProperties>CopyLocalLockFileAssemblies=true;TargetFramework=net8.0-windows</AdditionalProperties>
+    </ProjectReference>
+  </ItemGroup>
+
+  <Target Name="CopyPilotPayloads" AfterTargets="Build">
+    <PropertyGroup>
+      <_AvaloniaOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\UiPilot.Avalonia\bin\$(Configuration)\net8.0'))</_AvaloniaOut>
+
+      <_WpfOutBase>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\UiPilot.Wpf\bin\$(Configuration)\net8.0-windows'))</_WpfOutBase>
+      <_WpfOut Condition="'$(RuntimeIdentifier)' == ''">$(_WpfOutBase)</_WpfOut>
+      <_WpfOut Condition="'$(RuntimeIdentifier)' != ''">$(_WpfOutBase)\$(RuntimeIdentifier)</_WpfOut>
+
+      <_WinFormsOutBase>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\UiPilot.WinForms\bin\$(Configuration)\net8.0-windows'))</_WinFormsOutBase>
+      <_WinFormsOut Condition="'$(RuntimeIdentifier)' == ''">$(_WinFormsOutBase)</_WinFormsOut>
+      <_WinFormsOut Condition="'$(RuntimeIdentifier)' != ''">$(_WinFormsOutBase)\$(RuntimeIdentifier)</_WinFormsOut>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <_AvaloniaPayload Include="$(_AvaloniaOut)\*.dll"
+                        Exclude="$(_AvaloniaOut)\Avalonia*.dll;$(_AvaloniaOut)\MicroCom*.dll;$(_AvaloniaOut)\Tmds*.dll;$(_AvaloniaOut)\HarfBuzz*.dll;$(_AvaloniaOut)\SkiaSharp*.dll" />
+      <_AvaloniaPayload Include="$(_AvaloniaOut)\UiPilot.Avalonia.deps.json" />
+
+      <_WpfPayload Include="$(_WpfOut)\*.dll" />
+      <_WpfPayload Include="$(_WpfOut)\UiPilot.Wpf.deps.json" />
+
+      <_WinFormsPayload Include="$(_WinFormsOut)\*.dll" />
+      <_WinFormsPayload Include="$(_WinFormsOut)\UiPilot.WinForms.deps.json" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(_AvaloniaPayload)"
+          DestinationFolder="$(OutputPath)avalonia"
+          SkipUnchangedFiles="true"
+          Condition="'@(_AvaloniaPayload)' != ''" />
+    <Copy SourceFiles="@(_WpfPayload)"
+          DestinationFolder="$(OutputPath)wpf"
+          SkipUnchangedFiles="true"
+          Condition="'@(_WpfPayload)' != ''" />
+    <Copy SourceFiles="@(_WinFormsPayload)"
+          DestinationFolder="$(OutputPath)winforms"
+          SkipUnchangedFiles="true"
+          Condition="'@(_WinFormsPayload)' != ''" />
+  </Target>
+
+</Project>

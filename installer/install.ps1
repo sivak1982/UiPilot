@@ -40,8 +40,10 @@ $PayloadDirectory = [IO.Path]::GetFullPath($PayloadDirectory)
 $requiredPayload = @(
     (Join-Path $PayloadDirectory "UiPilot.Cli.exe"),
     (Join-Path $PayloadDirectory "UiPilot.Cli.dll"),
-    (Join-Path $PayloadDirectory "hooks\wpf\UiPilot.Wpf.StartupHook.dll"),
-    (Join-Path $PayloadDirectory "hooks\avalonia\UiPilot.Avalonia.StartupHook.dll")
+    (Join-Path $PayloadDirectory "hooks\UiPilot.StartupHook.dll"),
+    (Join-Path $PayloadDirectory "hooks\wpf\UiPilot.Wpf.dll"),
+    (Join-Path $PayloadDirectory "hooks\avalonia\UiPilot.Avalonia.dll"),
+    (Join-Path $PayloadDirectory "hooks\winforms\UiPilot.WinForms.dll")
 )
 foreach ($requiredFile in $requiredPayload) {
     if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {

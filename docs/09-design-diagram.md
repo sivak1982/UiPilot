@@ -51,7 +51,7 @@ flowchart LR
 | `UiPilot.Core` | Protocol, discovery, pipe, tools, `PilotRuntime` |
 | `UiPilot.Wpf` | WPF adapter + `PilotHost.Start()` |
 | `UiPilot.Avalonia` | Avalonia adapter + `PilotHost.Start()` |
-| `*.StartupHook` | `DOTNET_STARTUP_HOOKS` injectors (zero-edit launch) |
+| `UiPilot.StartupHook` | Generic live-UI detector for zero-edit launch |
 | `UiPilot.Cli` | stdio MCP bridge + build/launch/restart |
 
 ## Agent edit loop
