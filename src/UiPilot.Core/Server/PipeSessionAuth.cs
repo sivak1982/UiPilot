@@ -13,6 +13,9 @@ namespace UiPilot.Server;
 /// </summary>
 internal static class PipeSessionAuth
 {
+    public const int DefaultTimeoutMs = 5_000;
+    public const int MaxLineBytes = 4_096;
+
     private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false);
 
     public static async Task WriteClientAsync(Stream stream, string token, CancellationToken ct)
@@ -21,7 +24,7 @@ internal static class PipeSessionAuth
         if (string.IsNullOrEmpty(token)) throw new ArgumentException("Token required.", nameof(token));
 
         await WriteLineAsync(stream, JsonSerializer.Serialize(new { token }), ct).ConfigureAwait(false);
-        var response = await ReadLineAsync(stream, ct).ConfigureAwait(false)
+        var response = await ReadLineAsync(stream, MaxLineBytes, ct).ConfigureAwait(false)
             ?? throw new IOException("Connection closed during pipe auth.");
 
         using var doc = JsonDocument.Parse(response);
@@ -37,13 +40,28 @@ internal static class PipeSessionAuth
     /// <summary>
     /// Server-side gate. Returns false when the peer sent a bad/missing token (connection should close).
     /// </summary>
-    public static bool TryAuthenticateServer(Stream stream, string expectedToken, Action<string>? log = null)
+    public static bool TryAuthenticateServer(
+        Stream stream,
+        string expectedToken,
+        Action<string>? log = null,
+        int timeoutMs = DefaultTimeoutMs)
     {
         if (stream == null) throw new ArgumentNullException(nameof(stream));
         if (string.IsNullOrEmpty(expectedToken)) throw new ArgumentException("Token required.", nameof(expectedToken));
 
+        using var cts = new CancellationTokenSource(Math.Max(1, timeoutMs));
         string? line;
-        try { line = ReadLine(stream); }
+        try
+        {
+            line = ReadLineAsync(stream, MaxLineBytes, cts.Token).GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException)
+        {
+            log?.Invoke("UiPilot pipe auth timed out waiting for token line.");
+            try { WriteLine(stream, JsonSerializer.Serialize(new { ok = false, error = "Auth timed out." })); }
+            catch { /* ignore */ }
+            return false;
+        }
         catch (Exception ex)
         {
             log?.Invoke("UiPilot pipe auth read failed: " + ex.Message);
@@ -62,7 +80,7 @@ internal static class PipeSessionAuth
             var token = doc.RootElement.TryGetProperty("token", out var t) && t.ValueKind == JsonValueKind.String
                 ? t.GetString()
                 : null;
-            if (!string.Equals(token, expectedToken, StringComparison.Ordinal))
+            if (!FixedTimeEquals(token, expectedToken))
             {
                 WriteLine(stream, JsonSerializer.Serialize(new { ok = false, error = "Invalid or missing token." }));
                 return false;
@@ -76,6 +94,19 @@ internal static class PipeSessionAuth
             WriteLine(stream, JsonSerializer.Serialize(new { ok = false, error = "Invalid auth JSON: " + ex.Message }));
             return false;
         }
+    }
+
+    private static bool FixedTimeEquals(string? left, string right)
+    {
+        if (left == null) return false;
+        var a = Utf8.GetBytes(left);
+        var b = Utf8.GetBytes(right);
+        if (a.Length != b.Length)
+        {
+            System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(b, b);
+            return false;
+        }
+        return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(a, b);
     }
 
     private static async Task WriteLineAsync(Stream stream, string line, CancellationToken ct)
@@ -92,35 +123,24 @@ internal static class PipeSessionAuth
         stream.Flush();
     }
 
-    private static async Task<string?> ReadLineAsync(Stream stream, CancellationToken ct)
+    private static async Task<string?> ReadLineAsync(Stream stream, int maxBytes, CancellationToken ct)
     {
         var buffer = new MemoryStream();
         var one = new byte[1];
         while (true)
         {
+            ct.ThrowIfCancellationRequested();
             var read = await stream.ReadAsync(one.AsMemory(0, 1), ct).ConfigureAwait(false);
             if (read == 0)
                 return buffer.Length == 0 ? null : Utf8.GetString(buffer.ToArray());
             if (one[0] == (byte)'\n')
                 break;
             if (one[0] != (byte)'\r')
+            {
+                if (buffer.Length >= maxBytes)
+                    throw new IOException($"Auth line exceeded {maxBytes} bytes.");
                 buffer.WriteByte(one[0]);
-        }
-        return Utf8.GetString(buffer.ToArray());
-    }
-
-    private static string? ReadLine(Stream stream)
-    {
-        var buffer = new MemoryStream();
-        while (true)
-        {
-            var b = stream.ReadByte();
-            if (b < 0)
-                return buffer.Length == 0 ? null : Utf8.GetString(buffer.ToArray());
-            if (b == '\n')
-                break;
-            if (b != '\r')
-                buffer.WriteByte((byte)b);
+            }
         }
         return Utf8.GetString(buffer.ToArray());
     }

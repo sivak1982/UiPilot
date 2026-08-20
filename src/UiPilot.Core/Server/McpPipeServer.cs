@@ -17,9 +17,6 @@ namespace UiPilot.Server;
 /// </summary>
 internal sealed class McpPipeServer
 {
-    private static readonly JsonElement EmptyObjectSchema =
-        JsonSerializer.SerializeToElement(new { type = "object", properties = new { } });
-
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
@@ -34,6 +31,8 @@ internal sealed class McpPipeServer
     private volatile bool _running;
     private NamedPipeServerStream? _pendingAccept;
     private CancellationTokenSource? _cts;
+    private readonly List<Thread> _workers = new();
+    private readonly object _workersGate = new();
 
     public McpPipeServer(string pipeName, string token, ToolRegistry registry, Action<string> log)
     {
@@ -61,6 +60,22 @@ internal sealed class McpPipeServer
         _running = false;
         try { _cts?.Cancel(); } catch { /* ignore */ }
         try { _pendingAccept?.Dispose(); } catch { /* ignore */ }
+
+        var accept = _thread;
+        if (accept != null && accept.IsAlive && !accept.Join(TimeSpan.FromSeconds(2)))
+            _log("UiPilot MCP accept thread did not exit promptly.");
+
+        Thread[] workers;
+        lock (_workersGate)
+            workers = _workers.ToArray();
+        foreach (var worker in workers)
+        {
+            if (worker.IsAlive)
+                worker.Join(TimeSpan.FromSeconds(1));
+        }
+
+        try { _cts?.Dispose(); } catch { /* ignore */ }
+        _cts = null;
     }
 
     private void AcceptLoop()
@@ -81,12 +96,19 @@ internal sealed class McpPipeServer
                 {
                     try { HandleClient(connection); }
                     catch (Exception ex) { if (_running) _log("UiPilot MCP pipe client error: " + ex.Message); }
-                    finally { try { connection.Dispose(); } catch { /* ignore */ } }
+                    finally
+                    {
+                        try { connection.Dispose(); } catch { /* ignore */ }
+                        lock (_workersGate)
+                            _workers.Remove(Thread.CurrentThread);
+                    }
                 })
                 {
                     IsBackground = true,
                     Name = "UiPilot.McpPipeClient",
                 };
+                lock (_workersGate)
+                    _workers.Add(worker);
                 worker.Start();
             }
             catch (Exception ex)
@@ -122,7 +144,6 @@ internal sealed class McpPipeServer
             },
         };
 
-        // RunAsync blocks until the client disconnects or the server is stopped.
         McpServer server = McpServer.Create(transport, options);
         try
         {
@@ -148,62 +169,62 @@ internal sealed class McpPipeServer
             {
                 Name = entry.Name,
                 Description = entry.Description,
-                InputSchema = EmptyObjectSchema.Clone(),
+                InputSchema = entry.InputSchema.Clone(),
             });
         }
 
         return ValueTask.FromResult(new ListToolsResult { Tools = tools });
     }
 
-    private ValueTask<CallToolResult> CallToolAsync(RequestContext<CallToolRequestParams> request, CancellationToken ct)
+    private async ValueTask<CallToolResult> CallToolAsync(RequestContext<CallToolRequestParams> request, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         var name = request.Params?.Name;
         if (string.IsNullOrWhiteSpace(name))
         {
-            return ValueTask.FromResult(ErrorResult(
+            return ErrorResult(
                 PilotErrorCodes.InvalidArgs,
                 "Tool name is required.",
-                "Pass a registered tool name from tools/list."));
+                "Pass a registered tool name from tools/list.");
         }
 
         if (!_registry.Contains(name))
         {
-            return ValueTask.FromResult(ErrorResult(
+            return ErrorResult(
                 PilotErrorCodes.NotFound,
                 "Unknown tool: " + name,
-                "Call tools/list or describe_app_tools to see registered tools."));
+                "Call tools/list or describe_app_tools to see registered tools.");
         }
 
         try
         {
             var args = ArgsToElement(request.Params?.Arguments);
-            var result = _registry.Invoke(name, args, ct);
+            var result = await Task.Run(() => _registry.Invoke(name, args, ct), ct).ConfigureAwait(false);
             var json = result is JsonElement el
                 ? el.GetRawText()
                 : JsonSerializer.Serialize(result, JsonOptions);
-            return ValueTask.FromResult(new CallToolResult
+            return new CallToolResult
             {
                 Content = new List<ContentBlock>
                 {
                     new TextContentBlock { Text = json },
                 },
-            });
+            };
         }
         catch (PilotToolException ex)
         {
-            return ValueTask.FromResult(ErrorResult(ex.Code, ex.Message, ex.Hint));
+            return ErrorResult(ex.Code, ex.Message, ex.Hint);
         }
         catch (OperationCanceledException)
         {
-            return ValueTask.FromResult(ErrorResult(
+            return ErrorResult(
                 PilotErrorCodes.Canceled,
                 "Tool invocation was canceled.",
-                null));
+                null);
         }
         catch (Exception ex)
         {
-            return ValueTask.FromResult(ErrorResult("tool_error", ex.Message, null));
+            return ErrorResult("tool_error", ex.Message, null);
         }
     }
 
