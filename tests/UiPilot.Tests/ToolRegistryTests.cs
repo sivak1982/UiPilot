@@ -78,13 +78,14 @@ public class ToolRegistryTests
     {
         using var cts = new CancellationTokenSource();
         cts.Cancel();
-        var context = TestSupport.CreateContext();
-        context.CancellationToken = cts.Token;
-        var registry = new ToolRegistry(context);
+        var registry = new ToolRegistry(TestSupport.CreateContext());
         BuiltInTools.RegisterAll(registry);
 
         var ex = Assert.Throws<PilotToolException>(() =>
-            registry.Invoke(ToolCatalog.WaitForElement, TestSupport.Json("""{"query":"missing","timeoutMs":10000,"pollMs":10000}""")));
+            registry.Invoke(
+                ToolCatalog.WaitForElement,
+                TestSupport.Json("""{"query":"missing","timeoutMs":10000,"pollMs":10000}"""),
+                cts.Token));
 
         Assert.Equal(PilotErrorCodes.Canceled, ex.Code);
     }

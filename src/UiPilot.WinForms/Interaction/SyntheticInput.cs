@@ -9,6 +9,11 @@ namespace UiPilot.WinForms.Interaction;
 /// <summary>WinForms control and ToolStrip interaction helpers. UI-thread only.</summary>
 internal static class SyntheticInput
 {
+    private const int WmKeyDown = 0x0100;
+    private const int WmKeyUp = 0x0101;
+    private const int WmChar = 0x0102;
+    private const int WmSysKeyDown = 0x0104;
+    private const int WmSysKeyUp = 0x0105;
     private const int WmMouseWheel = 0x020A;
     private const int WmMouseHWheel = 0x020E;
 
@@ -58,8 +63,9 @@ internal static class SyntheticInput
                 combo.Text = value;
                 return "synthetic:combobox-set";
             default:
-                control.Text = value;
-                return "synthetic:text-set";
+                throw new PilotToolException(
+                    PilotErrorCodes.Unsupported,
+                    $"Element of type '{control.GetType().Name}' does not support text entry.");
         }
     }
 
@@ -67,15 +73,15 @@ internal static class SyntheticInput
     {
         if (string.IsNullOrEmpty(keys))
             throw new PilotToolException(PilotErrorCodes.InvalidArgs, "Keys cannot be empty.");
-        if (obj is Control control)
-            control.Focus();
-        else if (obj is ToolStripItem item)
-            item.Select();
-        else if (obj != null)
-            throw new PilotToolException(PilotErrorCodes.InvalidArgs, "Target is not a Control or ToolStripItem.");
 
-        SendKeys.SendWait(NormalizeKeys(keys));
-        return "synthetic:sendkeys";
+        var control = ResolveControl(obj);
+        if (!control.IsHandleCreated)
+            throw new PilotToolException(PilotErrorCodes.InvalidArgs, "Target has no window handle.");
+        control.Focus();
+
+        var stroke = KeyStroke.Parse(keys);
+        PostKeyStroke(control.Handle, stroke);
+        return "synthetic:postmessage-keys";
     }
 
     public static string Scroll(object obj, double dx, double dy)
@@ -84,9 +90,9 @@ internal static class SyntheticInput
         if (control == null || !control.IsHandleCreated)
             throw new PilotToolException(PilotErrorCodes.InvalidArgs, "Target has no window handle.");
         if (dy != 0)
-            SendMessage(control.Handle, WmMouseWheel, WheelWParam(dy), IntPtr.Zero);
+            SendMessage(control.Handle, WmMouseWheel, WheelWParam(LinesToDelta(dy)), IntPtr.Zero);
         if (dx != 0)
-            SendMessage(control.Handle, WmMouseHWheel, WheelWParam(dx), IntPtr.Zero);
+            SendMessage(control.Handle, WmMouseHWheel, WheelWParam(LinesToDelta(dx)), IntPtr.Zero);
         return "synthetic:scroll";
     }
 
@@ -123,6 +129,49 @@ internal static class SyntheticInput
 
         throw new PilotToolException(
             PilotErrorCodes.Unsupported, $"Element of type '{obj.GetType().Name}' does not support item selection.");
+    }
+
+    private static Control ResolveControl(object? obj)
+    {
+        if (obj is Control control)
+            return control;
+        if (obj is ToolStripItem item)
+            return item.Owner
+                ?? throw new PilotToolException(PilotErrorCodes.InvalidArgs, "ToolStripItem has no owner control.");
+        if (obj != null)
+            throw new PilotToolException(PilotErrorCodes.InvalidArgs, "Target is not a Control or ToolStripItem.");
+        if (Form.ActiveForm is { } active)
+            return active.ActiveControl ?? active;
+        throw new PilotToolException(PilotErrorCodes.InvalidArgs, "No target control or focused WinForms control is available.");
+    }
+
+    private static void PostKeyStroke(IntPtr hwnd, KeyStroke stroke)
+    {
+        foreach (var modifier in stroke.ModifierVks)
+            PostKey(hwnd, modifier, down: true, system: stroke.IsAlt);
+
+        if (stroke.Char is char ch)
+        {
+            PostKey(hwnd, stroke.VirtualKey, down: true, system: stroke.IsAlt);
+            PostMessage(hwnd, WmChar, (IntPtr)ch, IntPtr.Zero);
+            PostKey(hwnd, stroke.VirtualKey, down: false, system: stroke.IsAlt);
+        }
+        else
+        {
+            PostKey(hwnd, stroke.VirtualKey, down: true, system: stroke.IsAlt);
+            PostKey(hwnd, stroke.VirtualKey, down: false, system: stroke.IsAlt);
+        }
+
+        for (var i = stroke.ModifierVks.Count - 1; i >= 0; i--)
+            PostKey(hwnd, stroke.ModifierVks[i], down: false, system: stroke.IsAlt);
+    }
+
+    private static void PostKey(IntPtr hwnd, byte vk, bool down, bool system)
+    {
+        var msg = system
+            ? (down ? WmSysKeyDown : WmSysKeyUp)
+            : (down ? WmKeyDown : WmKeyUp);
+        PostMessage(hwnd, msg, (IntPtr)vk, IntPtr.Zero);
     }
 
     private static string SelectToolStripItem(ToolStripDropDownItem menu, string? text, int? index)
@@ -170,45 +219,17 @@ internal static class SyntheticInput
         throw new PilotToolException(PilotErrorCodes.NotFound, $"No selectable item matching '{text}' was found.");
     }
 
-    private static string NormalizeKeys(string keys)
+    private static int LinesToDelta(double lines)
     {
-        if (!keys.Contains("+", StringComparison.Ordinal))
-            return SpecialKey(keys) ?? keys;
-        var parts = keys.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var modifiers = "";
-        for (var i = 0; i < parts.Length - 1; i++)
-        {
-            modifiers += parts[i].ToUpperInvariant() switch
-            {
-                "CTRL" or "CONTROL" => "^",
-                "ALT" => "%",
-                "SHIFT" => "+",
-                _ => throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Unknown modifier '{parts[i]}'."),
-            };
-        }
-        return modifiers + (SpecialKey(parts[^1]) ?? parts[^1]);
+        if (lines == 0) return 0;
+        return (int)Math.Round(lines * 120, MidpointRounding.AwayFromZero);
     }
 
-    private static string? SpecialKey(string key) => key.Trim().ToUpperInvariant() switch
+    private static IntPtr WheelWParam(double delta)
     {
-        "ENTER" or "RETURN" => "{ENTER}",
-        "TAB" => "{TAB}",
-        "ESC" or "ESCAPE" => "{ESC}",
-        "BACKSPACE" or "BKSP" => "{BACKSPACE}",
-        "DELETE" or "DEL" => "{DELETE}",
-        "LEFT" => "{LEFT}",
-        "RIGHT" => "{RIGHT}",
-        "UP" => "{UP}",
-        "DOWN" => "{DOWN}",
-        "HOME" => "{HOME}",
-        "END" => "{END}",
-        "PAGEUP" or "PGUP" => "{PGUP}",
-        "PAGEDOWN" or "PGDN" => "{PGDN}",
-        "SPACE" => " ",
-        var value when value.Length is 2 or 3 && value[0] == 'F' && int.TryParse(value[1..], out var fn) && fn is >= 1 and <= 12
-            => "{" + value + "}",
-        _ => null,
-    };
+        var amount = (int)Math.Round(delta, MidpointRounding.AwayFromZero);
+        return (IntPtr)(amount << 16);
+    }
 
     private static void InvokeProtectedOnClick(Control control)
     {
@@ -217,12 +238,107 @@ internal static class SyntheticInput
         method!.Invoke(control, new object[] { EventArgs.Empty });
     }
 
-    private static IntPtr WheelWParam(double delta)
+    private readonly struct KeyStroke
     {
-        var amount = Math.Abs(delta) < 1 ? Math.Sign(delta) * 120 : (int)Math.Round(delta);
-        return (IntPtr)(amount << 16);
+        public KeyStroke(byte virtualKey, IReadOnlyList<byte> modifierVks, char? ch, bool isAlt)
+        {
+            VirtualKey = virtualKey;
+            ModifierVks = modifierVks;
+            Char = ch;
+            IsAlt = isAlt;
+        }
+
+        public byte VirtualKey { get; }
+        public IReadOnlyList<byte> ModifierVks { get; }
+        public char? Char { get; }
+        public bool IsAlt { get; }
+
+        public static KeyStroke Parse(string keys)
+        {
+            if (keys.IndexOf('+', StringComparison.Ordinal) < 0)
+                return FromToken(keys, Array.Empty<byte>(), isAlt: false);
+
+            var rawParts = keys.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (rawParts.Length < 2)
+                throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Invalid key combination '{keys}'.");
+
+            var modifiers = new List<byte>(4);
+            var isAlt = false;
+            for (var i = 0; i < rawParts.Length - 1; i++)
+            {
+                switch (rawParts[i].ToUpperInvariant())
+                {
+                    case "CTRL":
+                    case "CONTROL":
+                        modifiers.Add(0x11);
+                        break;
+                    case "ALT":
+                        modifiers.Add(0x12);
+                        isAlt = true;
+                        break;
+                    case "SHIFT":
+                        modifiers.Add(0x10);
+                        break;
+                    case "WIN":
+                    case "WINDOWS":
+                    case "CMD":
+                    case "COMMAND":
+                    case "META":
+                        modifiers.Add(0x5B);
+                        break;
+                    default:
+                        throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Unknown modifier '{rawParts[i]}'.");
+                }
+            }
+
+            return FromToken(rawParts[^1], modifiers, isAlt);
+        }
+
+        private static KeyStroke FromToken(string token, IReadOnlyList<byte> modifiers, bool isAlt)
+        {
+            var normalized = token.Trim();
+            if (normalized.Length == 1)
+            {
+                var ch = normalized[0];
+                var vk = (byte)VkKeyScan(ch);
+                if (vk == 0xFF)
+                    throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Unknown key '{token}'.");
+                return new KeyStroke(vk, modifiers, ch, isAlt);
+            }
+
+            var special = SpecialVk(normalized)
+                ?? throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Unknown key '{token}'.");
+            return new KeyStroke(special, modifiers, ch: null, isAlt);
+        }
+
+        private static byte? SpecialVk(string key) => key.Trim().ToUpperInvariant() switch
+        {
+            "ENTER" or "RETURN" => 0x0D,
+            "TAB" => 0x09,
+            "ESC" or "ESCAPE" => 0x1B,
+            "BACKSPACE" or "BKSP" => 0x08,
+            "DELETE" or "DEL" => 0x2E,
+            "LEFT" => 0x25,
+            "RIGHT" => 0x27,
+            "UP" => 0x26,
+            "DOWN" => 0x28,
+            "HOME" => 0x24,
+            "END" => 0x23,
+            "PAGEUP" or "PGUP" => 0x21,
+            "PAGEDOWN" or "PGDN" => 0x22,
+            "SPACE" => 0x20,
+            var value when value.Length is 2 or 3 && value[0] == 'F' && int.TryParse(value[1..], out var fn) && fn is >= 1 and <= 12
+                => (byte)(0x70 + fn - 1),
+            _ => null,
+        };
     }
 
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool PostMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern short VkKeyScan(char ch);
 }
