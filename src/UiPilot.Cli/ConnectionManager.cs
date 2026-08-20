@@ -107,12 +107,13 @@ public sealed class ConnectionManager : IDisposable
 
     public async Task<JsonElement> SendAsync(string method, object? args, string? session = null, CancellationToken ct = default)
     {
-        AppSession target;
+        McpPipeClient client;
+        string sessionName;
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            target = ResolveSessionForSendLocked(session);
-            if (target.Client is not { IsConnected: true })
+            var target = ResolveSessionForSendLocked(session);
+            if (target.Client is not { IsConnected: true } connected)
             {
                 ResetSessionConnectionLocked(target);
                 throw new PilotCliException(
@@ -120,6 +121,9 @@ public sealed class ConnectionManager : IDisposable
                     $"Session '{target.Name}' is not connected.",
                     "Use attach, start_app, or build_and_start for that session.");
             }
+
+            client = connected;
+            sessionName = target.Name;
         }
         finally { _gate.Release(); }
 
@@ -127,28 +131,34 @@ public sealed class ConnectionManager : IDisposable
         {
             if (string.Equals(method, "ping", StringComparison.OrdinalIgnoreCase))
             {
-                await target.Client.PingAsync(ct).ConfigureAwait(false);
-                return JsonSerializer.SerializeToElement(new { pong = true, session = target.Name });
+                await client.PingAsync(ct).ConfigureAwait(false);
+                return JsonSerializer.SerializeToElement(new { pong = true, session = sessionName });
             }
 
             if (string.Equals(method, "describe", StringComparison.OrdinalIgnoreCase))
             {
-                var described = await target.Client.ListToolsAsync(ct).ConfigureAwait(false);
-                return WrapWithSession(described, target.Name);
+                var described = await client.ListToolsAsync(ct).ConfigureAwait(false);
+                return WrapWithSession(described, sessionName);
             }
 
-            var result = await target.Client.CallToolAsync(method, args, ct).ConfigureAwait(false);
-            return WrapWithSession(result, target.Name);
+            var result = await client.CallToolAsync(method, args, ct).ConfigureAwait(false);
+            return WrapWithSession(result, sessionName);
+        }
+        catch (ObjectDisposedException ex)
+        {
+            await MarkDisconnectedAsync(sessionName, ct).ConfigureAwait(false);
+            throw new PilotCliException(
+                PilotErrorCodes.NotAttached,
+                $"Session '{sessionName}' was disposed during the call.",
+                "Use attach, start_app, or build_and_start for that session.",
+                ex);
         }
         catch (IOException)
         {
-            await _gate.WaitAsync(ct).ConfigureAwait(false);
-            try { ResetSessionConnectionLocked(target); }
-            finally { _gate.Release(); }
-
+            await MarkDisconnectedAsync(sessionName, ct).ConfigureAwait(false);
             throw new PilotCliException(
                 PilotErrorCodes.NotAttached,
-                $"Lost connection to session '{target.Name}' (the app may have exited). Re-attach or restart.",
+                $"Lost connection to session '{sessionName}' (the app may have exited). Re-attach or restart.",
                 "Use list_sessions / list_apps, then attach or start_app again.");
         }
         catch (PipeRpcException ex)
@@ -159,6 +169,17 @@ public sealed class ConnectionManager : IDisposable
                 ex.Hint,
                 ex);
         }
+    }
+
+    private async Task MarkDisconnectedAsync(string sessionName, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (_sessions.TryGetValue(sessionName, out var target))
+                ResetSessionConnectionLocked(target);
+        }
+        finally { _gate.Release(); }
     }
 
     public async Task<SessionSnapshot> BuildAndStartAsync(
@@ -180,32 +201,38 @@ public sealed class ConnectionManager : IDisposable
             : session;
 
         await _gate.WaitAsync(ct).ConfigureAwait(false);
+        System.Diagnostics.Process launched;
         try
         {
             KillSessionLocked(sessionHint!);
+            launched = AppLauncher.Start(targetPath, startMinimized: !foreground);
+        }
+        finally { _gate.Release(); }
 
-            var launched = AppLauncher.Start(targetPath, startMinimized: !foreground);
+        try
+        {
+            var info = await WaitForDiscoveryAsync(launched, launched.Id, TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
+            var sessionName = ResolveSessionName(session, info.ProcessName);
+            var source = LaunchSource.FromProject(project, configuration, platform, targetPath, foreground);
+
+            await _gate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                var info = await WaitForDiscoveryAsync(launched, launched.Id, TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
-                var sessionName = ResolveSessionName(session, info.ProcessName);
-                // If auto-name differs from the pre-kill hint, ensure we don't leave a stale empty slot.
                 if (!string.Equals(sessionName, sessionHint, StringComparison.OrdinalIgnoreCase))
                     KillSessionLocked(sessionName);
 
-                var source = LaunchSource.FromProject(project, configuration, platform, targetPath, foreground);
                 await ConnectSessionLocked(sessionName, info, launched, source, ct).ConfigureAwait(false);
                 if (foreground)
                     await BringToFrontLocked(sessionName, ct).ConfigureAwait(false);
                 return ToSnapshot(_sessions[sessionName], isActive: true);
             }
-            catch
-            {
-                AppLauncher.KillTree(launched);
-                throw;
-            }
+            finally { _gate.Release(); }
         }
-        finally { _gate.Release(); }
+        catch
+        {
+            AppLauncher.KillTree(launched);
+            throw;
+        }
     }
 
     /// <summary>
@@ -236,11 +263,10 @@ public sealed class ConnectionManager : IDisposable
             : session;
 
         await _gate.WaitAsync(ct).ConfigureAwait(false);
+        System.Diagnostics.Process launched;
         try
         {
             KillSessionLocked(sessionHint!);
-
-            System.Diagnostics.Process launched;
             try
             {
                 launched = AppLauncher.Start(fullPath, workingDirectory, useStartupHook, uiFramework, !foreground);
@@ -249,27 +275,33 @@ public sealed class ConnectionManager : IDisposable
             {
                 throw new PilotCliException(PilotErrorCodes.InvalidArgs, ex.Message, innerException: ex);
             }
+        }
+        finally { _gate.Release(); }
 
+        try
+        {
+            var info = await WaitForDiscoveryAsync(launched, launched.Id, TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
+            var sessionName = ResolveSessionName(session, info.ProcessName);
+            var source = LaunchSource.FromExe(fullPath, workingDirectory, useStartupHook, uiFramework, foreground);
+
+            await _gate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                var info = await WaitForDiscoveryAsync(launched, launched.Id, TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
-                var sessionName = ResolveSessionName(session, info.ProcessName);
                 if (!string.Equals(sessionName, sessionHint, StringComparison.OrdinalIgnoreCase))
                     KillSessionLocked(sessionName);
 
-                var source = LaunchSource.FromExe(fullPath, workingDirectory, useStartupHook, uiFramework, foreground);
                 await ConnectSessionLocked(sessionName, info, launched, source, ct).ConfigureAwait(false);
                 if (foreground)
                     await BringToFrontLocked(sessionName, ct).ConfigureAwait(false);
                 return ToSnapshot(_sessions[sessionName], isActive: true);
             }
-            catch
-            {
-                AppLauncher.KillTree(launched);
-                throw;
-            }
+            finally { _gate.Release(); }
         }
-        finally { _gate.Release(); }
+        catch
+        {
+            AppLauncher.KillTree(launched);
+            throw;
+        }
     }
 
     /// <summary>
@@ -515,10 +547,9 @@ public sealed class ConnectionManager : IDisposable
         if (_sessions.TryGetValue(sessionName, out var existing))
         {
             // Replacing an existing session name: drop old pipe; kill prior CLI-launched process if different.
+            // Never kill attach-only PIDs — those processes were not started by this CLI.
             if (existing.Launched is not null && existing.Launched.Id != info.Pid)
                 AppLauncher.KillTree(existing.Launched);
-            else if (existing.AttachedPid is int oldPid && oldPid != info.Pid && existing.Launched is null)
-                AppLauncher.KillByPid(oldPid);
             ResetSessionConnectionLocked(existing);
             _sessions.Remove(sessionName);
         }

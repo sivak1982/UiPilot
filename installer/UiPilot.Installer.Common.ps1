@@ -85,6 +85,20 @@ Install it and run the build again:
     return ($compatible | Sort-Object -Descending | Select-Object -First 1)
 }
 
+function ConvertFrom-UiPilotJsonc {
+    param([Parameter(Mandatory = $true)][string]$Text)
+
+    # Cursor settings are JSONC: // and /* */ comments plus trailing commas are legal.
+    $withoutBlock = [regex]::Replace($Text, '/\*[\s\S]*?\*/', '')
+    $lines = foreach ($line in ($withoutBlock -split "`r?`n")) {
+        $stripped = [regex]::Replace($line, '(?<!:)//.*$', '')
+        $stripped
+    }
+    $joined = [string]::Join("`n", $lines)
+    $joined = [regex]::Replace($joined, ',(\s*[}\]])', '$1')
+    return $joined
+}
+
 function Read-UiPilotJson {
     param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -98,10 +112,11 @@ function Read-UiPilotJson {
     }
 
     try {
-        return ($content | ConvertFrom-Json)
+        $json = ConvertFrom-UiPilotJsonc -Text $content
+        return ($json | ConvertFrom-Json)
     }
     catch {
-        throw "Cannot update '$Path' because it does not contain valid JSON: $($_.Exception.Message)"
+        throw "Cannot update '$Path' because it does not contain valid JSON/JSONC: $($_.Exception.Message)"
     }
 }
 

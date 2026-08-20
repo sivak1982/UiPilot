@@ -11,14 +11,7 @@ public sealed class WpfStartupHookTests
         if (!OperatingSystem.IsWindows())
             return;
 
-        var app = Path.Combine(
-            FindRepoRoot(),
-            "samples",
-            "SampleApp",
-            "bin",
-            "Debug",
-            "net8.0-windows",
-            "SampleApp.exe");
+        var app = TestPaths.SampleApp("SampleApp", "net8.0-windows", "SampleApp.exe");
         Assert.True(File.Exists(app), $"Sample app was not built: {app}");
 
         await using var pilot = new UiPilotClient();
@@ -41,21 +34,5 @@ public sealed class WpfStartupHookTests
         var greeting = await pilot.WaitForElementAsync(
             "Hello, Generic Hook!", exact: true, session: "wpf-generic-hook");
         Assert.Contains(greeting.Elements, element => element.Visible);
-    }
-
-    private static string FindRepoRoot()
-    {
-        foreach (var start in new[] { Environment.CurrentDirectory, AppContext.BaseDirectory })
-        {
-            var current = new DirectoryInfo(start);
-            while (current is not null)
-            {
-                if (File.Exists(Path.Combine(current.FullName, "UiPilot.sln")))
-                    return current.FullName;
-                current = current.Parent;
-            }
-        }
-
-        throw new DirectoryNotFoundException("Could not locate the UiPilot repository root.");
     }
 }

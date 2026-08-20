@@ -68,7 +68,13 @@ uipilot_merge_mcp() {
   local version="$4"
   local status_port="${5:-$UIPILOT_STATUS_PORT}"
   python3 - "$config_path" "$command_path" "$status_token" "$version" "$status_port" <<'PY'
-import json, os, shutil, sys, datetime
+import json, os, re, re, shutil, sys, datetime
+
+def loads_jsonc(text):
+    text = re.sub(r"/\*[\s\S]*?\*/", "", text)
+    text = re.sub(r"(?<!:)//.*?$", "", text, flags=re.M)
+    text = re.sub(r",(\s*[}\]])", r"\1", text)
+    return loads_jsonc(text)
 path, command, token, version, port = sys.argv[1:]
 parts = version.split(".")
 if len(parts) != 4 or not all(part.isdigit() for part in parts):
@@ -79,7 +85,7 @@ if os.path.isfile(path):
     with open(path, "r", encoding="utf-8") as handle:
         text = handle.read().strip()
         if text:
-            data = json.loads(text)
+            data = loads_jsonc(text)
     backup = f"{path}.backup-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
     shutil.copy2(path, backup)
     print(f"Backed up existing JSON configuration to {backup}")
@@ -111,7 +117,12 @@ PY
 uipilot_read_status_token() {
   local config_path="$1"
   python3 - "$config_path" <<'PY'
-import json, os, sys
+import json, os, re, sys
+def loads_jsonc(text):
+    text = re.sub(r"/\*[\s\S]*?\*/", "", text)
+    text = re.sub(r"(?<!:)//.*?$", "", text, flags=re.M)
+    text = re.sub(r",(\s*[}\]])", r"\1", text)
+    return loads_jsonc(text)
 path = sys.argv[1]
 if not os.path.isfile(path):
     sys.exit(0)
@@ -119,7 +130,7 @@ with open(path, "r", encoding="utf-8") as handle:
     text = handle.read().strip()
     if not text:
         sys.exit(0)
-    data = json.loads(text)
+    data = loads_jsonc(text)
 servers = data.get("mcpServers") or {}
 server = next((
     value for name, value in servers.items()
@@ -136,14 +147,20 @@ uipilot_merge_settings() {
   local status_token="$2"
   local status_port="${3:-$UIPILOT_STATUS_PORT}"
   python3 - "$settings_path" "$status_token" "$status_port" <<'PY'
-import json, os, shutil, sys, datetime
+import json, os, re, re, shutil, sys, datetime
+
+def loads_jsonc(text):
+    text = re.sub(r"/\*[\s\S]*?\*/", "", text)
+    text = re.sub(r"(?<!:)//.*?$", "", text, flags=re.M)
+    text = re.sub(r",(\s*[}\]])", r"\1", text)
+    return loads_jsonc(text)
 path, token, port = sys.argv[1:]
 data = {}
 if os.path.isfile(path):
     with open(path, "r", encoding="utf-8") as handle:
         text = handle.read().strip()
         if text:
-            data = json.loads(text)
+            data = loads_jsonc(text)
     backup = f"{path}.backup-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
     shutil.copy2(path, backup)
     print(f"Backed up existing JSON configuration to {backup}")
@@ -161,12 +178,18 @@ uipilot_remove_mcp() {
   local config_path="$1"
   local installed_command="$2"
   python3 - "$config_path" "$installed_command" <<'PY'
-import json, os, shutil, sys, datetime
+import json, os, re, re, shutil, sys, datetime
+
+def loads_jsonc(text):
+    text = re.sub(r"/\*[\s\S]*?\*/", "", text)
+    text = re.sub(r"(?<!:)//.*?$", "", text, flags=re.M)
+    text = re.sub(r",(\s*[}\]])", r"\1", text)
+    return loads_jsonc(text)
 path, installed = sys.argv[1:]
 if not os.path.isfile(path):
     sys.exit(1)
 with open(path, "r", encoding="utf-8") as handle:
-    data = json.loads(handle.read() or "{}")
+    data = loads_jsonc(handle.read() or "{}")
 servers = data.get("mcpServers")
 if not isinstance(servers, dict):
     sys.exit(1)

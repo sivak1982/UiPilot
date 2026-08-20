@@ -47,9 +47,15 @@ public static class StartupHookLocator
             return null;
 
         _ = appDirectory; // Kept for source compatibility; runtime probes now select the adapter.
+        var root = baseDirectory ?? AppContext.BaseDirectory;
         var hookPath = ResolveHookAssemblyPath(baseDirectory);
         if (hookPath is null)
-            return null;
+        {
+            throw new FileNotFoundException(
+                "UiPilot startup hook DLL was not found next to the CLI (hooks/UiPilot.StartupHook.dll). " +
+                "Install UiPilot or pass useStartupHook: false when the app calls PilotHost.Start itself.",
+                Path.Combine(root, "hooks", "UiPilot.StartupHook.dll"));
+        }
 
         if (!string.IsNullOrWhiteSpace(uiFramework))
             psi.Environment[FrameworkOverrideEnvVarName] = NormalizeFramework(uiFramework);

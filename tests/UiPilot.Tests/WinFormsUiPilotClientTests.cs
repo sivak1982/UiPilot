@@ -11,14 +11,7 @@ public sealed class WinFormsUiPilotClientTests
         if (!OperatingSystem.IsWindows())
             return;
 
-        var app = Path.Combine(
-            FindRepoRoot(),
-            "samples",
-            "WinFormsSampleApp",
-            "bin",
-            "Debug",
-            "net8.0-windows",
-            "WinFormsSampleApp.exe");
+        var app = TestPaths.SampleApp("WinFormsSampleApp", "net8.0-windows", "WinFormsSampleApp.exe");
         Assert.True(File.Exists(app), $"Sample app was not built: {app}");
 
         await using var pilot = new UiPilotClient();
@@ -83,21 +76,5 @@ public sealed class WinFormsUiPilotClientTests
         Assert.True(minimizedShot.Width > 0);
         Assert.True(minimizedShot.Height > 0);
         Assert.True(minimizedShot.GetBytes().Length > 100);
-    }
-
-    private static string FindRepoRoot()
-    {
-        foreach (var start in new[] { Environment.CurrentDirectory, AppContext.BaseDirectory })
-        {
-            var current = new DirectoryInfo(start);
-            while (current is not null)
-            {
-                if (File.Exists(Path.Combine(current.FullName, "UiPilot.sln")))
-                    return current.FullName;
-                current = current.Parent;
-            }
-        }
-
-        throw new DirectoryNotFoundException("Could not locate the UiPilot repository root.");
     }
 }

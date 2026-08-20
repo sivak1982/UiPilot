@@ -27,10 +27,26 @@ public static class AppLauncher
         if (exit != 0)
             throw new InvalidOperationException($"Build failed (exit {exit}).\n{stdout}\n{stderr}");
 
-        var targetPath = stdout.Trim().Split('\n', StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim();
+        var targetPath = ResolveTargetPath(stdout);
         if (string.IsNullOrEmpty(targetPath) || !File.Exists(targetPath))
             throw new InvalidOperationException($"Could not resolve build output (TargetPath='{targetPath}').\n{stdout}");
         return targetPath!;
+    }
+
+    private static string? ResolveTargetPath(string stdout)
+    {
+        // Prefer an existing file path from --getProperty:TargetPath (multi-TFM can emit several).
+        string? fallback = null;
+        foreach (var raw in stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var line = raw.Trim().Trim('"');
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            if (File.Exists(line))
+                return line;
+            if (line.Contains(Path.DirectorySeparatorChar) || line.Contains(Path.AltDirectorySeparatorChar))
+                fallback = line;
+        }
+        return fallback;
     }
 
     /// <summary>
@@ -145,7 +161,22 @@ public static class AppLauncher
         // whatever it spawns (service hosts, helper processes) even after it has exited itself.
         var job = ProcessJob.TryCreateFor(process, $"uipilot-{process.Id}");
         if (job != null)
+        {
             Jobs[process.Id] = job;
+            try
+            {
+                process.EnableRaisingEvents = true;
+                process.Exited += (_, _) =>
+                {
+                    if (Jobs.TryRemove(process.Id, out var finished))
+                        finished.Dispose();
+                };
+            }
+            catch
+            {
+                // EnableRaisingEvents can fail for some process types; keep the job until KillTree.
+            }
+        }
 
         return process;
     }
@@ -202,7 +233,20 @@ public static class AppLauncher
         process.Start();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
-        await process.WaitForExitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await process.WaitForExitAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            try
+            {
+                if (!process.HasExited)
+                    process.Kill(entireProcessTree: true);
+            }
+            catch { /* ignore */ }
+            throw;
+        }
         return (process.ExitCode, stdout.ToString(), stderr.ToString());
     }
 

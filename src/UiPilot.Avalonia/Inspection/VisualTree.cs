@@ -244,8 +244,6 @@ internal static class VisualTree
             info.AutomationId = NullIfEmpty(AutomationProperties.GetAutomationId(control));
             info.Enabled = control.IsEnabled;
             info.Visible = control.IsVisible;
-            info.Width = control.Bounds.Width;
-            info.Height = control.Bounds.Height;
 
             if (string.IsNullOrEmpty(info.Text))
                 info.Text = NullIfEmpty(ToolTip.GetTip(control) as string);
@@ -255,13 +253,22 @@ internal static class VisualTree
                 try
                 {
                     var origin = control.PointToScreen(new Point(0, 0));
+                    var corner = control.PointToScreen(new Point(control.Bounds.Width, control.Bounds.Height));
                     info.X = origin.X;
                     info.Y = origin.Y;
+                    info.Width = Math.Abs(corner.X - origin.X);
+                    info.Height = Math.Abs(corner.Y - origin.Y);
                 }
                 catch
                 {
-                    // Not attached to a top-level yet.
+                    info.Width = control.Bounds.Width;
+                    info.Height = control.Bounds.Height;
                 }
+            }
+            else
+            {
+                info.Width = control.Bounds.Width;
+                info.Height = control.Bounds.Height;
             }
         }
 

@@ -29,14 +29,19 @@ public sealed class McpPipeClient : IDisposable
         int timeoutMs = 5000,
         CancellationToken ct = default)
     {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(Math.Max(1, timeoutMs));
+        var linked = timeoutCts.Token;
+
         var stream = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-        await stream.ConnectAsync(timeoutMs, ct).ConfigureAwait(false);
         try
         {
-            await PipeSessionAuth.WriteClientAsync(stream, token, ct).ConfigureAwait(false);
+            // timeoutMs covers connect + auth + MCP initialize, not connect alone.
+            await stream.ConnectAsync(linked).ConfigureAwait(false);
+            await PipeSessionAuth.WriteClientAsync(stream, token, linked).ConfigureAwait(false);
             var client = await McpClient.CreateAsync(
                 new StreamClientTransport(stream, stream),
-                cancellationToken: ct).ConfigureAwait(false);
+                cancellationToken: linked).ConfigureAwait(false);
             return new McpPipeClient(stream, client);
         }
         catch

@@ -100,8 +100,9 @@ internal sealed class AvaloniaUiBackend : IUiBackend
             throw new InvalidOperationException("Element is not visible, so it cannot be pointed at.");
 
         var bounds = control.Bounds;
-        var topLeft = control.PointToScreen(new Point(0, 0));
-        return new ScreenPoint(topLeft.X + bounds.Width / 2, topLeft.Y + bounds.Height / 2);
+        // PointToScreen converts DIP -> physical; pass the centre in DIP so both axes share one unit system.
+        var centre = control.PointToScreen(new Point(bounds.Width / 2, bounds.Height / 2));
+        return new ScreenPoint(centre.X, centre.Y);
     }
 
     public void PrepareForRealInput(string? elementId)
