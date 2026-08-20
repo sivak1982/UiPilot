@@ -38,6 +38,8 @@ $bundleName = "UiPilot-$version-$RuntimeIdentifier"
 $bundleRoot = Join-Path $OutputDirectory $bundleName
 $payloadDirectory = Join-Path $bundleRoot "payload"
 $archivePath = Join-Path $OutputDirectory "$bundleName.zip"
+$extensionDirectory = Join-Path $repoRoot "extensions\uipilot-status"
+$extensionVsix = Join-Path $bundleRoot "UiPilot.Status.vsix"
 
 Write-Host "Using .NET SDK $sdk"
 Write-Host "Building UiPilot $version for $RuntimeIdentifier"
@@ -47,10 +49,44 @@ if (Test-Path -LiteralPath $bundleRoot) {
 }
 New-Item -ItemType Directory -Path $payloadDirectory -Force | Out-Null
 
+Push-Location $extensionDirectory
+try {
+    & npm.cmd ci
+    if ($LASTEXITCODE -ne 0) {
+        throw "Cursor extension dependency installation failed."
+    }
+
+    if (-not $SkipTests) {
+        & npm.cmd test
+        if ($LASTEXITCODE -ne 0) {
+            throw "Cursor extension tests failed."
+        }
+    }
+
+    & npm.cmd run build
+    if ($LASTEXITCODE -ne 0) {
+        throw "Cursor extension build failed."
+    }
+
+    & npx.cmd --no-install vsce package --no-dependencies --allow-missing-repository --out $extensionVsix
+    if ($LASTEXITCODE -ne 0) {
+        throw "Cursor extension VSIX packaging failed."
+    }
+}
+finally {
+    Pop-Location
+}
+
 if (-not $SkipTests) {
     & dotnet test (Join-Path $repoRoot "UiPilot.sln") --configuration $Configuration --nologo
     if ($LASTEXITCODE -ne 0) {
         throw "UiPilot tests failed."
+    }
+
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass `
+        -File (Join-Path $PSScriptRoot "tests\Installer.Common.Tests.ps1")
+    if ($LASTEXITCODE -ne 0) {
+        throw "UiPilot installer tests failed."
     }
 }
 
@@ -70,7 +106,8 @@ $requiredFiles = @(
     (Join-Path $payloadDirectory "hooks\UiPilot.StartupHook.dll"),
     (Join-Path $payloadDirectory "hooks\wpf\UiPilot.Wpf.dll"),
     (Join-Path $payloadDirectory "hooks\avalonia\UiPilot.Avalonia.dll"),
-    (Join-Path $payloadDirectory "hooks\winforms\UiPilot.WinForms.dll")
+    (Join-Path $payloadDirectory "hooks\winforms\UiPilot.WinForms.dll"),
+    $extensionVsix
 )
 foreach ($requiredFile in $requiredFiles) {
     if (-not (Test-Path -LiteralPath $requiredFile)) {
@@ -89,7 +126,8 @@ Install for the current user:
   powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 The installer checks Windows, PowerShell, and the required .NET 10 runtime. It installs
-UiPilot under %LOCALAPPDATA%\Programs\UiPilot and registers the MCP server in Cursor.
+UiPilot under %LOCALAPPDATA%\Programs\UiPilot, registers the MCP server, configures the
+read-only status endpoint, and installs the bundled Cursor extension when the CLI is available.
 "@ | Set-Content -LiteralPath (Join-Path $bundleRoot "README.txt") -Encoding UTF8
 
 if (Test-Path -LiteralPath $archivePath) {

@@ -5,7 +5,9 @@
 param(
     [string]$InstallDirectory = "",
     [string]$McpConfigPath = "",
-    [string]$PayloadDirectory = ""
+    [string]$PayloadDirectory = "",
+    [string]$CursorSettingsPath = "",
+    [string]$ExtensionVsixPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -32,10 +34,23 @@ if ([string]::IsNullOrWhiteSpace($McpConfigPath)) {
 }
 $McpConfigPath = [IO.Path]::GetFullPath($McpConfigPath)
 
+if ([string]::IsNullOrWhiteSpace($CursorSettingsPath)) {
+    if ([string]::IsNullOrWhiteSpace($env:APPDATA)) {
+        throw "APPDATA is not defined; specify -CursorSettingsPath explicitly."
+    }
+    $CursorSettingsPath = Join-Path $env:APPDATA "Cursor\User\settings.json"
+}
+$CursorSettingsPath = [IO.Path]::GetFullPath($CursorSettingsPath)
+
 if ([string]::IsNullOrWhiteSpace($PayloadDirectory)) {
     $PayloadDirectory = Join-Path $PSScriptRoot "payload"
 }
 $PayloadDirectory = [IO.Path]::GetFullPath($PayloadDirectory)
+
+if ([string]::IsNullOrWhiteSpace($ExtensionVsixPath)) {
+    $ExtensionVsixPath = Join-Path $PSScriptRoot "UiPilot.Status.vsix"
+}
+$ExtensionVsixPath = [IO.Path]::GetFullPath($ExtensionVsixPath)
 
 $requiredPayload = @(
     (Join-Path $PayloadDirectory "UiPilot.Cli.exe"),
@@ -50,10 +65,15 @@ foreach ($requiredFile in $requiredPayload) {
         throw "Installer payload is incomplete; missing '$requiredFile'. Re-extract the installer ZIP and try again."
     }
 }
+if (-not (Test-Path -LiteralPath $ExtensionVsixPath -PathType Leaf)) {
+    throw "Installer bundle is incomplete; missing Cursor extension '$ExtensionVsixPath'."
+}
 
 # Parse the existing file before changing the installation, so malformed user JSON cannot
 # leave a successful file install with an unregistered MCP server.
 $null = Read-UiPilotJson -Path $McpConfigPath
+$null = Read-UiPilotJson -Path $CursorSettingsPath
+$statusToken = Get-OrCreateUiPilotStatusToken -ConfigPath $McpConfigPath
 
 $installParent = Split-Path -Parent $InstallDirectory
 New-Item -ItemType Directory -Path $installParent -Force | Out-Null
@@ -67,12 +87,14 @@ try {
     Copy-Item -Path (Join-Path $PayloadDirectory "*") -Destination $stagingDirectory -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "uninstall.ps1") -Destination $stagingDirectory -Force
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "UiPilot.Installer.Common.ps1") -Destination $stagingDirectory -Force
+    Copy-Item -LiteralPath $ExtensionVsixPath -Destination (Join-Path $stagingDirectory "UiPilot.Status.vsix") -Force
 
     $installedCommand = Join-Path $InstallDirectory "UiPilot.Cli.exe"
     $manifest = [pscustomobject]@{
         installedAtUtc = [DateTime]::UtcNow.ToString("o")
         installDirectory = $InstallDirectory
         mcpConfigPath = $McpConfigPath
+        cursorSettingsPath = $CursorSettingsPath
         command = $installedCommand
         requiredRuntime = "$script:UiPilotRequiredRuntimeMajor.0"
     }
@@ -87,7 +109,13 @@ try {
     }
     Move-Item -LiteralPath $stagingDirectory -Destination $InstallDirectory
 
-    Set-UiPilotMcpServer -ConfigPath $McpConfigPath -CommandPath $installedCommand
+    Set-UiPilotMcpServer `
+        -ConfigPath $McpConfigPath `
+        -CommandPath $installedCommand `
+        -StatusToken $statusToken
+    Set-UiPilotExtensionSettings `
+        -SettingsPath $CursorSettingsPath `
+        -StatusToken $statusToken
 }
 catch {
     if (Test-Path -LiteralPath $stagingDirectory) {
@@ -99,5 +127,20 @@ catch {
 Write-Host ""
 Write-Host "UiPilot installed and registered with Cursor." -ForegroundColor Green
 Write-Host "MCP configuration: $McpConfigPath"
+Write-Host "Cursor settings: $CursorSettingsPath"
+$installedVsix = Join-Path $InstallDirectory "UiPilot.Status.vsix"
+$cursor = Get-Command cursor -ErrorAction SilentlyContinue
+if ($cursor) {
+    & $cursor.Source --install-extension $installedVsix --force
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Installed the UiPilot Status extension in Cursor."
+    }
+    else {
+        Write-Warning "Cursor CLI could not install the extension. In Cursor, use 'Extensions: Install from VSIX' and select '$installedVsix'."
+    }
+}
+else {
+    Write-Warning "Cursor CLI was not found. In Cursor, use 'Extensions: Install from VSIX' and select '$installedVsix'."
+}
 Write-Host "Restart Cursor to load the UiPilot MCP server."
 Write-Host "Target applications must use .NET 8 or later for startup-hook injection."

@@ -2,6 +2,8 @@ Set-StrictMode -Version 2.0
 
 $script:UiPilotRequiredRuntimeMajor = 10
 $script:UiPilotRequiredSdkVersion = [Version]"10.0.301"
+$script:UiPilotStatusPort = 17831
+$script:UiPilotExtensionId = "uipilot.uipilot-status"
 
 function Assert-UiPilotWindows {
     if ($env:OS -ne "Windows_NT") {
@@ -116,7 +118,7 @@ function Write-UiPilotJson {
     if (Test-Path -LiteralPath $Path) {
         $backup = "$Path.backup-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
         Copy-Item -LiteralPath $Path -Destination $backup -Force
-        Write-Host "Backed up existing MCP configuration to $backup"
+        Write-Host "Backed up existing JSON configuration to $backup"
     }
 
     $json = $Value | ConvertTo-Json -Depth 20
@@ -126,7 +128,9 @@ function Write-UiPilotJson {
 function Set-UiPilotMcpServer {
     param(
         [Parameter(Mandatory = $true)][string]$ConfigPath,
-        [Parameter(Mandatory = $true)][string]$CommandPath
+        [Parameter(Mandatory = $true)][string]$CommandPath,
+        [Parameter(Mandatory = $true)][string]$StatusToken,
+        [int]$StatusPort = $script:UiPilotStatusPort
     )
 
     $config = Read-UiPilotJson -Path $ConfigPath
@@ -135,12 +139,80 @@ function Set-UiPilotMcpServer {
         $config | Add-Member -MemberType NoteProperty -Name "mcpServers" -Value ([pscustomobject]@{}) -Force
     }
 
+    $serverEnvironment = [pscustomobject]@{}
+    $existingServerProperty = $config.mcpServers.PSObject.Properties["uipilot"]
+    if ($null -ne $existingServerProperty -and
+        $null -ne $existingServerProperty.Value -and
+        $null -ne $existingServerProperty.Value.PSObject.Properties["env"] -and
+        $null -ne $existingServerProperty.Value.env) {
+        foreach ($property in $existingServerProperty.Value.env.PSObject.Properties) {
+            $serverEnvironment | Add-Member `
+                -MemberType NoteProperty `
+                -Name $property.Name `
+                -Value $property.Value `
+                -Force
+        }
+    }
+    $serverEnvironment | Add-Member -MemberType NoteProperty -Name "UIPILOT_STATUS_PORT" -Value ([string]$StatusPort) -Force
+    $serverEnvironment | Add-Member -MemberType NoteProperty -Name "UIPILOT_STATUS_TOKEN" -Value $StatusToken -Force
+
     $server = [pscustomobject]@{
         command = $CommandPath
         args = @()
+        env = $serverEnvironment
     }
     $config.mcpServers | Add-Member -MemberType NoteProperty -Name "uipilot" -Value $server -Force
     Write-UiPilotJson -Path $ConfigPath -Value $config
+}
+
+function New-UiPilotStatusToken {
+    $bytes = New-Object byte[] 32
+    $random = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $random.GetBytes($bytes)
+    }
+    finally {
+        $random.Dispose()
+    }
+    return (($bytes | ForEach-Object { $_.ToString("x2") }) -join "")
+}
+
+function Get-OrCreateUiPilotStatusToken {
+    param([Parameter(Mandatory = $true)][string]$ConfigPath)
+
+    $config = Read-UiPilotJson -Path $ConfigPath
+    $server = $null
+    if ($null -ne $config.PSObject.Properties["mcpServers"] -and
+        $null -ne $config.mcpServers -and
+        $null -ne $config.mcpServers.PSObject.Properties["uipilot"]) {
+        $server = $config.mcpServers.uipilot
+    }
+
+    if ($null -ne $server -and
+        $null -ne $server.PSObject.Properties["env"] -and
+        $null -ne $server.env -and
+        $null -ne $server.env.PSObject.Properties["UIPILOT_STATUS_TOKEN"]) {
+        $existing = [string]$server.env.UIPILOT_STATUS_TOKEN
+        if (-not [string]::IsNullOrWhiteSpace($existing)) {
+            return $existing
+        }
+    }
+
+    return New-UiPilotStatusToken
+}
+
+function Set-UiPilotExtensionSettings {
+    param(
+        [Parameter(Mandatory = $true)][string]$SettingsPath,
+        [Parameter(Mandatory = $true)][string]$StatusToken,
+        [int]$StatusPort = $script:UiPilotStatusPort
+    )
+
+    $settings = Read-UiPilotJson -Path $SettingsPath
+    $settings | Add-Member -MemberType NoteProperty -Name "uipilotStatus.host" -Value "127.0.0.1" -Force
+    $settings | Add-Member -MemberType NoteProperty -Name "uipilotStatus.port" -Value $StatusPort -Force
+    $settings | Add-Member -MemberType NoteProperty -Name "uipilotStatus.token" -Value $StatusToken -Force
+    Write-UiPilotJson -Path $SettingsPath -Value $settings
 }
 
 function Remove-UiPilotMcpServer {

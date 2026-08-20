@@ -18,7 +18,10 @@ WpfUiBackend / AvaloniaUiBackend / WinFormsUiBackend
                                         ├─ MCP server (stdio) for agents
                                         ├─ McpPipeClient → app
                                         ├─ DOTNET_STARTUP_HOOKS (hooks/)
-                                        └─ build / launch / restart
+                                        ├─ build / launch / restart
+                                        └─ authenticated loopback status API
+                                                       │ HTTP/WebSocket
+                                              Cursor Status extension
 ```
 
 ## Core (`src/UiPilot.Core`)
@@ -55,3 +58,8 @@ the hook to that probe; otherwise the first ready UI wins.
 - Forwards every `ToolCatalog` tool over MCP-to-app; extras: `describe_app_tools`, `invoke_app_tool`.
 - Screenshot → MCP image content + path metadata.
 - Lifecycle: attach filters, `detach`, structured error JSON.
+- Optional read-only operation telemetry: bounded current/recent state, authenticated
+  `GET /v1/status`, and WebSocket updates on `127.0.0.1:17831`.
+- The status service is enabled only when `UIPILOT_STATUS_TOKEN` is configured. It reports
+  metadata, never tool arguments or application payloads, and does not change the stdio MCP or
+  named-pipe automation transports.

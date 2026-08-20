@@ -63,6 +63,7 @@ That's it. No DI, no Generic Host, no attributes, no TCP port. Same agent tools 
 Cursor/Claude  --stdio MCP-->  UiPilot.Cli  --MCP over named pipe-->  your app (WPF, Avalonia, or WinForms adapter)
                                     |
                                     +-- build / launch / restart your app (the AI edit loop)
+                                    +-- authenticated localhost status --> Cursor sidebar
 ```
 
 | Package | Role |
@@ -84,6 +85,8 @@ Cursor/Claude  --stdio MCP-->  UiPilot.Cli  --MCP over named pipe-->  your app (
 - Screenshots returned as MCP **image content** (plus a temp path)
 - Structured errors: `{ error, code, message, hint }`
 - Custom tools: `describe_app_tools` / `invoke_app_tool`
+- Optional read-only Cursor sidebar and status-bar indicator for sessions and current/recent
+  operations
 
 Full catalog: [docs/05-tools.md](docs/05-tools.md).
 
@@ -98,9 +101,11 @@ See [docs/08-csharp-tests.md](docs/08-csharp-tests.md).
 ## Security defaults
 
 - Disabled unless `#if DEBUG`, env `UIPILOT_ENABLE=1`, or an explicit `Start(force: true)`.
-- Named pipe only. No TCP, no remote surface by default.
+- App automation uses a named pipe only; there is no remote-control TCP surface.
 - Per-run auth token written to `%TEMP%/uipilot/<pid>.json`; every request must present it.
 - Discovery files include `uiFramework` (`wpf`, `avalonia`, or `winforms`) so agents know which stack is attached.
+- The optional read-only status API is disabled without `UIPILOT_STATUS_TOKEN`, binds strictly to
+  `127.0.0.1`, and never includes tool arguments, typed text, pipe names, tokens, or screenshots.
 
 ## Repo layout
 
@@ -113,6 +118,7 @@ See [docs/08-csharp-tests.md](docs/08-csharp-tests.md).
 | `src/UiPilot.StartupHook` | Generic startup hook with isolated adapter payloads. |
 | `src/UiPilot.Client` | Typed C# client for deterministic product tests. |
 | `src/UiPilot.Cli` | Out-of-process stdio MCP bridge + app launcher. |
+| `extensions/uipilot-status` | Read-only Cursor sessions/operations sidebar and status indicator. |
 | `samples/SampleApp` | Minimal WPF app used to validate the loop. |
 | `samples/AvaloniaSampleApp` | Minimal Avalonia app used to validate the loop. |
 | `samples/WinFormsSampleApp` | Minimal WinForms app used to validate controls, menus, and the startup hook. |
@@ -134,6 +140,7 @@ On non-Windows hosts, `EnableWindowsTargeting` is set so Windows desktop TFMs re
 .\installer\build-installer.ps1
 ```
 
-The generated per-user installer bundle checks the required .NET runtime, installs the CLI and
-generic startup hook with its adapter payloads, and merges UiPilot into Cursor's MCP configuration. See
+The generated per-user installer bundle checks the required .NET runtime, installs the CLI,
+generic startup hook and Cursor Status VSIX, then merges matching token/port settings into
+Cursor's MCP and user configuration. See
 [installer/README.md](installer/README.md) for installation, prerequisites, and uninstall details.

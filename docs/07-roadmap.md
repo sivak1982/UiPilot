@@ -47,6 +47,13 @@ Priority order, following the "thin vertical slice first" principle.
 - Agent workflow: explore through MCP, then freeze the proven flow as C#.
 - Generic xUnit coverage against `AvaloniaSampleApp`; product suites stay in product repositories.
 
+## Phase 5.6 - Cursor observability - done
+
+- Opt-in, token-authenticated loopback status API in `UiPilot.Cli`.
+- Bounded, redacted-by-design lifecycle and forwarding-operation telemetry.
+- Read-only Cursor activity-bar sessions/operations tree and compact status-bar indicator.
+- Installer-managed shared token/port configuration and bundled VSIX deployment.
+
 ## Phase 6 - packaging / extensibility
 
 - `[PilotTool]` discovery + auto-registration.

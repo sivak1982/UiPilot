@@ -5,6 +5,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using UiPilot.Client;
 using UiPilot.Client.Pipe;
+using UiPilot.Cli.Status;
 using UiPilot.Tools;
 
 namespace UiPilot.Cli.Tools;
@@ -24,30 +25,41 @@ public sealed class LifecycleTools
     };
 
     private readonly ConnectionManager _connection;
+    private readonly OperationTelemetry _telemetry;
 
-    public LifecycleTools(ConnectionManager connection) => _connection = connection;
+    public LifecycleTools(ConnectionManager connection, OperationTelemetry telemetry)
+    {
+        _connection = connection;
+        _telemetry = telemetry;
+    }
 
     [McpServerTool(Name = "list_apps")]
     [Description("List running pilot-enabled apps (WPF or Avalonia) discovered from %TEMP%/uipilot.")]
     public CallToolResult ListApps()
     {
-        var apps = _connection.ListAlive()
-            .Select(a => new { a.Pid, a.ProcessName, a.MainWindowTitle, a.ProtocolVersion, a.StartedUtc, a.UiFramework })
-            .ToList();
-        return Ok(JsonSerializer.Serialize(new { count = apps.Count, apps }, Json));
+        return _telemetry.Run("list_apps", "lifecycle", null, () =>
+        {
+            var apps = _connection.ListAlive()
+                .Select(a => new { a.Pid, a.ProcessName, a.MainWindowTitle, a.ProtocolVersion, a.StartedUtc, a.UiFramework })
+                .ToList();
+            return Ok(JsonSerializer.Serialize(new { count = apps.Count, apps }, Json));
+        });
     }
 
     [McpServerTool(Name = "list_sessions")]
     [Description("List attached sessions: pilot (MCP UI pipe) and process (launch tracking only). Includes which session is active and whether restart_app can relaunch it.")]
     public CallToolResult ListSessions()
     {
-        var sessions = _connection.ListSessions();
-        return Ok(JsonSerializer.Serialize(new
+        return _telemetry.Run("list_sessions", "lifecycle", null, () =>
         {
-            count = sessions.Count,
-            activeSession = _connection.ActiveSessionName,
-            sessions,
-        }, Json));
+            var sessions = _connection.ListSessions();
+            return Ok(JsonSerializer.Serialize(new
+            {
+                count = sessions.Count,
+                activeSession = _connection.ActiveSessionName,
+                sessions,
+            }, Json));
+        });
     }
 
     [McpServerTool(Name = "select_session")]
@@ -55,15 +67,18 @@ public sealed class LifecycleTools
     public CallToolResult SelectSession(
         [Description("Session name from list_sessions / attach / start_app.")] string session)
     {
-        try
+        return _telemetry.Run("select_session", "lifecycle", session, () =>
         {
-            var info = _connection.SelectSession(session);
-            return Ok(JsonSerializer.Serialize(new { selected = true, session = info }, Json));
-        }
-        catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
-        {
-            return error;
-        }
+            try
+            {
+                var info = _connection.SelectSession(session);
+                return Ok(JsonSerializer.Serialize(new { selected = true, session = info }, Json));
+            }
+            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            {
+                return error;
+            }
+        });
     }
 
     [McpServerTool(Name = "attach")]
@@ -75,15 +90,18 @@ public sealed class LifecycleTools
         [Description("Optional session name. Defaults to the process name. Use short names like 'sim' and 'oi' when driving two apps.")] string? session = null,
         CancellationToken ct = default)
     {
-        try
+        return await _telemetry.RunAsync("attach", "lifecycle", session, async () =>
         {
-            var info = await _connection.AttachAsync(pid, processName, uiFramework, session, ct).ConfigureAwait(false);
-            return Ok(JsonSerializer.Serialize(new { attached = true, session = info }, Json));
-        }
-        catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
-        {
-            return error;
-        }
+            try
+            {
+                var info = await _connection.AttachAsync(pid, processName, uiFramework, session, ct).ConfigureAwait(false);
+                return Ok(JsonSerializer.Serialize(new { attached = true, session = info }, Json));
+            }
+            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            {
+                return error;
+            }
+        }).ConfigureAwait(false);
     }
 
     [McpServerTool(Name = "build_and_start")]
@@ -96,15 +114,18 @@ public sealed class LifecycleTools
         [Description("When true, start the app visible and pull it to the foreground instead of starting minimized. Use when a human is watching the run.")] bool foreground = false,
         CancellationToken ct = default)
     {
-        try
+        return await _telemetry.RunAsync("build_and_start", "lifecycle", session, async () =>
         {
-            var info = await _connection.BuildAndStartAsync(project, configuration, platform, session, foreground, ct).ConfigureAwait(false);
-            return Ok(JsonSerializer.Serialize(new { started = true, session = info }, Json));
-        }
-        catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
-        {
-            return error;
-        }
+            try
+            {
+                var info = await _connection.BuildAndStartAsync(project, configuration, platform, session, foreground, ct).ConfigureAwait(false);
+                return Ok(JsonSerializer.Serialize(new { started = true, session = info }, Json));
+            }
+            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            {
+                return error;
+            }
+        }).ConfigureAwait(false);
     }
 
     [McpServerTool(Name = "start_app")]
@@ -118,15 +139,18 @@ public sealed class LifecycleTools
         [Description("When true, start the app visible and pull it to the foreground instead of starting minimized. Use when a human is watching the run.")] bool foreground = false,
         CancellationToken ct = default)
     {
-        try
+        return await _telemetry.RunAsync("start_app", "lifecycle", session, async () =>
         {
-            var info = await _connection.StartAppAsync(path, session, workingDirectory, useStartupHook, uiFramework, foreground, ct).ConfigureAwait(false);
-            return Ok(JsonSerializer.Serialize(new { started = true, session = info }, Json));
-        }
-        catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
-        {
-            return error;
-        }
+            try
+            {
+                var info = await _connection.StartAppAsync(path, session, workingDirectory, useStartupHook, uiFramework, foreground, ct).ConfigureAwait(false);
+                return Ok(JsonSerializer.Serialize(new { started = true, session = info }, Json));
+            }
+            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            {
+                return error;
+            }
+        }).ConfigureAwait(false);
     }
 
     [McpServerTool(Name = "start_process")]
@@ -139,15 +163,18 @@ public sealed class LifecycleTools
         [Description("When true (default), the process gets its own console window so it shows in the taskbar and its output stays out of this CLI's stdout. Set false to inherit this console.")] bool showWindow = true,
         CancellationToken ct = default)
     {
-        try
+        return await _telemetry.RunAsync("start_process", "lifecycle", session, async () =>
         {
-            var info = await _connection.StartProcessAsync(path, session, workingDirectory, arguments, showWindow, ct).ConfigureAwait(false);
-            return Ok(JsonSerializer.Serialize(new { started = true, session = info }, Json));
-        }
-        catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
-        {
-            return error;
-        }
+            try
+            {
+                var info = await _connection.StartProcessAsync(path, session, workingDirectory, arguments, showWindow, ct).ConfigureAwait(false);
+                return Ok(JsonSerializer.Serialize(new { started = true, session = info }, Json));
+            }
+            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            {
+                return error;
+            }
+        }).ConfigureAwait(false);
     }
 
     [McpServerTool(Name = "wait_for_log")]
@@ -160,23 +187,26 @@ public sealed class LifecycleTools
         [Description("When true, only content written after the waiter first opens the file is searched. Default false searches the whole file.")] bool fromEnd = false,
         CancellationToken ct = default)
     {
-        try
+        return await _telemetry.RunAsync("wait_for_log", "lifecycle", null, async () =>
         {
-            var result = await _connection.WaitForLogAsync(pathOrGlob, pattern, timeoutMs, pollMs, fromEnd, ct).ConfigureAwait(false);
-            return Ok(JsonSerializer.Serialize(new
+            try
             {
-                matched = true,
-                path = result.Path,
-                pattern = result.Pattern,
-                match = result.Match,
-                byteOffset = result.ByteOffset,
-                elapsedMs = result.ElapsedMs,
-            }, Json));
-        }
-        catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
-        {
-            return error;
-        }
+                var result = await _connection.WaitForLogAsync(pathOrGlob, pattern, timeoutMs, pollMs, fromEnd, ct).ConfigureAwait(false);
+                return Ok(JsonSerializer.Serialize(new
+                {
+                    matched = true,
+                    path = result.Path,
+                    pattern = result.Pattern,
+                    match = result.Match,
+                    byteOffset = result.ByteOffset,
+                    elapsedMs = result.ElapsedMs,
+                }, Json));
+            }
+            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            {
+                return error;
+            }
+        }).ConfigureAwait(false);
     }
 
     [McpServerTool(Name = "restart_app")]
@@ -185,15 +215,18 @@ public sealed class LifecycleTools
         [Description("Optional session name. Defaults to the active session, or the only session.")] string? session = null,
         CancellationToken ct = default)
     {
-        try
+        return await _telemetry.RunAsync("restart_app", "lifecycle", session, async () =>
         {
-            var info = await _connection.RestartAsync(session, ct).ConfigureAwait(false);
-            return Ok(JsonSerializer.Serialize(new { restarted = true, session = info }, Json));
-        }
-        catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
-        {
-            return error;
-        }
+            try
+            {
+                var info = await _connection.RestartAsync(session, ct).ConfigureAwait(false);
+                return Ok(JsonSerializer.Serialize(new { restarted = true, session = info }, Json));
+            }
+            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            {
+                return error;
+            }
+        }).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -205,15 +238,18 @@ public sealed class LifecycleTools
     public CallToolResult Detach(
         [Description("Optional session name. Defaults to the active session, or the only session.")] string? session = null)
     {
-        try
+        return _telemetry.Run("detach", "lifecycle", session, () =>
         {
-            var info = _connection.Detach(session);
-            return Ok(JsonSerializer.Serialize(new { detached = true, session = info }, Json));
-        }
-        catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
-        {
-            return error;
-        }
+            try
+            {
+                var info = _connection.Detach(session);
+                return Ok(JsonSerializer.Serialize(new { detached = true, session = info }, Json));
+            }
+            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            {
+                return error;
+            }
+        });
     }
 
     /// <summary>
@@ -224,30 +260,36 @@ public sealed class LifecycleTools
     public CallToolResult StopApp(
         [Description("Optional session name. Defaults to the active session, or the only session.")] string? session = null)
     {
-        try
+        return _telemetry.Run("stop_app", "lifecycle", session, () =>
         {
-            var info = _connection.StopApp(session);
-            return Ok(JsonSerializer.Serialize(new { stopped = true, session = info }, Json));
-        }
-        catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
-        {
-            return error;
-        }
+            try
+            {
+                var info = _connection.StopApp(session);
+                return Ok(JsonSerializer.Serialize(new { stopped = true, session = info }, Json));
+            }
+            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            {
+                return error;
+            }
+        });
     }
 
     [McpServerTool(Name = "stop_all")]
     [Description("Stop every driven session (pilot and process), including any processes they spawned, and clear all sessions.")]
     public CallToolResult StopAll()
     {
-        try
+        return _telemetry.Run("stop_all", "lifecycle", null, () =>
         {
-            var sessions = _connection.StopAll();
-            return Ok(JsonSerializer.Serialize(new { stopped = true, count = sessions.Count, sessions }, Json));
-        }
-        catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
-        {
-            return error;
-        }
+            try
+            {
+                var sessions = _connection.StopAll();
+                return Ok(JsonSerializer.Serialize(new { stopped = true, count = sessions.Count, sessions }, Json));
+            }
+            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            {
+                return error;
+            }
+        });
     }
 
     private static bool TrySerializeToolError(Exception ex, out string json)
