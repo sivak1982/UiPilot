@@ -21,7 +21,11 @@ uipilot_assert_build_sdk
 VERSION="$(python3 - <<PY
 import xml.etree.ElementTree as ET
 root = ET.parse("$REPO_ROOT/Directory.Build.props").getroot()
-print(next(node.text for node in root.iter() if node.tag.endswith("Version") and node.text))
+# Local name must be exactly Version (not LangVersion / PackageVersion / etc.).
+print(next(
+    node.text for node in root.iter()
+    if node.tag.rsplit("}", 1)[-1] == "Version" and node.text and node.text.strip()
+))
 PY
 )"
 BUILD_NUMBER="${BUILD_NUMBER:-${BUILD_BUILDID:-${GITHUB_RUN_NUMBER:-0}}}"
