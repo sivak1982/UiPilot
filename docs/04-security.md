@@ -68,10 +68,20 @@ Many enterprise WPF apps run elevated (High integrity), while an MCP agent launc
 runs at Medium integrity. Windows' default "no-write-up" policy would block the agent from
 connecting to the elevated app's pipe. To support this common case, the pipe is created
 (`CreateNamedPipe` with an explicit security descriptor) with a **Low mandatory integrity label**
-plus a DACL granting Authenticated Users / Administrators
+plus a DACL granting Interactive Users / Administrators
 ([PipeIntegrity.cs](../src/UiPilot.Core/Server/PipeIntegrity.cs)). Lower-integrity clients can
-then connect; the per-run token still authenticates every request. If the native path fails, the
-library falls back to a default pipe (same-integrity clients only).
+then connect; the per-run token still authenticates every request. Auth itself has a short
+deadline and line-length cap. If the native path fails, the library falls back to a default
+pipe (same-integrity clients only).
+
+### StartupHook force path
+
+When the CLI injects `DOTNET_STARTUP_HOOKS`, the generic hook starts the matching adapter with
+`force: true` so Release builds launched by the CLI are automatable without editing app code.
+That path is intentional for the agent edit loop; shipping apps that do not set
+`UIPILOT_ENABLE` and are not started via the CLI remain gated by the normal `Start()` rules.
+Discovery files are deleted on clean shutdown; a crash can leave a stale file until the next
+`DiscoveryReader` sweep (which requires a live PID, pipe name, token, and parseable `startedUtc`).
 
 Note: a Medium-integrity agent still cannot *launch* or *kill* an elevated app, so
 `build_and_start` / `restart_app` / `stop_app` do not apply to elevated targets - run the app

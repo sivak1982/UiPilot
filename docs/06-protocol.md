@@ -18,8 +18,9 @@ UiPilot.Cli  --auth line-->  named pipe  --MCP stream-->  PilotHost (in-app)
 
 - Pipe name: `uipilot.<pid>.<guid>` (published in the discovery file).
 - Encoding: UTF-8, no BOM.
-- Up to **4 concurrent clients** (`PipeIntegrity.MaxInstances`); UI work is serialized by the
-  app dispatcher. Long real-input `drag` uses its own input lock.
+- Up to **4 concurrent pipe clients** (`PipeIntegrity.MaxInstances`). Tool handlers no longer
+  share a global invoke gate; UI marshal still serializes through the app dispatcher. Long
+  real-input `drag` uses its own input lock.
 - MCP framing: SDK `StreamServerTransport` / `StreamClientTransport` on the duplex pipe.
 
 ## Session auth (before MCP)
@@ -35,7 +36,8 @@ After connect, the client sends one JSON line and waits for `ok` before starting
 ```
 
 A bad token yields `{"ok":false,"error":"..."}` and the server closes the connection. Auth reads
-exact bytes (no `StreamReader` buffering) so MCP frames on the same pipe stay intact.
+exact bytes (no `StreamReader` buffering) so MCP frames on the same pipe stay intact. Auth has a
+~5s deadline and a 4 KB line-length cap so a silent peer cannot hold a pipe instance forever.
 
 ## Discovery file
 
@@ -55,7 +57,7 @@ Written to `%TEMP%/uipilot/<pid>.json` on start, deleted on clean shutdown
 }
 ```
 
-`uiFramework` is `wpf` or `avalonia`. Treat the token as a local secret (same-user ACL on `%TEMP%`).
+`uiFramework` is `wpf`, `avalonia`, or `winforms`. Treat the token as a local secret (same-user ACL on `%TEMP%`).
 
 ## MCP surface (in-app)
 
@@ -63,7 +65,7 @@ After auth, the session is standard MCP:
 
 | MCP method | Behavior |
 |---|---|
-| `tools/list` | Built-in + custom tools from `ToolRegistry` |
+| `tools/list` | Built-in + custom tools from `ToolRegistry` (with JSON Schema input contracts) |
 | `tools/call` | Invokes the named tool; args are a JSON object |
 | `ping` | Liveness |
 
