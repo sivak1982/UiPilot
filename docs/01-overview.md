@@ -19,7 +19,7 @@ in-process library has the live objects: visual tree, binding errors, layout, an
 | `UiPilot.Wpf` | WPF adapter + `PilotHost.Start()` (`net8.0-windows`) |
 | `UiPilot.Avalonia` | Avalonia adapter + `UiPilot.Avalonia.PilotHost.Start()` |
 | `UiPilot.WinForms` | WinForms adapter + `UiPilot.WinForms.PilotHost.Start()` |
-| `UiPilot.*.StartupHook` | `DOTNET_STARTUP_HOOKS` injectors (CLI `hooks/`) |
+| `UiPilot.StartupHook` | Generic live-UI detector and `DOTNET_STARTUP_HOOKS` injector |
 | `UiPilot.Cli` | stdio MCP bridge + build/launch/restart loop |
 
 ## Agent edit loop

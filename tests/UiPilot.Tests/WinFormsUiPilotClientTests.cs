@@ -22,7 +22,8 @@ public sealed class WinFormsUiPilotClientTests
         Assert.True(File.Exists(app), $"Sample app was not built: {app}");
 
         await using var pilot = new UiPilotClient();
-        await pilot.StartAppAsync(app, session: "winforms");
+        var session = await pilot.StartAppAsync(app, session: "winforms");
+        Assert.Equal("winforms", session.UiFramework);
 
         var resized = await pilot.ResizeWindowAsync(
             width: 800,

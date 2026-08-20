@@ -67,9 +67,10 @@ if ($LASTEXITCODE -ne 0) {
 $requiredFiles = @(
     (Join-Path $payloadDirectory "UiPilot.Cli.exe"),
     (Join-Path $payloadDirectory "UiPilot.Cli.dll"),
-    (Join-Path $payloadDirectory "hooks\wpf\UiPilot.Wpf.StartupHook.dll"),
-    (Join-Path $payloadDirectory "hooks\avalonia\UiPilot.Avalonia.StartupHook.dll"),
-    (Join-Path $payloadDirectory "hooks\winforms\UiPilot.WinForms.StartupHook.dll")
+    (Join-Path $payloadDirectory "hooks\UiPilot.StartupHook.dll"),
+    (Join-Path $payloadDirectory "hooks\wpf\UiPilot.Wpf.dll"),
+    (Join-Path $payloadDirectory "hooks\avalonia\UiPilot.Avalonia.dll"),
+    (Join-Path $payloadDirectory "hooks\winforms\UiPilot.WinForms.dll")
 )
 foreach ($requiredFile in $requiredFiles) {
     if (-not (Test-Path -LiteralPath $requiredFile)) {

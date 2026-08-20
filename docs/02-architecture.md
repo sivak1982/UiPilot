@@ -42,6 +42,13 @@ Real-input `drag` runs off the UI thread under its own lock.
 - **Avalonia** (`net8.0`) — split under `Inspection/` + `Interaction/` + `Media/`; chained log sink for binding capture.
 - **WinForms** (`net8.0-windows`) — controls and ToolStrip trees, WinForms-native interactions, `DrawToBitmap`/`PrintWindow` screenshots.
 
+## Generic startup hook
+
+`UiPilot.StartupHook` is the only assembly placed in `DOTNET_STARTUP_HOOKS`. It uses reflection to
+poll for a live Avalonia main window, WPF main window, or WinForms form, then loads only the
+matching payload from `hooks/{framework}`. An explicit `uiFramework` launch argument restricts
+the hook to that probe; otherwise the first ready UI wins.
+
 ## CLI
 
 - References Core (shared `DiscoveryInfo`).

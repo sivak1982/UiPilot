@@ -15,7 +15,8 @@ diagnostics because it has direct access to the running objects.
 
 `UiPilot.Cli` injects UiPilot via process-scoped **`DOTNET_STARTUP_HOOKS`** when you use
 `start_app` / `build_and_start`. No project reference or `PilotHost.Start()` in the app is
-required. See [docs/03-adoption.md](docs/03-adoption.md).
+required. One generic hook observes the live process and loads the first ready WPF, Avalonia, or
+WinForms adapter. See [docs/03-adoption.md](docs/03-adoption.md).
 
 Optional in-app opt-in (idempotent with the hook):
 
@@ -70,7 +71,7 @@ Cursor/Claude  --stdio MCP-->  UiPilot.Cli  --MCP over named pipe-->  your app (
 | **`UiPilot.Wpf`** | WPF adapter + `PilotHost.Start()` (`net8.0-windows`). |
 | **`UiPilot.Avalonia`** | Avalonia adapter + `PilotHost.Start()` (`net8.0`). |
 | **`UiPilot.WinForms`** | WinForms adapter + `PilotHost.Start()` (`net8.0-windows`). |
-| **`UiPilot.*.StartupHook`** | `DOTNET_STARTUP_HOOKS` injectors (copied under CLI `hooks/`). |
+| **`UiPilot.StartupHook`** | Generic runtime detector and `DOTNET_STARTUP_HOOKS` injector. |
 | **`UiPilot.Cli`** | Out-of-process stdio MCP bridge + app launcher (framework-agnostic). |
 
 ## Agent-facing highlights (protocol 2.0)
@@ -109,6 +110,7 @@ See [docs/08-csharp-tests.md](docs/08-csharp-tests.md).
 | `src/UiPilot.Wpf` | WPF in-process library. |
 | `src/UiPilot.Avalonia` | Avalonia in-process library. |
 | `src/UiPilot.WinForms` | WinForms in-process library. |
+| `src/UiPilot.StartupHook` | Generic startup hook with isolated adapter payloads. |
 | `src/UiPilot.Client` | Typed C# client for deterministic product tests. |
 | `src/UiPilot.Cli` | Out-of-process stdio MCP bridge + app launcher. |
 | `samples/SampleApp` | Minimal WPF app used to validate the loop. |
@@ -133,5 +135,5 @@ On non-Windows hosts, `EnableWindowsTargeting` is set so Windows desktop TFMs re
 ```
 
 The generated per-user installer bundle checks the required .NET runtime, installs the CLI and
-all startup hooks, and merges UiPilot into Cursor's MCP configuration. See
+generic startup hook with its adapter payloads, and merges UiPilot into Cursor's MCP configuration. See
 [installer/README.md](installer/README.md) for installation, prerequisites, and uninstall details.

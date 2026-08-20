@@ -7,9 +7,4 @@
     <RootNamespace>SampleApp</RootNamespace>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\UiPilot.Wpf\UiPilot.Wpf.csproj" />
-  </ItemGroup>
-
 </Project>

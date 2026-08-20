@@ -22,15 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\UiPilot.Core\UiPilot.Core.csproj" />
     <ProjectReference Include="..\UiPilot.Client\UiPilot.Client.csproj" />
-    <ProjectReference Include="..\UiPilot.Avalonia.StartupHook\UiPilot.Avalonia.StartupHook.csproj">
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-      <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
-    </ProjectReference>
-    <ProjectReference Include="..\UiPilot.Wpf.StartupHook\UiPilot.Wpf.StartupHook.csproj">
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-      <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
-    </ProjectReference>
-    <ProjectReference Include="..\UiPilot.WinForms.StartupHook\UiPilot.WinForms.StartupHook.csproj">
+    <ProjectReference Include="..\UiPilot.StartupHook\UiPilot.StartupHook.csproj">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
     </ProjectReference>
@@ -46,29 +38,22 @@
     <Compile Remove="Process\**\*.cs" />
   </ItemGroup>
 
-  <!-- Ship startup hooks under framework-specific folders next to the CLI. -->
+  <!-- Ship the generic startup hook and its isolated adapter payloads next to the CLI. -->
   <Target Name="CopyStartupHooks" AfterTargets="Build">
     <PropertyGroup>
       <_HookRidSuffix Condition="'$(RuntimeIdentifier)' != ''">\$(RuntimeIdentifier)</_HookRidSuffix>
-      <_AvaloniaHookOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\UiPilot.Avalonia.StartupHook\bin\$(Configuration)\net8.0$(_HookRidSuffix)'))</_AvaloniaHookOut>
-      <_WpfHookOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\UiPilot.Wpf.StartupHook\bin\$(Configuration)\net8.0$(_HookRidSuffix)'))</_WpfHookOut>
-      <_WinFormsHookOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\UiPilot.WinForms.StartupHook\bin\$(Configuration)\net8.0$(_HookRidSuffix)'))</_WinFormsHookOut>
-      <_HooksAvalonia>$(OutputPath)hooks\avalonia\</_HooksAvalonia>
-      <_HooksWpf>$(OutputPath)hooks\wpf\</_HooksWpf>
-      <_HooksWinForms>$(OutputPath)hooks\winforms\</_HooksWinForms>
+      <_GenericHookOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\UiPilot.StartupHook\bin\$(Configuration)\net8.0$(_HookRidSuffix)'))</_GenericHookOut>
+      <_HooksOut>$(OutputPath)hooks\</_HooksOut>
     </PropertyGroup>
-    <MakeDir Directories="$(_HooksAvalonia);$(_HooksWpf);$(_HooksWinForms)" />
+    <MakeDir Directories="$(_HooksOut)" />
     <ItemGroup>
-      <_AvaloniaHookFiles Include="$(_AvaloniaHookOut)\*.dll" />
-      <_AvaloniaHookFiles Include="$(_AvaloniaHookOut)\*.json" />
-      <_WpfHookFiles Include="$(_WpfHookOut)\*.dll" />
-      <_WpfHookFiles Include="$(_WpfHookOut)\*.json" />
-      <_WinFormsHookFiles Include="$(_WinFormsHookOut)\*.dll" />
-      <_WinFormsHookFiles Include="$(_WinFormsHookOut)\*.json" />
+      <_GenericHookFiles Include="$(_GenericHookOut)\**\*" />
     </ItemGroup>
-    <Copy SourceFiles="@(_AvaloniaHookFiles)" DestinationFolder="$(_HooksAvalonia)" SkipUnchangedFiles="true" Condition="'@(_AvaloniaHookFiles)' != ''" />
-    <Copy SourceFiles="@(_WpfHookFiles)" DestinationFolder="$(_HooksWpf)" SkipUnchangedFiles="true" Condition="'@(_WpfHookFiles)' != ''" />
-    <Copy SourceFiles="@(_WinFormsHookFiles)" DestinationFolder="$(_HooksWinForms)" SkipUnchangedFiles="true" Condition="'@(_WinFormsHookFiles)' != ''" />
+    <Copy
+      SourceFiles="@(_GenericHookFiles)"
+      DestinationFiles="@(_GenericHookFiles->'$(_HooksOut)%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+      Condition="'@(_GenericHookFiles)' != ''" />
   </Target>
 
   <!-- Build places hooks under TargetDir; publish must preserve that sibling layout because

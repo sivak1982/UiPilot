@@ -25,25 +25,28 @@
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
     </ProjectReference>
+    <ProjectReference Include="..\..\samples\SampleApp\SampleApp.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
+    </ProjectReference>
   </ItemGroup>
 
   <!-- Product test projects receive these files from the future UiPilot.Client package.
        This repository test copies them explicitly to validate zero-edit startup hooks. -->
   <Target Name="CopyClientTestStartupHooks" AfterTargets="Build">
     <PropertyGroup>
-      <_AvaloniaHookOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\src\UiPilot.Avalonia.StartupHook\bin\$(Configuration)\net8.0'))</_AvaloniaHookOut>
-      <_WpfHookOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\src\UiPilot.Wpf.StartupHook\bin\$(Configuration)\net8.0'))</_WpfHookOut>
-      <_WinFormsHookOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\src\UiPilot.WinForms.StartupHook\bin\$(Configuration)\net8.0'))</_WinFormsHookOut>
+      <_GenericHookOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\src\UiPilot.StartupHook\bin\$(Configuration)\net8.0'))</_GenericHookOut>
+      <_HooksOut>$(OutputPath)hooks\</_HooksOut>
     </PropertyGroup>
-    <MakeDir Directories="$(OutputPath)hooks\avalonia;$(OutputPath)hooks\wpf;$(OutputPath)hooks\winforms" />
+    <MakeDir Directories="$(_HooksOut)" />
     <ItemGroup>
-      <_ClientAvaloniaHookFiles Include="$(_AvaloniaHookOut)\*.dll;$(_AvaloniaHookOut)\*.json" />
-      <_ClientWpfHookFiles Include="$(_WpfHookOut)\*.dll;$(_WpfHookOut)\*.json" />
-      <_ClientWinFormsHookFiles Include="$(_WinFormsHookOut)\*.dll;$(_WinFormsHookOut)\*.json" />
+      <_ClientHookFiles Include="$(_GenericHookOut)\**\*" />
     </ItemGroup>
-    <Copy SourceFiles="@(_ClientAvaloniaHookFiles)" DestinationFolder="$(OutputPath)hooks\avalonia" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(_ClientWpfHookFiles)" DestinationFolder="$(OutputPath)hooks\wpf" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(_ClientWinFormsHookFiles)" DestinationFolder="$(OutputPath)hooks\winforms" SkipUnchangedFiles="true" />
+    <Copy
+      SourceFiles="@(_ClientHookFiles)"
+      DestinationFiles="@(_ClientHookFiles->'$(_HooksOut)%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+      Condition="'@(_ClientHookFiles)' != ''" />
   </Target>
 
 </Project>

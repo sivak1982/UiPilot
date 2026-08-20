@@ -25,7 +25,12 @@ function Send-Rpc($writer, $reader, $method, $token, $params) {
 
 if (-not (Test-Path $Exe)) { throw "Sample app not built: $Exe" }
 
+$hook = Join-Path $PSScriptRoot "..\src\UiPilot.StartupHook\bin\Debug\net8.0\UiPilot.StartupHook.dll"
+if (-not (Test-Path $hook)) { throw "Generic startup hook not built: $hook" }
+
+$previousHook = $env:DOTNET_STARTUP_HOOKS
 $env:UIPILOT_ENABLE = "1"
+$env:DOTNET_STARTUP_HOOKS = [IO.Path]::GetFullPath($hook)
 $proc = Start-Process -FilePath $Exe -PassThru
 Write-Host "Started SampleApp pid=$($proc.Id)"
 
@@ -90,4 +95,5 @@ finally {
     if ($reader) { $reader.Dispose() }
     if ($pipe) { $pipe.Dispose() }
     if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+    $env:DOTNET_STARTUP_HOOKS = $previousHook
 }

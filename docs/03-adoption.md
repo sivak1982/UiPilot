@@ -3,12 +3,14 @@
 ## Zero-edit launch (recommended for agents)
 
 `start_app` / `build_and_start` set process-scoped `DOTNET_STARTUP_HOOKS` to
-`UiPilot.*.StartupHook.dll` (shipped under the CLI's framework-specific `hooks` folders).
-The hook waits for the framework application or main form, then calls `PilotHost.Start(force: true)`.
+`UiPilot.StartupHook.dll`. The generic hook observes the target process, waits for the first live
+WPF main window, Avalonia main window, or WinForms form, then loads that adapter from its isolated
+`hooks/{framework}` payload and calls `PilotHost.Start(force: true)`.
 
 - No project reference or `PilotHost.Start()` in the target app is required.
-- Framework is auto-detected from assemblies beside the exe (`Avalonia.dll` → avalonia,
-  `PresentationFramework.dll` → wpf, `System.Windows.Forms.dll` → winforms), or pass `uiFramework`.
+- No assembly-folder guessing is used. Selection is based on the live UI inside the process.
+- For mixed-framework applications, pass `uiFramework` to restrict detection to `wpf`,
+  `avalonia`, or `winforms`; otherwise the first ready UI wins.
 - Disable with `useStartupHook: false` on `start_app`, or env `UIPILOT_STARTUP_HOOK=0`.
 - The hook clears `DOTNET_STARTUP_HOOKS` in-process so child processes do not inherit it.
 
