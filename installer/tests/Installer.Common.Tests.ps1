@@ -146,6 +146,45 @@ try {
     $settings = Read-UiPilotJson -Path $settingsPath
     Assert-Equal $token $settings."uipilotStatus.token" "Uninstall must leave Cursor user settings alone."
 
+    $packagesDirectory = Join-Path $root "packages"
+    New-Item -ItemType Directory -Path $packagesDirectory -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path $packagesDirectory "UiPilot.Client.0.1.0.99.nupkg"), "nupkg")
+    $nugetConfig = Join-Path $root "nuget.config"
+    [IO.File]::WriteAllText(
+        $nugetConfig,
+        @"
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <clear />
+  </packageSources>
+</configuration>
+"@)
+    if (-not (Register-UiPilotNugetSource -PackagesDirectory $packagesDirectory -ConfigFile $nugetConfig)) {
+        throw "Tester NuGet source registration failed."
+    }
+    $listed = & (Get-Command dotnet).Source nuget list source --configfile $nugetConfig
+    $listedText = ($listed | Out-String)
+    if ($listedText -notmatch "UiPilotInstalled") {
+        throw "Registered NuGet source was not listed."
+    }
+    Unregister-UiPilotNugetSource -PackagesDirectory $packagesDirectory -ConfigFile $nugetConfig | Out-Null
+
+    $skillSource = Join-Path $installDirectory "skills\uipilot-csharp-tests"
+    New-Item -ItemType Directory -Path $skillSource -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path $skillSource "SKILL.md"), "# test")
+    if (-not (Install-UiPilotCursorSkill -InstallDirectory $installDirectory -HomeDirectory $root)) {
+        throw "Tester skill installation failed."
+    }
+    $installedSkill = Join-Path $root ".cursor\skills\uipilot-csharp-tests\SKILL.md"
+    if (-not (Test-Path -LiteralPath $installedSkill)) {
+        throw "Tester skill was not copied into the Cursor skills directory."
+    }
+    Uninstall-UiPilotCursorSkill -HomeDirectory $root | Out-Null
+    if (Test-Path -LiteralPath (Join-Path $root ".cursor\skills\uipilot-csharp-tests")) {
+        throw "Tester skill uninstall must remove the copied skill."
+    }
+
     Write-Host "Installer common tests passed."
 }
 finally {

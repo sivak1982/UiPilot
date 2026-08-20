@@ -117,6 +117,26 @@ if ($LASTEXITCODE -ne 0) {
     $fullVersion + [Environment]::NewLine,
     (New-Object Text.UTF8Encoding($false)))
 
+$packagesDirectory = Join-Path $payloadDirectory "packages"
+New-Item -ItemType Directory -Path $packagesDirectory -Force | Out-Null
+foreach ($projectName in @("UiPilot.Core", "UiPilot.Client")) {
+    & dotnet pack (Join-Path $repoRoot "src\$projectName\$projectName.csproj") `
+        --configuration $Configuration `
+        --output $packagesDirectory `
+        -p:BuildNumber=$BuildNumber `
+        -p:Version=$fullVersion `
+        -p:PackageVersion=$fullVersion `
+        --nologo
+    if ($LASTEXITCODE -ne 0) {
+        throw "$projectName pack failed."
+    }
+}
+
+$skillSource = Join-Path $repoRoot ".cursor\skills\uipilot-csharp-tests"
+$skillDestination = Join-Path $payloadDirectory "skills\uipilot-csharp-tests"
+New-Item -ItemType Directory -Path $skillDestination -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $skillSource "SKILL.md") -Destination (Join-Path $skillDestination "SKILL.md")
+
 Get-ChildItem -LiteralPath $payloadDirectory -Filter *.pdb -Recurse -ErrorAction SilentlyContinue |
     Remove-Item -Force
 
@@ -133,6 +153,9 @@ $requiredFiles = @(
     (Join-Path $payloadDirectory "UiPilot.Cli.dll"),
     (Join-Path $payloadDirectory "hooks\UiPilot.StartupHook.dll"),
     (Join-Path $payloadDirectory "hooks\avalonia\UiPilot.Avalonia.dll"),
+    (Join-Path $payloadDirectory "packages\UiPilot.Client.$fullVersion.nupkg"),
+    (Join-Path $payloadDirectory "packages\UiPilot.Core.$fullVersion.nupkg"),
+    (Join-Path $payloadDirectory "skills\uipilot-csharp-tests\SKILL.md"),
     $extensionVsix
 )
 if ($isWindowsRid) {

@@ -207,3 +207,42 @@ uipilot_install_extension() {
   fi
   echo "warning: Cursor CLI was not found. In Cursor, use Extensions: Install from VSIX and select '$vsix_path'." >&2
 }
+
+uipilot_register_nuget() {
+  local packages="$1"
+  command -v dotnet >/dev/null 2>&1 || return 0
+  [[ -d "$packages" ]] || return 0
+  shopt -s nullglob
+  local nupkgs=("$packages"/*.nupkg)
+  shopt -u nullglob
+  [[ ${#nupkgs[@]} -gt 0 ]] || return 0
+  dotnet nuget remove source UiPilotInstalled >/dev/null 2>&1 || true
+  if dotnet nuget add source "$packages" --name UiPilotInstalled; then
+    echo "Registered NuGet source 'UiPilotInstalled' -> $packages"
+  fi
+}
+
+uipilot_unregister_nuget() {
+  local packages="$1"
+  command -v dotnet >/dev/null 2>&1 || return 0
+  local listed
+  listed="$(dotnet nuget list source 2>/dev/null || true)"
+  [[ "$listed" == *"$packages"* ]] || return 0
+  dotnet nuget remove source UiPilotInstalled >/dev/null 2>&1 || true
+}
+
+uipilot_install_skill() {
+  local install_dir="$1"
+  local src="$install_dir/skills/uipilot-csharp-tests/SKILL.md"
+  [[ -f "$src" ]] || return 0
+  local dest="$HOME/.cursor/skills/uipilot-csharp-tests"
+  mkdir -p "$dest"
+  cp "$src" "$dest/SKILL.md"
+  echo "Installed the UiPilot tester skill at $dest"
+}
+
+uipilot_uninstall_skill() {
+  local dest="$HOME/.cursor/skills/uipilot-csharp-tests"
+  [[ -d "$dest" ]] || return 0
+  rm -rf "$dest"
+}

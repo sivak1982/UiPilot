@@ -63,6 +63,20 @@ dotnet publish "$REPO_ROOT/src/UiPilot.Cli/UiPilot.Cli.csproj" \
   --nologo
 printf '%s\n' "$FULL_VERSION" > "$PAYLOAD/version.txt"
 
+PACKAGES="$PAYLOAD/packages"
+mkdir -p "$PACKAGES"
+for project in UiPilot.Core UiPilot.Client; do
+  dotnet pack "$REPO_ROOT/src/$project/$project.csproj" \
+    --configuration "$CONFIGURATION" \
+    --output "$PACKAGES" \
+    -p:BuildNumber="$BUILD_NUMBER" \
+    -p:Version="$FULL_VERSION" \
+    -p:PackageVersion="$FULL_VERSION" \
+    --nologo
+done
+mkdir -p "$PAYLOAD/skills/uipilot-csharp-tests"
+cp "$REPO_ROOT/.cursor/skills/uipilot-csharp-tests/SKILL.md" "$PAYLOAD/skills/uipilot-csharp-tests/SKILL.md"
+
 find "$PAYLOAD" -name '*.pdb' -delete
 chmod +x "$PAYLOAD/UiPilot.Cli"
 
@@ -72,6 +86,9 @@ required=(
   "$PAYLOAD/version.txt"
   "$PAYLOAD/hooks/UiPilot.StartupHook.dll"
   "$PAYLOAD/hooks/avalonia/UiPilot.Avalonia.dll"
+  "$PACKAGES/UiPilot.Client.$FULL_VERSION.nupkg"
+  "$PACKAGES/UiPilot.Core.$FULL_VERSION.nupkg"
+  "$PAYLOAD/skills/uipilot-csharp-tests/SKILL.md"
   "$VSIX"
 )
 for file in "${required[@]}"; do

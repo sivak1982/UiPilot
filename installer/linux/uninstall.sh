@@ -50,6 +50,9 @@ if [[ "$removed" -eq 0 ]]; then
   echo "Removed UiPilot from Cursor's MCP configuration."
 fi
 
+uipilot_unregister_nuget "$INSTALL_DIR/packages"
+uipilot_uninstall_skill
+
 if [[ -d "$INSTALL_DIR" ]]; then
   rm -rf "$INSTALL_DIR"
   echo "Removed $INSTALL_DIR"

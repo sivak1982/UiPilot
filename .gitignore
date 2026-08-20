@@ -11,6 +11,7 @@ artifacts/
 node_modules/
 extensions/**/dist/
 extensions/**/*.vsix
+src/UiPilot.Client/build/hooks/
 
 ## Visual Studio / Rider
 .vs/

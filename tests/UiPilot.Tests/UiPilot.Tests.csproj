@@ -31,7 +31,7 @@
     </ProjectReference>
   </ItemGroup>
 
-  <!-- Product test projects receive these files from the future UiPilot.Client package.
+  <!-- Product tester projects receive these files from the UiPilot.Client package.
        This repository test copies them explicitly to validate zero-edit startup hooks. -->
   <Target Name="CopyClientTestStartupHooks" AfterTargets="Build">
     <PropertyGroup>

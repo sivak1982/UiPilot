@@ -77,6 +77,12 @@ installer generates a random status token on first install, preserves it on rein
 matching extension settings, and installs the bundled VSIX through the Cursor CLI when available.
 The Cursor MCP entry includes the complete build version, for example `uipilot-0.1.0.123`;
 upgrades replace the prior entry for the same installation.
+
+The installer also drops `UiPilot.Client` / `UiPilot.Core` nupkgs under
+`%LOCALAPPDATA%\Programs\UiPilot\packages`, registers the `UiPilotInstalled` NuGet source, and
+copies the tester skill to `~/.cursor/skills/uipilot-csharp-tests`. Testers add
+`PackageReference Include="UiPilot.Client"` in a local test project. Product-repo feeds can wait.
+
 If `cursor` is not on `PATH`, it prints the exact VSIX path for manual installation. Restart
 Cursor after installation.
 

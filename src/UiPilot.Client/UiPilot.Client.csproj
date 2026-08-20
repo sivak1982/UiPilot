@@ -4,7 +4,9 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <IsPackable>false</IsPackable>
+    <PackageId>UiPilot.Client</PackageId>
+    <Description>Typed C# client that mirrors UiPilot MCP tools for tester-authored regression tests.</Description>
+    <IsPackable>true</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,6 +18,7 @@
     <ProjectReference Include="..\UiPilot.StartupHook\UiPilot.StartupHook.csproj">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
+      <PrivateAssets>all</PrivateAssets>
     </ProjectReference>
   </ItemGroup>
 
@@ -34,16 +37,69 @@
       <_HookRidSuffix Condition="'$(RuntimeIdentifier)' != ''">\$(RuntimeIdentifier)</_HookRidSuffix>
       <_GenericHookOut>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\UiPilot.StartupHook\bin\$(Configuration)\net8.0$(_HookRidSuffix)'))</_GenericHookOut>
       <_HooksOut>$(OutputPath)hooks\</_HooksOut>
+      <_PackHooksOut>$(MSBuildThisFileDirectory)build\hooks\</_PackHooksOut>
     </PropertyGroup>
-    <MakeDir Directories="$(_HooksOut)" />
+    <MakeDir Directories="$(_HooksOut);$(_PackHooksOut)avalonia;$(_PackHooksOut)wpf;$(_PackHooksOut)winforms" />
     <ItemGroup>
       <_GenericHookFiles Include="$(_GenericHookOut)\**\*" />
+      <_PackGeneric Include="$(_GenericHookOut)\UiPilot.StartupHook.dll;$(_GenericHookOut)\UiPilot.StartupHook.deps.json" />
+      <_PackAvalonia Include="$(_GenericHookOut)\avalonia\*.dll;$(_GenericHookOut)\avalonia\*.json" />
+      <_PackWpf Include="$(_GenericHookOut)\wpf\*.dll;$(_GenericHookOut)\wpf\*.json" />
+      <_PackWinForms Include="$(_GenericHookOut)\winforms\*.dll;$(_GenericHookOut)\winforms\*.json" />
     </ItemGroup>
     <Copy
       SourceFiles="@(_GenericHookFiles)"
       DestinationFiles="@(_GenericHookFiles->'$(_HooksOut)%(RecursiveDir)%(Filename)%(Extension)')"
       SkipUnchangedFiles="true"
       Condition="'@(_GenericHookFiles)' != ''" />
+    <Copy SourceFiles="@(_PackGeneric)" DestinationFolder="$(_PackHooksOut)" SkipUnchangedFiles="true" Condition="'@(_PackGeneric)' != ''" />
+    <Copy SourceFiles="@(_PackAvalonia)" DestinationFolder="$(_PackHooksOut)avalonia" SkipUnchangedFiles="true" Condition="'@(_PackAvalonia)' != ''" />
+    <Copy SourceFiles="@(_PackWpf)" DestinationFolder="$(_PackHooksOut)wpf" SkipUnchangedFiles="true" Condition="'@(_PackWpf)' != ''" />
+    <Copy SourceFiles="@(_PackWinForms)" DestinationFolder="$(_PackHooksOut)winforms" SkipUnchangedFiles="true" Condition="'@(_PackWinForms)' != ''" />
+  </Target>
+
+  <ItemGroup>
+    <None Include="build\UiPilot.Client.targets" Pack="true" PackagePath="build\UiPilot.Client.targets" />
+    <None Include="build\UiPilot.Client.targets" Pack="true" PackagePath="buildTransitive\UiPilot.Client.targets" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);IncludeHookPackageFiles</TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
+
+  <Target Name="IncludeHookPackageFiles" DependsOnTargets="CopyStartupHooks">
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="$(MSBuildThisFileDirectory)build\hooks\UiPilot.StartupHook.dll">
+        <PackagePath>buildTransitive/hooks</PackagePath>
+      </TfmSpecificPackageFile>
+      <TfmSpecificPackageFile Include="$(MSBuildThisFileDirectory)build\hooks\UiPilot.StartupHook.deps.json">
+        <PackagePath>buildTransitive/hooks</PackagePath>
+      </TfmSpecificPackageFile>
+      <TfmSpecificPackageFile Include="$(MSBuildThisFileDirectory)build\hooks\avalonia\*">
+        <PackagePath>buildTransitive/hooks/avalonia</PackagePath>
+      </TfmSpecificPackageFile>
+      <TfmSpecificPackageFile Include="$(MSBuildThisFileDirectory)build\hooks\wpf\*">
+        <PackagePath>buildTransitive/hooks/wpf</PackagePath>
+      </TfmSpecificPackageFile>
+      <TfmSpecificPackageFile Include="$(MSBuildThisFileDirectory)build\hooks\winforms\*">
+        <PackagePath>buildTransitive/hooks/winforms</PackagePath>
+      </TfmSpecificPackageFile>
+      <TfmSpecificPackageFile Include="$(MSBuildThisFileDirectory)build\hooks\UiPilot.StartupHook.dll">
+        <PackagePath>build/hooks</PackagePath>
+      </TfmSpecificPackageFile>
+      <TfmSpecificPackageFile Include="$(MSBuildThisFileDirectory)build\hooks\UiPilot.StartupHook.deps.json">
+        <PackagePath>build/hooks</PackagePath>
+      </TfmSpecificPackageFile>
+      <TfmSpecificPackageFile Include="$(MSBuildThisFileDirectory)build\hooks\avalonia\*">
+        <PackagePath>build/hooks/avalonia</PackagePath>
+      </TfmSpecificPackageFile>
+      <TfmSpecificPackageFile Include="$(MSBuildThisFileDirectory)build\hooks\wpf\*">
+        <PackagePath>build/hooks/wpf</PackagePath>
+      </TfmSpecificPackageFile>
+      <TfmSpecificPackageFile Include="$(MSBuildThisFileDirectory)build\hooks\winforms\*">
+        <PackagePath>build/hooks/winforms</PackagePath>
+      </TfmSpecificPackageFile>
+    </ItemGroup>
   </Target>
 
 </Project>

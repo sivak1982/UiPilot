@@ -38,6 +38,9 @@ if ($Action -eq "Unregister") {
         Write-Host "Removed UiPilot from Cursor's MCP configuration."
     }
 
+    Unregister-UiPilotNugetSource -PackagesDirectory (Get-UiPilotPackagesDirectory -InstallDirectory $InstallDirectory) | Out-Null
+    Uninstall-UiPilotCursorSkill | Out-Null
+
     # Windows Installer does not track this file, so it must be deleted here for the
     # install directory to be removed.
     if (Test-Path -LiteralPath $manifestPath) {

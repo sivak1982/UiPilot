@@ -4,6 +4,8 @@ $script:UiPilotRequiredRuntimeMajor = 8
 $script:UiPilotRequiredSdkVersion = [Version]"8.0.400"
 $script:UiPilotStatusPort = 17831
 $script:UiPilotExtensionId = "uipilot.uipilot-status"
+$script:UiPilotNugetSourceName = "UiPilotInstalled"
+$script:UiPilotSkillName = "uipilot-csharp-tests"
 
 function Assert-UiPilotWindows {
     if ($env:OS -ne "Windows_NT") {
@@ -356,6 +358,148 @@ function Get-UiPilotCursorCommand {
     return $null
 }
 
+function Get-UiPilotPackagesDirectory {
+    param([Parameter(Mandatory = $true)][string]$InstallDirectory)
+
+    return (Join-Path $InstallDirectory "packages")
+}
+
+function Get-UiPilotSkillSourceDirectory {
+    param([Parameter(Mandatory = $true)][string]$InstallDirectory)
+
+    return (Join-Path $InstallDirectory "skills\$script:UiPilotSkillName")
+}
+
+function Get-UiPilotSkillInstallDirectory {
+    param([string]$HomeDirectory = "")
+
+    if ([string]::IsNullOrWhiteSpace($HomeDirectory)) {
+        $HomeDirectory = $HOME
+    }
+    if ([string]::IsNullOrWhiteSpace($HomeDirectory)) {
+        return $null
+    }
+    return (Join-Path $HomeDirectory ".cursor\skills\$script:UiPilotSkillName")
+}
+
+function Register-UiPilotNugetSource {
+    param(
+        [Parameter(Mandatory = $true)][string]$PackagesDirectory,
+        [string]$ConfigFile = ""
+    )
+
+    $dotnet = Get-Command dotnet -ErrorAction SilentlyContinue
+    if (-not $dotnet) {
+        Write-Warning "dotnet was not found; testers must add the UiPilot package source manually: $PackagesDirectory"
+        return $false
+    }
+
+    if (-not (Test-Path -LiteralPath $PackagesDirectory)) {
+        Write-Warning "UiPilot tester packages were not found at '$PackagesDirectory'."
+        return $false
+    }
+
+    $packages = @(Get-ChildItem -LiteralPath $PackagesDirectory -Filter *.nupkg -ErrorAction SilentlyContinue)
+    if ($packages.Count -eq 0) {
+        Write-Warning "UiPilot tester packages were not found at '$PackagesDirectory'."
+        return $false
+    }
+
+    $arguments = @("nuget", "remove", "source", $script:UiPilotNugetSourceName)
+    if (-not [string]::IsNullOrWhiteSpace($ConfigFile)) {
+        $arguments += @("--configfile", $ConfigFile)
+    }
+    & $dotnet.Source @arguments 2>$null | Out-Null
+
+    $arguments = @(
+        "nuget", "add", "source", $PackagesDirectory,
+        "--name", $script:UiPilotNugetSourceName
+    )
+    if (-not [string]::IsNullOrWhiteSpace($ConfigFile)) {
+        $arguments += @("--configfile", $ConfigFile)
+    }
+    & $dotnet.Source @arguments
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Could not register the UiPilot NuGet source at '$PackagesDirectory'."
+        return $false
+    }
+
+    Write-Host "Registered NuGet source '$script:UiPilotNugetSourceName' -> $PackagesDirectory"
+    return $true
+}
+
+function Unregister-UiPilotNugetSource {
+    param(
+        [Parameter(Mandatory = $true)][string]$PackagesDirectory,
+        [string]$ConfigFile = ""
+    )
+
+    $dotnet = Get-Command dotnet -ErrorAction SilentlyContinue
+    if (-not $dotnet) {
+        return $false
+    }
+
+    $listArguments = @("nuget", "list", "source")
+    if (-not [string]::IsNullOrWhiteSpace($ConfigFile)) {
+        $listArguments += @("--configfile", $ConfigFile)
+    }
+    $listed = & $dotnet.Source @listArguments 2>$null
+    $expected = [IO.Path]::GetFullPath($PackagesDirectory).TrimEnd('\', '/')
+    $pointsHere = $false
+    foreach ($line in @($listed)) {
+        if ($line -and $line.IndexOf($expected, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+            $pointsHere = $true
+            break
+        }
+    }
+    if (-not $pointsHere) {
+        return $false
+    }
+
+    $arguments = @("nuget", "remove", "source", $script:UiPilotNugetSourceName)
+    if (-not [string]::IsNullOrWhiteSpace($ConfigFile)) {
+        $arguments += @("--configfile", $ConfigFile)
+    }
+    & $dotnet.Source @arguments 2>$null | Out-Null
+    return ($LASTEXITCODE -eq 0)
+}
+
+function Install-UiPilotCursorSkill {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstallDirectory,
+        [string]$HomeDirectory = ""
+    )
+
+    $source = Get-UiPilotSkillSourceDirectory -InstallDirectory $InstallDirectory
+    $skillFile = Join-Path $source "SKILL.md"
+    if (-not (Test-Path -LiteralPath $skillFile -PathType Leaf)) {
+        Write-Warning "UiPilot tester skill was not found at '$skillFile'."
+        return $false
+    }
+
+    $destination = Get-UiPilotSkillInstallDirectory -HomeDirectory $HomeDirectory
+    if ([string]::IsNullOrWhiteSpace($destination)) {
+        Write-Warning "The current user's home directory is unavailable; the tester skill was not installed."
+        return $false
+    }
+
+    New-Item -ItemType Directory -Path $destination -Force | Out-Null
+    Copy-Item -LiteralPath $skillFile -Destination (Join-Path $destination "SKILL.md") -Force
+    Write-Host "Installed the UiPilot tester skill at $destination"
+    return $true
+}
+
+function Uninstall-UiPilotCursorSkill {
+    param([string]$HomeDirectory = "")
+
+    $destination = Get-UiPilotSkillInstallDirectory -HomeDirectory $HomeDirectory
+    if ([string]::IsNullOrWhiteSpace($destination) -or -not (Test-Path -LiteralPath $destination)) {
+        return $false
+    }
+    Remove-Item -LiteralPath $destination -Recurse -Force
+    return $true
+}
+
 function Register-UiPilotCursorIntegration {
     param(
         [Parameter(Mandatory = $true)][string]$InstallDirectory,
@@ -404,6 +548,8 @@ function Register-UiPilotCursorIntegration {
         (New-Object Text.UTF8Encoding($false)))
 
     Install-UiPilotCursorExtension -VsixPath (Join-Path $InstallDirectory "UiPilot.Status.vsix")
+    Register-UiPilotNugetSource -PackagesDirectory (Get-UiPilotPackagesDirectory -InstallDirectory $InstallDirectory) | Out-Null
+    Install-UiPilotCursorSkill -InstallDirectory $InstallDirectory | Out-Null
 }
 
 function Write-UiPilotWixPayloadComponents {

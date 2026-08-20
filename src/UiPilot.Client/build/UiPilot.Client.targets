@@ -1,0 +1,18 @@
+<Project>
+  <!-- Copies installer-shipped startup hooks next to the test output so StartAppAsync works. -->
+  <Target Name="CopyUiPilotClientHooks" AfterTargets="Build">
+    <PropertyGroup>
+      <_UiPilotHookSource>$(MSBuildThisFileDirectory)hooks\</_UiPilotHookSource>
+      <_UiPilotHookDest>$(OutputPath)hooks\</_UiPilotHookDest>
+    </PropertyGroup>
+    <ItemGroup>
+      <_UiPilotHookFiles Include="$(_UiPilotHookSource)**\*" />
+    </ItemGroup>
+    <MakeDir Directories="$(_UiPilotHookDest)" Condition="'@(_UiPilotHookFiles)' != ''" />
+    <Copy
+      SourceFiles="@(_UiPilotHookFiles)"
+      DestinationFiles="@(_UiPilotHookFiles->'$(_UiPilotHookDest)%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+      Condition="'@(_UiPilotHookFiles)' != ''" />
+  </Target>
+</Project>

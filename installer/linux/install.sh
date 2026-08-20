@@ -91,6 +91,8 @@ mv "$STAGING" "$INSTALL_DIR"
 uipilot_merge_mcp "$MCP_CONFIG" "$INSTALL_DIR/UiPilot.Cli" "$TOKEN" "$VERSION"
 uipilot_merge_settings "$CURSOR_SETTINGS" "$TOKEN"
 uipilot_install_extension "$INSTALL_DIR/UiPilot.Status.vsix"
+uipilot_register_nuget "$INSTALL_DIR/packages"
+uipilot_install_skill "$INSTALL_DIR"
 
 echo
 echo "UiPilot installed and registered with Cursor."
