@@ -83,7 +83,7 @@ WinForms startup-hook injection supports modern .NET applications. Legacy .NET F
 }
 ```
 
-The Windows installer generates and preserves a random status token, writes the matching
+The Windows MSI installer and the Linux ZIP install script generate and preserve a random status token, write the matching
 `uipilotStatus.*` Cursor settings, and installs the bundled UiPilot Status VSIX when the Cursor
 CLI is available. Without `UIPILOT_STATUS_TOKEN`, the CLI exposes no status listener. The
 extension is read-only; it displays sessions and operations but cannot control an app.

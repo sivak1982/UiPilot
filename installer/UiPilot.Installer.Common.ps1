@@ -1,7 +1,7 @@
 Set-StrictMode -Version 2.0
 
-$script:UiPilotRequiredRuntimeMajor = 10
-$script:UiPilotRequiredSdkVersion = [Version]"10.0.301"
+$script:UiPilotRequiredRuntimeMajor = 8
+$script:UiPilotRequiredSdkVersion = [Version]"8.0.400"
 $script:UiPilotStatusPort = 17831
 $script:UiPilotExtensionId = "uipilot.uipilot-status"
 
@@ -50,10 +50,10 @@ function Get-UiPilotDotNetVersions {
 
 function Assert-UiPilotRuntime {
     $versions = @(Get-UiPilotDotNetVersions -Kind runtime)
-    $compatible = @($versions | Where-Object { $_.Major -eq $script:UiPilotRequiredRuntimeMajor })
+    $compatible = @($versions | Where-Object { $_.Major -ge $script:UiPilotRequiredRuntimeMajor })
     if ($compatible.Count -eq 0) {
         throw @"
-UiPilot.Cli requires the .NET $script:UiPilotRequiredRuntimeMajor Desktop-independent runtime (Microsoft.NETCore.App).
+UiPilot.Cli requires the .NET $script:UiPilotRequiredRuntimeMajor or later Desktop-independent runtime (Microsoft.NETCore.App).
 Install it and run this installer again:
   winget install Microsoft.DotNet.Runtime.$script:UiPilotRequiredRuntimeMajor
   https://dotnet.microsoft.com/download/dotnet/$script:UiPilotRequiredRuntimeMajor.0
@@ -68,16 +68,15 @@ function Assert-UiPilotBuildSdk {
     $compatible = @(
         $versions |
             Where-Object {
-                $_.Major -eq $script:UiPilotRequiredSdkVersion.Major -and
                 $_ -ge $script:UiPilotRequiredSdkVersion
             }
     )
     if ($compatible.Count -eq 0) {
         throw @"
-Building UiPilot requires .NET SDK $script:UiPilotRequiredSdkVersion or a newer .NET 10 SDK.
+Building UiPilot requires .NET SDK $script:UiPilotRequiredSdkVersion or later.
 Install it and run the build again:
-  winget install Microsoft.DotNet.SDK.10
-  https://dotnet.microsoft.com/download/dotnet/10.0
+  winget install Microsoft.DotNet.SDK.$script:UiPilotRequiredRuntimeMajor
+  https://dotnet.microsoft.com/download/dotnet/$script:UiPilotRequiredRuntimeMajor.0
 "@
     }
 
@@ -248,4 +247,141 @@ function Remove-UiPilotMcpServer {
     $config.mcpServers.PSObject.Properties.Remove("uipilot")
     Write-UiPilotJson -Path $ConfigPath -Value $config
     return $true
+}
+
+function Get-UiPilotManifestPath {
+    param([Parameter(Mandatory = $true)][string]$InstallDirectory)
+
+    return (Join-Path $InstallDirectory "install-manifest.json")
+}
+
+function Get-UiPilotInstalledCommandPath {
+    param([Parameter(Mandatory = $true)][string]$InstallDirectory)
+
+    $windowsCommand = Join-Path $InstallDirectory "UiPilot.Cli.exe"
+    if (Test-Path -LiteralPath $windowsCommand -PathType Leaf) {
+        return $windowsCommand
+    }
+
+    return (Join-Path $InstallDirectory "UiPilot.Cli")
+}
+
+function Install-UiPilotCursorExtension {
+    param([Parameter(Mandatory = $true)][string]$VsixPath)
+
+    if (-not (Test-Path -LiteralPath $VsixPath -PathType Leaf)) {
+        Write-Warning "Cursor extension VSIX was not found at '$VsixPath'."
+        return
+    }
+
+    $cursorCommand = Get-UiPilotCursorCommand
+    if ($cursorCommand) {
+        & $cursorCommand --install-extension $VsixPath --force
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "Installed the UiPilot Status extension in Cursor."
+            return
+        }
+
+        Write-Warning "Cursor CLI could not install the extension. In Cursor, use 'Extensions: Install from VSIX' and select '$VsixPath'."
+        return
+    }
+
+    Write-Warning "Cursor CLI was not found. In Cursor, use 'Extensions: Install from VSIX' and select '$VsixPath'."
+}
+
+function Get-UiPilotCursorCommand {
+    $cursor = Get-Command cursor -ErrorAction SilentlyContinue
+    if ($cursor) {
+        return $cursor.Source
+    }
+
+    # Windows Installer custom actions do not always inherit the interactive user's PATH.
+    # Cursor's per-user install puts its CLI here by default.
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        $installedCursor = Join-Path $env:LOCALAPPDATA "Programs\cursor\resources\app\bin\cursor.cmd"
+        if (Test-Path -LiteralPath $installedCursor -PathType Leaf) {
+            return $installedCursor
+        }
+    }
+
+    return $null
+}
+
+function Register-UiPilotCursorIntegration {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstallDirectory,
+        [string]$McpConfigPath = "",
+        [string]$CursorSettingsPath = ""
+    )
+
+    if ([string]::IsNullOrWhiteSpace($McpConfigPath)) {
+        if ([string]::IsNullOrWhiteSpace($HOME)) {
+            throw "The current user's home directory is unavailable; specify -McpConfigPath explicitly."
+        }
+        $McpConfigPath = Join-Path $HOME ".cursor\mcp.json"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($CursorSettingsPath)) {
+        if ([string]::IsNullOrWhiteSpace($env:APPDATA)) {
+            throw "APPDATA is not defined; specify -CursorSettingsPath explicitly."
+        }
+        $CursorSettingsPath = Join-Path $env:APPDATA "Cursor\User\settings.json"
+    }
+
+    $commandPath = Get-UiPilotInstalledCommandPath -InstallDirectory $InstallDirectory
+    $statusToken = Get-OrCreateUiPilotStatusToken -ConfigPath $McpConfigPath
+    Set-UiPilotMcpServer -ConfigPath $McpConfigPath -CommandPath $commandPath -StatusToken $statusToken
+    Set-UiPilotExtensionSettings -SettingsPath $CursorSettingsPath -StatusToken $statusToken
+
+    # Uninstall reads this back so it can clean up non-default Cursor config locations.
+    $manifest = [pscustomobject]@{
+        installedAtUtc = [DateTime]::UtcNow.ToString("o")
+        installDirectory = $InstallDirectory
+        mcpConfigPath = $McpConfigPath
+        cursorSettingsPath = $CursorSettingsPath
+        command = $commandPath
+        requiredRuntime = "$script:UiPilotRequiredRuntimeMajor.0"
+    }
+    [IO.File]::WriteAllText(
+        (Get-UiPilotManifestPath -InstallDirectory $InstallDirectory),
+        ($manifest | ConvertTo-Json -Depth 5) + [Environment]::NewLine,
+        (New-Object Text.UTF8Encoding($false)))
+
+    Install-UiPilotCursorExtension -VsixPath (Join-Path $InstallDirectory "UiPilot.Status.vsix")
+}
+
+function Write-UiPilotWixPayloadComponents {
+    param(
+        [Parameter(Mandatory = $true)][string]$PayloadDirectory,
+        [Parameter(Mandatory = $true)][string]$OutputPath
+    )
+
+    $payloadRoot = [IO.Path]::GetFullPath($PayloadDirectory).TrimEnd('\', '/')
+    $files = @(Get-ChildItem -LiteralPath $payloadRoot -Recurse -File | Sort-Object FullName)
+    if ($files.Count -eq 0) {
+        throw "Cannot harvest an empty payload directory: $payloadRoot"
+    }
+
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.AppendLine('<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">')
+    [void]$sb.AppendLine('  <Fragment>')
+    [void]$sb.AppendLine('    <ComponentGroup Id="PayloadComponents" Directory="INSTALLFOLDER">')
+    $index = 0
+    foreach ($file in $files) {
+        $index++
+        $relative = $file.FullName.Substring($payloadRoot.Length).TrimStart('\', '/')
+        $directory = [IO.Path]::GetDirectoryName($relative)
+        $source = [Security.SecurityElement]::Escape($file.FullName)
+        $componentDir = ""
+        if (-not [string]::IsNullOrWhiteSpace($directory)) {
+            $componentDir = " Subdirectory=`"$([Security.SecurityElement]::Escape($directory))`""
+        }
+        [void]$sb.AppendLine("      <Component Id=`"cmp$index`" Guid=`"*`"$componentDir>")
+        [void]$sb.AppendLine("        <File Id=`"fil$index`" Source=`"$source`" KeyPath=`"yes`" />")
+        [void]$sb.AppendLine("      </Component>")
+    }
+    [void]$sb.AppendLine('    </ComponentGroup>')
+    [void]$sb.AppendLine('  </Fragment>')
+    [void]$sb.AppendLine('</Wix>')
+    [IO.File]::WriteAllText($OutputPath, $sb.ToString(), (New-Object Text.UTF8Encoding($false)))
 }

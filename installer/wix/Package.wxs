@@ -1,0 +1,43 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="UiPilot"
+    Manufacturer="UiPilot"
+    Version="$(var.ProductVersion)"
+    UpgradeCode="8b7c4a21-3e59-4f10-9c6d-2a1e5b8f7d43"
+    Scope="perUser"
+    Compressed="yes">
+    <SummaryInformation Description="Per-user UiPilot CLI, startup hooks, and Cursor integration." />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of UiPilot is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="LocalProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="UiPilot" />
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="UiPilot" Title="UiPilot" Level="1">
+      <ComponentGroupRef Id="PayloadComponents" />
+    </Feature>
+
+    <CustomAction
+      Id="RegisterCursor"
+      Directory="INSTALLFOLDER"
+      ExeCommand="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Register-Cursor.ps1&quot; -Action Register"
+      Execute="immediate"
+      Return="check"
+      Impersonate="yes" />
+    <CustomAction
+      Id="UnregisterCursor"
+      Directory="INSTALLFOLDER"
+      ExeCommand="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Register-Cursor.ps1&quot; -Action Unregister"
+      Execute="immediate"
+      Return="ignore"
+      Impersonate="yes" />
+
+    <InstallExecuteSequence>
+      <Custom Action="RegisterCursor" After="InstallFinalize" Condition="NOT REMOVE" />
+      <Custom Action="UnregisterCursor" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>

@@ -59,6 +59,77 @@ try {
     $preserved = Get-OrCreateUiPilotStatusToken -ConfigPath $mcpPath
     Assert-Equal $token $preserved "Reinstall must preserve the existing status token."
 
+    Assert-Equal 8 $script:UiPilotRequiredRuntimeMajor "Installed CLI must accept .NET 8 or later."
+    Assert-Equal "8.0.400" $script:UiPilotRequiredSdkVersion.ToString() "Build SDK floor should be 8.0.400."
+
+    $cursorCommand = Get-UiPilotCursorCommand
+    if ($null -ne (Get-Command cursor -ErrorAction SilentlyContinue) -and
+        [string]::IsNullOrWhiteSpace($cursorCommand)) {
+        throw "Cursor CLI resolution failed even though Cursor is available."
+    }
+
+    $windowsCommand = Get-UiPilotInstalledCommandPath -InstallDirectory $root
+    $expectedWindows = Join-Path $root "UiPilot.Cli"
+    if ($windowsCommand -ne $expectedWindows) {
+        throw "Missing exe should fall back to UiPilot.Cli. Expected '$expectedWindows', got '$windowsCommand'."
+    }
+    [IO.File]::WriteAllText((Join-Path $root "UiPilot.Cli.exe"), "")
+    $windowsCommand = Get-UiPilotInstalledCommandPath -InstallDirectory $root
+    $expectedExe = Join-Path $root "UiPilot.Cli.exe"
+    Assert-Equal $expectedExe $windowsCommand "Windows installs should prefer UiPilot.Cli.exe."
+
+    $harvestRoot = Join-Path $root "payload"
+    New-Item -ItemType Directory -Path (Join-Path $harvestRoot "hooks") -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path $harvestRoot "UiPilot.Cli.exe"), "")
+    [IO.File]::WriteAllText((Join-Path $harvestRoot "hooks\UiPilot.StartupHook.dll"), "")
+    $wxsPath = Join-Path $root "PayloadComponents.wxs"
+    Write-UiPilotWixPayloadComponents -PayloadDirectory $harvestRoot -OutputPath $wxsPath
+    $wxs = [IO.File]::ReadAllText($wxsPath)
+    if ($wxs -notmatch "ComponentGroup Id=`"PayloadComponents`"") {
+        throw "Generated WiX source is missing PayloadComponents."
+    }
+    if ($wxs -notmatch "Subdirectory=`"hooks`"") {
+        throw "Generated WiX source is missing hook subdirectory files."
+    }
+
+    # The MSI custom actions call Register-Cursor.ps1; exercise that round trip.
+    $installDirectory = Join-Path $root "install"
+    New-Item -ItemType Directory -Path $installDirectory -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path $installDirectory "UiPilot.Cli.exe"), "")
+    $registerScript = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\Register-Cursor.ps1"))
+    $installedCommand = Join-Path $installDirectory "UiPilot.Cli.exe"
+    $manifestPath = Join-Path $installDirectory "install-manifest.json"
+
+    & $registerScript `
+        -Action Register `
+        -InstallDirectory $installDirectory `
+        -McpConfigPath $mcpPath `
+        -CursorSettingsPath $settingsPath
+
+    $mcp = Read-UiPilotJson -Path $mcpPath
+    Assert-Equal $installedCommand $mcp.mcpServers.uipilot.command "MSI registration must point at the installed CLI."
+    Assert-Equal "other.exe" $mcp.mcpServers.other.command "MSI registration changed an unrelated MCP server."
+    Assert-Equal $token $mcp.mcpServers.uipilot.env.UIPILOT_STATUS_TOKEN "MSI registration must preserve the status token."
+    if (-not (Test-Path -LiteralPath $manifestPath)) {
+        throw "Registration must write install-manifest.json for uninstall."
+    }
+    $manifest = Read-UiPilotJson -Path $manifestPath
+    Assert-Equal $mcpPath $manifest.mcpConfigPath "Manifest recorded the wrong MCP config path."
+    Assert-Equal $settingsPath $manifest.cursorSettingsPath "Manifest recorded the wrong Cursor settings path."
+
+    & $registerScript -Action Unregister -InstallDirectory $installDirectory
+
+    $mcp = Read-UiPilotJson -Path $mcpPath
+    if ($null -ne $mcp.mcpServers.PSObject.Properties["uipilot"]) {
+        throw "Uninstall must remove Cursor's 'uipilot' MCP entry."
+    }
+    Assert-Equal "other.exe" $mcp.mcpServers.other.command "Uninstall changed an unrelated MCP server."
+    if (Test-Path -LiteralPath $manifestPath) {
+        throw "Uninstall must delete install-manifest.json so the install directory can be removed."
+    }
+    $settings = Read-UiPilotJson -Path $settingsPath
+    Assert-Equal $token $settings."uipilotStatus.token" "Uninstall must leave Cursor user settings alone."
+
     Write-Host "Installer common tests passed."
 }
 finally {

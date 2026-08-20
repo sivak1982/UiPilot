@@ -134,13 +134,12 @@ dotnet build UiPilot.sln
 
 On non-Windows hosts, `EnableWindowsTargeting` is set so Windows desktop TFMs restore; WPF and WinForms runtime automation still requires Windows.
 
-## Build the Windows installer
+## Build the installer
 
 ```powershell
 .\installer\build-installer.ps1
 ```
 
-The generated per-user installer bundle checks the required .NET runtime, installs the CLI,
-generic startup hook and Cursor Status VSIX, then merges matching token/port settings into
-Cursor's MCP and user configuration. See
-[installer/README.md](installer/README.md) for installation, prerequisites, and uninstall details.
+That produces a per-user Windows MSI under `artifacts/installer/`. On Linux, run
+`./installer/build-installer.sh` for the Linux ZIP. The CLI targets .NET 8 and runs on .NET 8–10.
+See [installer/README.md](installer/README.md) for installation, prerequisites, and uninstall details.

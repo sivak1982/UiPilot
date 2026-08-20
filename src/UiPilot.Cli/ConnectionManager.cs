@@ -794,7 +794,7 @@ public sealed class ConnectionManager : IDisposable
             Project = project,
             Configuration = configuration,
             Platform = platform,
-            ExePath = Path.ChangeExtension(targetPath, ".exe"),
+            ExePath = targetPath,
             UseStartupHook = true,
             Foreground = foreground,
         };
