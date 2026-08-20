@@ -21,6 +21,7 @@ in-process library has the live objects: visual tree, binding errors, layout, an
 | `UiPilot.WinForms` | WinForms adapter + `UiPilot.WinForms.PilotHost.Start()` |
 | `UiPilot.StartupHook` | Generic live-UI detector and `DOTNET_STARTUP_HOOKS` injector |
 | `UiPilot.Cli` | stdio MCP bridge + build/launch/restart loop |
+| Cursor Status | Optional read-only sidebar for sessions and operations |
 
 ## Agent edit loop
 

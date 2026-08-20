@@ -73,11 +73,20 @@ WinForms startup-hook injection supports modern .NET applications. Legacy .NET F
   "mcpServers": {
     "uipilot": {
       "command": "dotnet",
-      "args": ["run", "--project", "path/to/UiPilot/src/UiPilot.Cli/UiPilot.Cli.csproj"]
+      "args": ["run", "--project", "path/to/UiPilot/src/UiPilot.Cli/UiPilot.Cli.csproj"],
+      "env": {
+        "UIPILOT_STATUS_PORT": "17831",
+        "UIPILOT_STATUS_TOKEN": "use-a-random-local-secret"
+      }
     }
   }
 }
 ```
+
+The Windows MSI installer and the Linux ZIP install script generate and preserve a random status token, write the matching
+`uipilotStatus.*` Cursor settings, and installs the bundled UiPilot Status VSIX when the Cursor
+CLI is available. Without `UIPILOT_STATUS_TOKEN`, the CLI exposes no status listener. The
+extension is read-only; it displays sessions and operations but cannot control an app.
 
 Typical loop: `build_and_start` or `start_app` → `wait_for_element` / `find_elements` → `click` /
 `type_text` / `screenshot` → `restart_app` after edits.

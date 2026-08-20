@@ -52,7 +52,7 @@ flowchart LR
 | `UiPilot.Wpf` | WPF adapter + `PilotHost.Start()` |
 | `UiPilot.Avalonia` | Avalonia adapter + `PilotHost.Start()` |
 | `UiPilot.StartupHook` | Generic live-UI detector for zero-edit launch |
-| `UiPilot.Cli` | stdio MCP bridge + build/launch/restart |
+| `UiPilot.Cli` | stdio MCP bridge + build/launch/restart + optional loopback status API |
 
 ## Agent edit loop
 

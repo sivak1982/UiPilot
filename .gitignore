@@ -8,6 +8,9 @@ x86/
 [Aa][Rr][Mm]/
 [Aa][Rr][Mm]64/
 artifacts/
+node_modules/
+extensions/**/dist/
+extensions/**/*.vsix
 
 ## Visual Studio / Rider
 .vs/

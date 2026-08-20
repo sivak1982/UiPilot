@@ -48,7 +48,11 @@ public sealed class ConnectionManager : IDisposable
         get
         {
             _gate.Wait();
-            try { return _activeSession; }
+            try
+            {
+                PruneExitedSessionsLocked();
+                return _activeSession;
+            }
             finally { _gate.Release(); }
         }
     }
@@ -58,7 +62,9 @@ public sealed class ConnectionManager : IDisposable
         _gate.Wait();
         try
         {
+            PruneExitedSessionsLocked();
             return _sessions.Values
+                .Where(s => !s.Exited)
                 .Select(s => ToSnapshot(s, string.Equals(s.Name, _activeSession, StringComparison.OrdinalIgnoreCase)))
                 .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -648,6 +654,46 @@ public sealed class ConnectionManager : IDisposable
             _activeSession = _sessions.Keys.FirstOrDefault();
     }
 
+    private void PruneExitedSessionsLocked()
+    {
+        foreach (var session in _sessions.Values.ToList())
+        {
+            var exited = session.Launched is not null
+                ? HasExited(session.Launched)
+                : session.AttachedPid is int pid && _discovery.FindByPid(pid) is null;
+            if (!exited)
+                continue;
+
+            ResetSessionConnectionLocked(session);
+            try { session.Launched?.Dispose(); } catch { /* ignore */ }
+            session.Launched = null;
+            session.Info = null;
+            session.AttachedPid = null;
+
+            if (session.LaunchSource is null)
+            {
+                RemoveSessionLocked(session.Name);
+                continue;
+            }
+
+            // Keep only the launch recipe so restart_app can recover a crashed or manually
+            // closed app. Exited sessions are hidden from ListSessions and status snapshots.
+            session.Exited = true;
+            if (string.Equals(_activeSession, session.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                _activeSession = _sessions.Values
+                    .FirstOrDefault(candidate => !candidate.Exited && candidate.Client is { IsConnected: true })
+                    ?.Name;
+            }
+        }
+    }
+
+    private static bool HasExited(System.Diagnostics.Process process)
+    {
+        try { return process.HasExited; }
+        catch (InvalidOperationException) { return true; }
+    }
+
     private static void ResetSessionConnectionLocked(AppSession session)
     {
         try { session.Client?.Dispose(); } catch { /* ignore */ }
@@ -794,7 +840,7 @@ public sealed class ConnectionManager : IDisposable
             Project = project,
             Configuration = configuration,
             Platform = platform,
-            ExePath = Path.ChangeExtension(targetPath, ".exe"),
+            ExePath = targetPath,
             UseStartupHook = true,
             Foreground = foreground,
         };
@@ -839,5 +885,6 @@ public sealed class ConnectionManager : IDisposable
         public System.Diagnostics.Process? Launched { get; set; }
         public LaunchSource? LaunchSource { get; set; }
         public string? ProcessNameHint { get; set; }
+        public bool Exited { get; set; }
     }
 }

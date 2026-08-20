@@ -1,28 +1,58 @@
-# UiPilot Windows installer
+# UiPilot installer
 
-The installer is per-user and does not require administrator rights. It installs the
-framework-dependent CLI under `%LOCALAPPDATA%\Programs\UiPilot`, keeps both startup-hook payloads
-beside it, and merges an `uipilot` entry into `%USERPROFILE%\.cursor\mcp.json`.
+UiPilot ships a **per-user Windows MSI** and a **Linux ZIP**. The CLI targets `.NET 8` and rolls
+forward onto .NET 8, 9, or 10 runtimes.
 
 ## Requirements
 
+### Windows
+
 - Windows 10 or later
 - Windows PowerShell 5.1 or PowerShell 7+
-- .NET 10 runtime (`Microsoft.NETCore.App`) for the installed CLI
-- .NET SDK 10.0.301 or newer in the .NET 10 line to build the installer
-- Target WPF/Avalonia applications must use .NET 8 or later for startup-hook injection
+- .NET 8 or later runtime (`Microsoft.NETCore.App`) for the installed CLI
+- .NET SDK 8.0.400 or later to build installers
+- Node.js/npm to build and package the Cursor extension
+- Target WPF/Avalonia/WinForms applications must use .NET 8 or later for startup-hook injection
 
-The scripts report the matching `winget` command and download URL when a required .NET component
-is absent. They do not silently install machine-wide prerequisites.
+### Linux
+
+- glibc `linux-x64` or `linux-arm64`
+- .NET 8 or later runtime (`Microsoft.NETCore.App`)
+- `python3` (used to merge Cursor JSON)
+- Avalonia target apps only (WPF and WinForms automation require Windows)
+
+The installer reports the matching `winget` command or download URL when a required .NET component
+is absent. It does not silently install machine-wide prerequisites.
 
 ## Build
+
+Windows MSI:
 
 ```powershell
 .\installer\build-installer.ps1
 ```
 
-This runs all tests, publishes the CLI, verifies both hook payloads, and creates
-`artifacts\installer\UiPilot-<version>-win-x64.zip`.
+Linux ZIP from Windows (cross-publish):
+
+```powershell
+.\installer\build-installer.ps1 -RuntimeIdentifier linux-x64
+```
+
+Linux ZIP on Linux:
+
+```bash
+./installer/build-installer.sh linux-x64
+```
+
+This runs the .NET, installer, and extension tests, publishes the CLI, packages the Status VSIX,
+verifies the hook payloads, and writes artifacts under `artifacts/installer/`:
+
+- `UiPilot-<version>-win-x64.msi`
+- `UiPilot-<version>-linux-x64.zip` (when a Linux RID is selected)
+
+Installer versions use `major.minor.patch.build`. Pass `-BuildNumber 123` on Windows or set
+`BUILD_NUMBER=123` on Linux; Azure Pipelines `BUILD_BUILDID` and GitHub `GITHUB_RUN_NUMBER` are
+used automatically. Local builds default to build `0`.
 
 Options:
 
@@ -31,32 +61,63 @@ Options:
 .\installer\build-installer.ps1 -SkipTests
 ```
 
-## Install
+## Install (Windows)
 
-Extract the generated ZIP, then run:
+Double-click the MSI, or:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1
+msiexec /i UiPilot-0.1.0-win-x64.msi
 ```
 
-Existing Cursor MCP configuration is preserved and backed up before modification. Restart Cursor
-after installation.
+The MSI installs to `%LOCALAPPDATA%\Programs\UiPilot` and does not require administrator rights.
+Reinstalling a newer version performs a major upgrade in place.
 
-Custom locations are supported:
+Existing Cursor MCP and user settings are preserved and backed up before modification. The
+installer generates a random status token on first install, preserves it on reinstall, writes the
+matching extension settings, and installs the bundled VSIX through the Cursor CLI when available.
+The Cursor MCP entry includes the complete build version, for example `uipilot-0.1.0.123`;
+upgrades replace the prior entry for the same installation.
+If `cursor` is not on `PATH`, it prints the exact VSIX path for manual installation. Restart
+Cursor after installation.
+
+Cursor registration runs from `Register-Cursor.ps1` inside the install directory. To re-point an
+installation at non-default Cursor configuration, run it directly:
 
 ```powershell
-.\install.ps1 `
-  -InstallDirectory C:\Tools\UiPilot `
-  -McpConfigPath C:\path\to\mcp.json
+& "$env:LOCALAPPDATA\Programs\UiPilot\Register-Cursor.ps1" `
+  -McpConfigPath C:\path\to\mcp.json `
+  -CursorSettingsPath C:\path\to\settings.json
+```
+
+## Install (Linux)
+
+```bash
+chmod +x install.sh uninstall.sh payload/UiPilot.Cli
+./install.sh
+```
+
+Default install directory: `${XDG_DATA_HOME:-$HOME/.local/share}/UiPilot`.
+MCP config: `~/.cursor/mcp.json`.
+Cursor settings: `${XDG_CONFIG_HOME:-$HOME/.config}/Cursor/User/settings.json`.
+
+```bash
+./install.sh --prefix "$HOME/tools/uipilot"
 ```
 
 ## Uninstall
 
-Run the installed uninstaller:
+Windows: use Apps & features, or
 
 ```powershell
-& "$env:LOCALAPPDATA\Programs\UiPilot\uninstall.ps1"
+msiexec /x UiPilot-0.1.0-win-x64.msi
 ```
 
-The uninstaller removes Cursor's `uipilot` entry only when it still points to this installation,
-so a user-replaced MCP entry is not deleted.
+Linux:
+
+```bash
+~/.local/share/UiPilot/uninstall.sh
+```
+
+Uninstall removes Cursor's `uipilot` entry only when it still points to this installation, so a
+user-replaced MCP entry is not deleted. It intentionally does not remove the extension or user
+settings automatically.

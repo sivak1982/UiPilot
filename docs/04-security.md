@@ -9,9 +9,10 @@ remote-control backdoor."
 | Setting | Default |
 |---|---|
 | Enabled | Debug build, `UIPILOT_ENABLE=1`, or `Start(force: true)` |
-| Transport | Named pipe (local only) |
+| App automation transport | Named pipe (local only) |
 | Auth | Per-run random token in the discovery file |
-| Remote / TCP | Off (not implemented) |
+| Status transport | Disabled unless `UIPILOT_STATUS_TOKEN` is configured |
+| Remote control / TCP | Off (not implemented) |
 | Tree access | Query-first, depth/limit bounded |
 | Custom tools | Opt-in registration only |
 
@@ -32,7 +33,8 @@ The CLI sets `UIPILOT_ENABLE=1` (and `UIPILOT_START_MINIMIZED=1`) on apps it lau
 
 ## Transport and auth
 
-- Only a **named pipe** is opened: `uipilot.<pid>.<guid>`. There is no network listener.
+- Only a **named pipe** is opened for app automation: `uipilot.<pid>.<guid>`. There is no
+  remote-control TCP listener.
 - On start, a random token (two GUIDs) is generated and written to the discovery file.
 - After connect, the client must pass a one-line token gate before MCP begins; mismatches get an
   auth failure and close. See [PipeSessionAuth](../src/UiPilot.Core/Server/PipeSessionAuth.cs) /
@@ -42,6 +44,23 @@ The CLI sets `UIPILOT_ENABLE=1` (and `UIPILOT_START_MINIMIZED=1`) on apps it lau
   Prefer a private `DiscoveryDirectory` on shared machines.
 - Low-integrity pipe labeling lets a Medium-IL agent attach to an elevated app; the token still
   authenticates every request. See [PipeIntegrity.cs](../src/UiPilot.Core/Server/PipeIntegrity.cs).
+
+### Read-only Cursor status service
+
+The CLI can expose operation status to the bundled Cursor extension. This does not replace or
+proxy the named-pipe app transport:
+
+- It is disabled when `UIPILOT_STATUS_TOKEN` is absent.
+- It binds strictly to `127.0.0.1` (default port `17831`) and cannot be configured for a remote
+  interface.
+- `/v1/status` and the `/v1/events` WebSocket require the installer-generated bearer token
+  (`Authorization: Bearer …`). Query-string tokens are rejected. Only `/health` is
+  unauthenticated and returns a minimal availability response.
+- Telemetry is metadata-only: operation name/category/outcome/timing, session identity,
+  framework, process, and window title. Tool arguments, typed text, pipe names, app discovery
+  tokens, and screenshot data are never put into status events.
+- The token is stored in the UiPilot MCP environment entry and matching Cursor extension setting.
+  Treat Cursor's user settings as local developer credentials.
 
 ## Elevated (requireAdministrator) apps
 

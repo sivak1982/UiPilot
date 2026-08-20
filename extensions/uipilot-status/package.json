@@ -1,0 +1,120 @@
+{
+  "name": "uipilot-status",
+  "displayName": "UiPilot Status",
+  "version": "0.1.0",
+  "description": "Read-only status and operation monitoring for UiPilot.",
+  "publisher": "uipilot",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Visualization"
+  ],
+  "activationEvents": [
+    "onView:uipilotStatus.sessions",
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "package": "npm run build && vsce package --no-dependencies --allow-missing-repository"
+  },
+  "files": [
+    "dist",
+    "media",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "uipilot",
+    "testing",
+    "status"
+  ],
+  "contributes": {
+    "configuration": {
+      "title": "UiPilot Status",
+      "properties": {
+        "uipilotStatus.host": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "enum": [
+            "127.0.0.1"
+          ],
+          "description": "Status service host. UiPilot Status only permits IPv4 loopback."
+        },
+        "uipilotStatus.port": {
+          "type": "integer",
+          "default": 17831,
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "UiPilot status service port."
+        },
+        "uipilotStatus.token": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "description": "Bearer token for the UiPilot status service."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "uipilotStatus.refresh",
+        "title": "UiPilot: Refresh Status",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "uipilotStatus.reconnect",
+        "title": "UiPilot: Reconnect"
+      },
+      {
+        "command": "uipilotStatus.showOutput",
+        "title": "UiPilot: Show Output"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "uipilotStatus",
+          "title": "UiPilot",
+          "icon": "media/uipilot.svg"
+        }
+      ]
+    },
+    "views": {
+      "uipilotStatus": [
+        {
+          "id": "uipilotStatus.sessions",
+          "name": "UiPilot Status"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "uipilotStatus.refresh",
+          "when": "view == uipilotStatus.sessions",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "type": "commonjs",
+  "dependencies": {
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/vscode": "^1.96.0",
+    "@types/ws": "^8.18.1",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}

@@ -1,0 +1,53 @@
+<#
+    Registers or removes Cursor MCP/settings for an already-copied UiPilot install directory.
+    Used by the MSI custom actions and can be run after a manual file copy.
+#>
+[CmdletBinding()]
+param(
+    [ValidateSet("Register", "Unregister")]
+    [string]$Action = "Register",
+    [string]$InstallDirectory = "",
+    [string]$McpConfigPath = "",
+    [string]$CursorSettingsPath = ""
+)
+
+$ErrorActionPreference = "Stop"
+Set-StrictMode -Version 2.0
+
+. (Join-Path $PSScriptRoot "UiPilot.Installer.Common.ps1")
+
+if ([string]::IsNullOrWhiteSpace($InstallDirectory)) {
+    $InstallDirectory = $PSScriptRoot
+}
+$InstallDirectory = [IO.Path]::GetFullPath($InstallDirectory)
+
+$manifestPath = Get-UiPilotManifestPath -InstallDirectory $InstallDirectory
+
+if ($Action -eq "Unregister") {
+    $commandPath = Get-UiPilotInstalledCommandPath -InstallDirectory $InstallDirectory
+    if ([string]::IsNullOrWhiteSpace($McpConfigPath) -and (Test-Path -LiteralPath $manifestPath)) {
+        $manifest = Read-UiPilotJson -Path $manifestPath
+        $McpConfigPath = [string]$manifest.mcpConfigPath
+    }
+    if ([string]::IsNullOrWhiteSpace($McpConfigPath)) {
+        $McpConfigPath = Join-Path $HOME ".cursor\mcp.json"
+    }
+
+    $removed = Remove-UiPilotMcpServer -ConfigPath $McpConfigPath -InstalledCommandPath $commandPath
+    if ($removed) {
+        Write-Host "Removed UiPilot from Cursor's MCP configuration."
+    }
+
+    # Windows Installer does not track this file, so it must be deleted here for the
+    # install directory to be removed.
+    if (Test-Path -LiteralPath $manifestPath) {
+        Remove-Item -LiteralPath $manifestPath -Force
+    }
+    exit 0
+}
+
+Assert-UiPilotRuntime | Out-Null
+Register-UiPilotCursorIntegration `
+    -InstallDirectory $InstallDirectory `
+    -McpConfigPath $McpConfigPath `
+    -CursorSettingsPath $CursorSettingsPath

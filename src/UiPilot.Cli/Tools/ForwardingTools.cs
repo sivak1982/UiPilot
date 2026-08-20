@@ -5,6 +5,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using UiPilot.Client;
 using UiPilot.Client.Pipe;
+using UiPilot.Cli.Status;
 using UiPilot.Tools;
 
 namespace UiPilot.Cli.Tools;
@@ -24,8 +25,13 @@ public sealed class ForwardingTools
     };
 
     private readonly ConnectionManager _connection;
+    private readonly OperationTelemetry _telemetry;
 
-    public ForwardingTools(ConnectionManager connection) => _connection = connection;
+    public ForwardingTools(ConnectionManager connection, OperationTelemetry telemetry)
+    {
+        _connection = connection;
+        _telemetry = telemetry;
+    }
 
     [McpServerTool(Name = ToolCatalog.ListWindows)]
     [Description("List all top-level windows of the target session's app with identity and bounds. Result includes session.")]
@@ -224,37 +230,40 @@ public sealed class ForwardingTools
         [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default)
     {
-        try
+        return await _telemetry.RunAsync(ToolCatalog.Screenshot, "forwarding", session, async () =>
         {
-            var result = await _connection.SendAsync(ToolCatalog.Screenshot, new { id }, session, ct).ConfigureAwait(false);
-            var base64 = result.GetProperty("base64").GetString() ?? "";
-            var width = result.GetProperty("width").GetInt32();
-            var height = result.GetProperty("height").GetInt32();
-            var sessionName = result.TryGetProperty("session", out var sessionProp)
-                ? sessionProp.GetString()
-                : session ?? _connection.ActiveSessionName;
-            var bytes = Convert.FromBase64String(base64);
-
-            var dir = Path.Combine(Path.GetTempPath(), "uipilot", "shots");
-            System.IO.Directory.CreateDirectory(dir);
-            CleanupOldScreenshots(dir);
-            var path = Path.Combine(dir, $"{Guid.NewGuid():N}.png");
-            await File.WriteAllBytesAsync(path, bytes, ct).ConfigureAwait(false);
-
-            var metadata = JsonSerializer.Serialize(new { path, width, height, session = sessionName }, Json);
-            return new CallToolResult
+            try
             {
-                Content = new List<ContentBlock>
+                var result = await _connection.SendAsync(ToolCatalog.Screenshot, new { id }, session, ct).ConfigureAwait(false);
+                var base64 = result.GetProperty("base64").GetString() ?? "";
+                var width = result.GetProperty("width").GetInt32();
+                var height = result.GetProperty("height").GetInt32();
+                var sessionName = result.TryGetProperty("session", out var sessionProp)
+                    ? sessionProp.GetString()
+                    : session ?? _connection.ActiveSessionName;
+                var bytes = Convert.FromBase64String(base64);
+
+                var dir = Path.Combine(Path.GetTempPath(), "uipilot", "shots");
+                System.IO.Directory.CreateDirectory(dir);
+                CleanupOldScreenshots(dir);
+                var path = Path.Combine(dir, $"{Guid.NewGuid():N}.png");
+                await File.WriteAllBytesAsync(path, bytes, ct).ConfigureAwait(false);
+
+                var metadata = JsonSerializer.Serialize(new { path, width, height, session = sessionName }, Json);
+                return new CallToolResult
                 {
-                    ImageContentBlock.FromBytes(bytes, "image/png"),
-                    new TextContentBlock { Text = metadata },
-                },
-            };
-        }
-        catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
-        {
-            return error;
-        }
+                    Content = new List<ContentBlock>
+                    {
+                        ImageContentBlock.FromBytes(bytes, "image/png"),
+                        new TextContentBlock { Text = metadata },
+                    },
+                };
+            }
+            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            {
+                return error;
+            }
+        }).ConfigureAwait(false);
     }
 
     [McpServerTool(Name = "describe_app_tools")]
@@ -262,7 +271,7 @@ public sealed class ForwardingTools
     public Task<CallToolResult> DescribeAppTools(
         [Description("Optional session name when multiple apps are attached.")] string? session = null,
         CancellationToken ct = default) =>
-        Forward("describe", new { }, session, ct);
+        Forward("describe", new { }, session, ct, "describe_app_tools");
 
     [McpServerTool(Name = "invoke_app_tool")]
     [Description("Invoke any attached-app tool by method name, passing a JSON object string as parameters. Use for custom app tools not exposed as first-class MCP tools. Result includes session.")]
@@ -277,18 +286,28 @@ public sealed class ForwardingTools
         {
             using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(parametersJson) ? "{}" : parametersJson);
             if (doc.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                _telemetry.RecordFailure("invoke_app_tool", "forwarding", session, PilotErrorCodes.InvalidArgs);
                 return Task.FromResult(Err(PilotErrorCodes.InvalidArgs, "parametersJson must be a JSON object."));
+            }
             args = doc.RootElement.Clone();
         }
         catch (JsonException ex)
         {
+            _telemetry.RecordFailure("invoke_app_tool", "forwarding", session, PilotErrorCodes.InvalidArgs);
             return Task.FromResult(Err(PilotErrorCodes.InvalidArgs, "parametersJson must be valid JSON.", ex.Message));
         }
 
-        return Forward(method, args, session, ct);
+        return Forward(method, args, session, ct, "invoke_app_tool");
     }
 
-    private async Task<CallToolResult> Forward(string method, object args, string? session, CancellationToken ct)
+    private Task<CallToolResult> Forward(
+        string method,
+        object args,
+        string? session,
+        CancellationToken ct,
+        string? operationName = null) =>
+        _telemetry.RunAsync(operationName ?? method, "forwarding", session, async () =>
     {
         try
         {
@@ -299,7 +318,7 @@ public sealed class ForwardingTools
         {
             return error;
         }
-    }
+    });
 
     private static string[]? ParseProperties(string? properties) =>
         string.IsNullOrWhiteSpace(properties)
