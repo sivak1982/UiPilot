@@ -38,6 +38,7 @@ public class DiscoveryFileTests
             Assert.Equal(info.ProtocolVersion, reloaded.ProtocolVersion);
             Assert.Equal(info.MainWindowTitle, reloaded.MainWindowTitle);
             Assert.Equal(info.UiFramework, reloaded.UiFramework);
+            Assert.Empty(Directory.GetFiles(dir, "*.tmp"));
 
             DiscoveryFile.Delete(path);
             Assert.False(File.Exists(path));

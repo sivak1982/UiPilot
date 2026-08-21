@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Reflection;
 using UiPilot.Abstraction;
 using UiPilot.Server;
@@ -19,6 +20,7 @@ public sealed class PilotRuntime : IDisposable
     private McpPipeServer? _server;
     private IUiBackend? _backend;
     private string? _discoveryPath;
+    private FileStream? _processLock;
     private bool _started;
 
     public bool IsRunning
@@ -58,15 +60,22 @@ public sealed class PilotRuntime : IDisposable
             BuiltInTools.RegisterAll(registry);
 
             var pid = Process.GetCurrentProcess().Id;
+            var processLock = DiscoveryFile.TryAcquireProcessLock(pid, options.DiscoveryDirectory);
+            if (processLock == null)
+            {
+                log("Pilot is already running for this process and discovery directory.");
+                return false;
+            }
             var token = string.IsNullOrEmpty(options.Token) ? GenerateToken() : options.Token!;
             var pipeName = string.IsNullOrEmpty(options.PipeName)
                 ? $"uipilot.{pid}.{Guid.NewGuid():N}"
                 : options.PipeName!;
 
-            var server = new McpPipeServer(pipeName, token, registry, log);
+            McpPipeServer? server = null;
             string? discoveryPath = null;
             try
             {
+                server = new McpPipeServer(pipeName, token, registry, log);
                 server.Start();
 
                 var info = new DiscoveryInfo
@@ -86,15 +95,17 @@ public sealed class PilotRuntime : IDisposable
                 Tools = registry;
                 _server = server;
                 _discoveryPath = discoveryPath;
+                _processLock = processLock;
                 _started = true;
                 log($"Pilot started ({info.UiFramework}). pipe={pipeName} discovery={_discoveryPath}");
                 return true;
             }
             catch
             {
-                try { server.Stop(); } catch { /* rollback is best-effort */ }
+                try { server?.Stop(); } catch { /* rollback is best-effort */ }
                 if (discoveryPath != null)
                     DiscoveryFile.Delete(discoveryPath);
+                ReleaseProcessLock(processLock);
                 _backend = null;
                 Tools = null;
                 _server = null;
@@ -117,9 +128,11 @@ public sealed class PilotRuntime : IDisposable
                 log?.Invoke("Pilot stop timed out waiting for active tool calls.");
             try { _backend?.Shutdown(); } catch { /* ignore */ }
             if (_discoveryPath != null) DiscoveryFile.Delete(_discoveryPath);
+            ReleaseProcessLock(_processLock);
             _server = null;
             _backend = null;
             _discoveryPath = null;
+            _processLock = null;
             Tools = null;
             _started = false;
             log?.Invoke("Pilot stopped.");
@@ -157,6 +170,14 @@ public sealed class PilotRuntime : IDisposable
 
     private static string GenerateToken() =>
         Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+
+    private static void ReleaseProcessLock(FileStream? processLock)
+    {
+        if (processLock == null) return;
+        var path = processLock.Name;
+        try { processLock.Dispose(); } catch { /* ignore */ }
+        try { File.Delete(path); } catch { /* ignore */ }
+    }
 
     private static string SafeProcessName()
     {

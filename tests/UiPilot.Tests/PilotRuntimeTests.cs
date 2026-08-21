@@ -104,6 +104,35 @@ public class PilotRuntimeTests
         }
     }
 
+    [Fact]
+    public void Start_RejectsSecondRuntimeForSameProcessAndDiscoveryDirectory()
+    {
+        using var first = new PilotRuntime();
+        using var second = new PilotRuntime();
+        var discoveryDirectory = Path.Combine(
+            Path.GetTempPath(), "uipilot-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(discoveryDirectory);
+        var options = new PilotOptions { Force = true, DiscoveryDirectory = discoveryDirectory };
+        try
+        {
+            Assert.True(first.Start(
+                options, new TestSupport.StubBackend(), func => func(), () => "first", _ => { }));
+            Assert.False(second.Start(
+                options, new TestSupport.StubBackend(), func => func(), () => "second", _ => { }));
+            Assert.Null(second.Tools);
+
+            first.Stop();
+            Assert.True(second.Start(
+                options, new TestSupport.StubBackend(), func => func(), () => "second", _ => { }));
+        }
+        finally
+        {
+            first.Stop();
+            second.Stop();
+            Directory.Delete(discoveryDirectory, recursive: true);
+        }
+    }
+
     private sealed class ShutdownTrackingBackend : TestSupport.StubBackend
     {
         public bool ShutdownCalled { get; private set; }
