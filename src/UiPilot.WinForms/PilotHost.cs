@@ -57,16 +57,21 @@ public static class PilotHost
 
             object? Invoke(Func<object?> func)
             {
-                if (marshalControl != null && !marshalControl.IsDisposed)
+                var currentForm = FirstForm();
+                if (currentForm != null && !currentForm.IsDisposed)
                 {
-                    if (!marshalControl.InvokeRequired)
+                    if (!currentForm.InvokeRequired)
                         return func();
-                    return marshalControl.Invoke(func);
+                    return currentForm.Invoke(func);
                 }
+
+                if (context == null)
+                    throw new InvalidOperationException(
+                        "No live WinForms form or UI synchronization context is available.");
 
                 object? result = null;
                 Exception? error = null;
-                context!.Send(_ =>
+                context.Send(_ =>
                 {
                     try { result = func(); }
                     catch (Exception ex) { error = ex; }

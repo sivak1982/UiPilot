@@ -17,7 +17,9 @@ public static class Screenshot
 {
     public static ScreenshotData? Capture(DependencyObject? target)
     {
-        var element = target as FrameworkElement ?? ResolveDefaultWindow();
+        // A caller that supplied a specific non-renderable object must not silently receive a
+        // screenshot of an unrelated main window.
+        var element = target == null ? ResolveDefaultWindow() : target as FrameworkElement;
         if (element == null) return null;
         if (element.ActualWidth <= 0 || element.ActualHeight <= 0) return null;
 

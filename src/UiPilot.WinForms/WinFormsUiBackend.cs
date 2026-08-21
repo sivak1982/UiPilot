@@ -66,8 +66,12 @@ internal sealed class WinFormsUiBackend : IUiBackend
         return WindowControl.Foreground(form);
     }
 
-    public IReadOnlyList<string> GetBindingErrors() => Array.Empty<string>();
-    public void ClearBindingErrors() { }
+    public IReadOnlyList<string> GetBindingErrors() => throw new PilotToolException(
+        PilotErrorCodes.Unsupported,
+        "WinForms does not expose framework-level data-binding diagnostics.");
+    public void ClearBindingErrors() => throw new PilotToolException(
+        PilotErrorCodes.Unsupported,
+        "WinForms does not expose framework-level data-binding diagnostics.");
     public IReadOnlyList<LayoutIssue> AnalyzeLayout(string? rootId) =>
         LayoutAnalyzer.Analyze(Elements, rootId);
     public bool Highlight(string id, int durationMs) =>

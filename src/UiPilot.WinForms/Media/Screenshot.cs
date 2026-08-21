@@ -19,7 +19,9 @@ internal static class Screenshot
             return CaptureItem(item);
         var control = target as Control ?? PilotHost.FirstForm();
         if (control == null) return null;
-        var size = control.ClientSize;
+        // PrintWindow renders the non-client frame for top-level forms, so its destination must
+        // use full window dimensions. Child controls and ToolStrip crops remain client-sized.
+        var size = control is Form ? control.Size : control.ClientSize;
         if (size.Width <= 0 || size.Height <= 0)
             size = control.Size;
         if (size.Width <= 0 || size.Height <= 0) return null;

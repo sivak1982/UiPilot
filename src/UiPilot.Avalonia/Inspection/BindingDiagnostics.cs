@@ -1,4 +1,7 @@
+using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text.RegularExpressions;
 using Avalonia.Logging;
 using UiPilot.Inspection;
 using UiPilot.Media;
@@ -92,14 +95,21 @@ internal sealed class BindingDiagnostics
                 _previous.Log(level, area, source, messageTemplate, propertyValues);
             if (!ShouldCapture(level, area)) return;
 
-            try
-            {
-                _owner.Add($"[{area}] {string.Format(messageTemplate, propertyValues)}");
-            }
-            catch
-            {
-                _owner.Add($"[{area}] {messageTemplate}");
-            }
+            _owner.Add($"[{area}] {FormatMessage(messageTemplate, propertyValues)}");
+        }
+
+        private static string FormatMessage(string template, object?[] values)
+        {
+            var index = 0;
+            var rendered = Regex.Replace(template, @"(?<!\{)\{[^{}]+\}(?!\})", _ =>
+                index < values.Length
+                    ? Convert.ToString(values[index++], CultureInfo.InvariantCulture) ?? "null"
+                    : _.Value);
+
+            // If a logger supplied more values than named slots, retain them for diagnosis.
+            if (index < values.Length)
+                rendered += " [" + string.Join(", ", values[index..]) + "]";
+            return rendered.Replace("{{", "{").Replace("}}", "}");
         }
     }
 }
