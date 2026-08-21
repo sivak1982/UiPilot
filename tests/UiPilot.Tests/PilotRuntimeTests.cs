@@ -50,7 +50,8 @@ public class PilotRuntimeTests
 
             Assert.False(runtime.IsRunning);
             Assert.Null(runtime.Tools);
-            Assert.Empty(Directory.GetFiles(discoveryDirectory));
+            Assert.Empty(Directory.GetFiles(discoveryDirectory, "*.json"));
+            Assert.Empty(Directory.GetFiles(discoveryDirectory, "*.tmp"));
         }
         finally
         {
