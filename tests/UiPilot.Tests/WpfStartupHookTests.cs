@@ -5,12 +5,9 @@ namespace UiPilot.Tests;
 
 public sealed class WpfStartupHookTests
 {
-    [Fact]
+    [WindowsFact]
     public async Task WpfSample_StartsThroughGenericHook()
     {
-        if (!OperatingSystem.IsWindows())
-            return;
-
         var app = TestPaths.SampleApp("SampleApp", "net8.0-windows", "SampleApp.exe");
         Assert.True(File.Exists(app), $"Sample app was not built: {app}");
 

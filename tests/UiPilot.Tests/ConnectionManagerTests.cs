@@ -136,12 +136,9 @@ public class ConnectionManagerTests
         Assert.Null(manager.StopApp());
     }
 
-    [Fact]
+    [WindowsFact]
     public async Task ListSessions_RemovesProcessClosedOutsideUiPilot()
     {
-        if (!OperatingSystem.IsWindows())
-            return;
-
         using var manager = new ConnectionManager();
         var command = Path.Combine(Environment.SystemDirectory, "cmd.exe");
         var started = await manager.StartProcessAsync(
@@ -246,12 +243,9 @@ public class AppLauncherTests
     /// child is gone the parent/child link is too, so <c>Kill(entireProcessTree)</c> cannot reach
     /// the survivors — the job object created at launch can.
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public void KillTree_StopsDetachedGrandchildren()
     {
-        if (!OperatingSystem.IsWindows())
-            return;
-
         var cmd = Path.Combine(Environment.SystemDirectory, "cmd.exe");
         var markerDir = Path.Combine(Path.GetTempPath(), "uipilot-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(markerDir);

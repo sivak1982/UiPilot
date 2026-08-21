@@ -5,12 +5,9 @@ namespace UiPilot.Tests;
 
 public sealed class UiPilotClientTests
 {
-    [Fact]
+    [WindowsFact]
     public async Task AgentAuthoredFlow_CanBeFrozenAsTypedCSharp()
     {
-        if (!OperatingSystem.IsWindows())
-            return;
-
         var app = TestPaths.SampleApp("AvaloniaSampleApp", "net8.0", "AvaloniaSampleApp.exe");
         Assert.True(File.Exists(app), $"Sample app was not built: {app}");
 

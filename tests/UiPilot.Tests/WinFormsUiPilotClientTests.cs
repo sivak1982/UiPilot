@@ -5,12 +5,9 @@ namespace UiPilot.Tests;
 
 public sealed class WinFormsUiPilotClientTests
 {
-    [Fact]
+    [WindowsFact]
     public async Task WinFormsSample_SupportsCoreAutomationFlow()
     {
-        if (!OperatingSystem.IsWindows())
-            return;
-
         var app = TestPaths.SampleApp("WinFormsSampleApp", "net8.0-windows", "WinFormsSampleApp.exe");
         Assert.True(File.Exists(app), $"Sample app was not built: {app}");
 
