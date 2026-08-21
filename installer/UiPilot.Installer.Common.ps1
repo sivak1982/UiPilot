@@ -185,11 +185,9 @@ function Set-UiPilotMcpServer {
     foreach ($property in @($config.mcpServers.PSObject.Properties)) {
         if (($property.Name -eq "uipilot" -or $property.Name.StartsWith("uipilot-")) -and
             $property.Name -ne $serverName) {
-            $configuredCommand = [string]$property.Value.command
-            if ($property.Name -eq "uipilot" -or
-                [string]::Equals($configuredCommand, $CommandPath, [StringComparison]::OrdinalIgnoreCase)) {
-                $config.mcpServers.PSObject.Properties.Remove($property.Name)
-            }
+            # UiPilot owns this namespace. Remove entries from older install directories as well
+            # so Cursor cannot keep launching stale binaries with stale status tokens.
+            $config.mcpServers.PSObject.Properties.Remove($property.Name)
         }
     }
     $config.mcpServers | Add-Member -MemberType NoteProperty -Name $serverName -Value $server -Force
@@ -220,6 +218,17 @@ function New-UiPilotStatusToken {
 function Get-OrCreateUiPilotStatusToken {
     param([Parameter(Mandatory = $true)][string]$ConfigPath)
 
+    $existing = Get-UiPilotStatusToken -ConfigPath $ConfigPath
+    if (-not [string]::IsNullOrWhiteSpace($existing)) {
+        return $existing
+    }
+
+    return New-UiPilotStatusToken
+}
+
+function Get-UiPilotStatusToken {
+    param([Parameter(Mandatory = $true)][string]$ConfigPath)
+
     $config = Read-UiPilotJson -Path $ConfigPath
     $server = $null
     if ($null -ne $config.PSObject.Properties["mcpServers"] -and
@@ -228,7 +237,7 @@ function Get-OrCreateUiPilotStatusToken {
             $config.mcpServers.PSObject.Properties |
                 Where-Object { $_.Name -eq "uipilot" -or $_.Name.StartsWith("uipilot-") } |
                 ForEach-Object { $_.Value }
-        ) | Select-Object -First 1
+        ) | Select-Object -Last 1
     }
 
     if ($null -ne $server -and
@@ -241,7 +250,7 @@ function Get-OrCreateUiPilotStatusToken {
         }
     }
 
-    return New-UiPilotStatusToken
+    return $null
 }
 
 function Set-UiPilotExtensionSettings {
@@ -256,6 +265,33 @@ function Set-UiPilotExtensionSettings {
     $settings | Add-Member -MemberType NoteProperty -Name "uipilotStatus.port" -Value $StatusPort -Force
     $settings | Add-Member -MemberType NoteProperty -Name "uipilotStatus.token" -Value $StatusToken -Force
     Write-UiPilotJson -Path $SettingsPath -Value $settings
+}
+
+function Remove-UiPilotExtensionSettings {
+    param(
+        [Parameter(Mandatory = $true)][string]$SettingsPath,
+        [string]$ExpectedToken = ""
+    )
+
+    if (-not (Test-Path -LiteralPath $SettingsPath)) {
+        return $false
+    }
+    $settings = Read-UiPilotJson -Path $SettingsPath
+    $tokenProperty = $settings.PSObject.Properties["uipilotStatus.token"]
+    if ($null -eq $tokenProperty) {
+        return $false
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedToken) -and
+        -not [string]::Equals([string]$tokenProperty.Value, $ExpectedToken, [StringComparison]::Ordinal)) {
+        Write-Warning "Cursor's UiPilot status token was changed after install; extension settings were left unchanged."
+        return $false
+    }
+
+    foreach ($name in @("uipilotStatus.host", "uipilotStatus.port", "uipilotStatus.token")) {
+        $settings.PSObject.Properties.Remove($name)
+    }
+    Write-UiPilotJson -Path $SettingsPath -Value $settings
+    return $true
 }
 
 function Remove-UiPilotMcpServer {
@@ -353,6 +389,22 @@ function Install-UiPilotCursorExtension {
     }
 
     Write-Warning "Cursor CLI was not found. In Cursor, use 'Extensions: Install from VSIX' and select '$VsixPath'."
+}
+
+function Uninstall-UiPilotCursorExtension {
+    $cursorCommand = Get-UiPilotCursorCommand
+    if (-not $cursorCommand) {
+        Write-Warning "Cursor CLI was not found; remove extension '$script:UiPilotExtensionId' manually."
+        return $false
+    }
+
+    & $cursorCommand --uninstall-extension $script:UiPilotExtensionId
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Cursor CLI could not remove extension '$script:UiPilotExtensionId'."
+        return $false
+    }
+    Write-Host "Removed the UiPilot Status extension from Cursor."
+    return $true
 }
 
 function Get-UiPilotCursorCommand {
