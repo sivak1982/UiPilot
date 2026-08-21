@@ -73,6 +73,11 @@ public sealed class ToolContext
         {
             throw new PilotToolException(PilotErrorCodes.Canceled, "UI invoke was canceled.");
         }
+        catch (AggregateException ex)
+        {
+            ExceptionDispatchInfo.Capture(ex.GetBaseException()).Throw();
+            throw;
+        }
 
         if (invokeTask.IsFaulted)
             ExceptionDispatchInfo.Capture(invokeTask.Exception!.GetBaseException()).Throw();

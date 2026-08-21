@@ -15,12 +15,14 @@ public sealed class ToolRegistry
         public string Description = "";
         public JsonElement InputSchema;
         public ToolHandler Handler = (_, _) => null;
+        public long Order;
     }
 
     private readonly ConcurrentDictionary<string, Entry> _tools =
         new ConcurrentDictionary<string, Entry>(StringComparer.OrdinalIgnoreCase);
 
     private readonly ToolContext _context;
+    private long _nextOrder;
 
     internal ToolRegistry(ToolContext context) => _context = context;
 
@@ -32,15 +34,28 @@ public sealed class ToolRegistry
     public void Register(string name, string description, JsonElement inputSchema, ToolHandler handler)
     {
         if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("Tool name required.", nameof(name));
-        _tools[name] = new Entry
-        {
-            Name = name,
-            Description = description,
-            InputSchema = inputSchema.ValueKind == JsonValueKind.Undefined
-                ? ToolSchemas.EmptyObject
-                : inputSchema.Clone(),
-            Handler = handler ?? throw new ArgumentNullException(nameof(handler)),
-        };
+        if (handler == null) throw new ArgumentNullException(nameof(handler));
+        var schema = inputSchema.ValueKind == JsonValueKind.Undefined
+            ? ToolSchemas.EmptyObject
+            : inputSchema.Clone();
+        _tools.AddOrUpdate(
+            name,
+            _ => new Entry
+            {
+                Name = name,
+                Description = description,
+                InputSchema = schema,
+                Handler = handler,
+                Order = Interlocked.Increment(ref _nextOrder),
+            },
+            (_, existing) => new Entry
+            {
+                Name = name,
+                Description = description,
+                InputSchema = schema,
+                Handler = handler,
+                Order = existing.Order,
+            });
     }
 
     public bool Contains(string name) => _tools.ContainsKey(name);
@@ -49,8 +64,9 @@ public sealed class ToolRegistry
     {
         get
         {
-            var names = new List<string>();
-            foreach (var e in _tools.Values)
+            var entries = OrderedEntries();
+            var names = new List<string>(entries.Count);
+            foreach (var e in entries)
                 names.Add(e.Name);
             return names.AsReadOnly();
         }
@@ -59,8 +75,9 @@ public sealed class ToolRegistry
     /// <summary>Snapshot of registered tools for MCP <c>tools/list</c>.</summary>
     public IReadOnlyList<(string Name, string Description, JsonElement InputSchema)> List()
     {
-        var list = new List<(string, string, JsonElement)>(_tools.Count);
-        foreach (var e in _tools.Values)
+        var entries = OrderedEntries();
+        var list = new List<(string, string, JsonElement)>(entries.Count);
+        foreach (var e in entries)
             list.Add((e.Name, e.Description, e.InputSchema.Clone()));
         return list;
     }
@@ -99,8 +116,15 @@ public sealed class ToolRegistry
     public object Describe()
     {
         var list = new List<object>();
-        foreach (var e in _tools.Values)
+        foreach (var e in OrderedEntries())
             list.Add(new { name = e.Name, description = e.Description, inputSchema = e.InputSchema });
         return new { tools = list };
+    }
+
+    private List<Entry> OrderedEntries()
+    {
+        var entries = new List<Entry>(_tools.Values);
+        entries.Sort((left, right) => left.Order.CompareTo(right.Order));
+        return entries;
     }
 }
