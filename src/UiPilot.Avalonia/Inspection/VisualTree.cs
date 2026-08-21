@@ -121,8 +121,11 @@ internal static class VisualTree
         if (obj == null) return null;
 
         var wanted = type?.Trim();
-        var current = obj.GetVisualParent();
-        for (var depth = 0; current != null && depth < maxDepth; depth++)
+        var current = NextAncestor(obj);
+        var seen = new HashSet<Visual>();
+        for (var depth = 0;
+             current != null && depth < maxDepth && seen.Add(current);
+             depth++)
         {
             if (string.IsNullOrEmpty(wanted) ||
                 string.Equals(current.GetType().Name, wanted, StringComparison.OrdinalIgnoreCase))
@@ -130,11 +133,15 @@ internal static class VisualTree
                 return BuildInfo(current, registry);
             }
 
-            current = current.GetVisualParent();
+            current = NextAncestor(current);
         }
 
         return null;
     }
+
+    private static Visual? NextAncestor(Visual current) =>
+        current.GetVisualParent()
+        ?? (current as ILogical)?.LogicalParent as Visual;
 
     private static List<ElementInfo>? BuildChildren(Visual obj, ElementRegistry registry, int depth)
     {
@@ -244,8 +251,6 @@ internal static class VisualTree
             info.AutomationId = NullIfEmpty(AutomationProperties.GetAutomationId(control));
             info.Enabled = control.IsEnabled;
             info.Visible = control.IsVisible;
-            info.Width = control.Bounds.Width;
-            info.Height = control.Bounds.Height;
 
             if (string.IsNullOrEmpty(info.Text))
                 info.Text = NullIfEmpty(ToolTip.GetTip(control) as string);
@@ -255,13 +260,22 @@ internal static class VisualTree
                 try
                 {
                     var origin = control.PointToScreen(new Point(0, 0));
+                    var corner = control.PointToScreen(new Point(control.Bounds.Width, control.Bounds.Height));
                     info.X = origin.X;
                     info.Y = origin.Y;
+                    info.Width = Math.Abs(corner.X - origin.X);
+                    info.Height = Math.Abs(corner.Y - origin.Y);
                 }
                 catch
                 {
-                    // Not attached to a top-level yet.
+                    info.Width = control.Bounds.Width;
+                    info.Height = control.Bounds.Height;
                 }
+            }
+            else
+            {
+                info.Width = control.Bounds.Width;
+                info.Height = control.Bounds.Height;
             }
         }
 

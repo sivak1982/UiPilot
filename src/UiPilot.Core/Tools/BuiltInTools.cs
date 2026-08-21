@@ -8,7 +8,7 @@ namespace UiPilot.Tools;
 
 /// <summary>
 /// Registers the built-in agent tools against an <see cref="IUiBackend"/>. Tool names and
-/// argument contracts are identical for WPF and Avalonia.
+/// argument contracts are identical across WPF, Avalonia, and WinForms.
 /// </summary>
 internal static class BuiltInTools
 {
@@ -18,11 +18,20 @@ internal static class BuiltInTools
     {
         registry.Register(ToolCatalog.ListWindows,
             "List all top-level windows with identity and bounds.",
+            ToolSchemas.EmptyObject,
             (ctx, _) => ctx.OnUi(() => new { windows = ctx.Backend.ListWindows() }));
 
         registry.Register(ToolCatalog.FindElements,
             "Search the visual tree by name, AutomationId, type, or text. "
             + "Args: query, limit=50, offset=0, root(id), exact=false.",
+            ToolSchemas.Object(new
+            {
+                query = ToolSchemas.String("Name, AutomationId, type, or text substring."),
+                limit = ToolSchemas.Integer("Max results (default 50)."),
+                offset = ToolSchemas.Integer("Skip this many matches (default 0)."),
+                root = ToolSchemas.String("Optional element id to search under."),
+                exact = ToolSchemas.Boolean("Require whole-value equality (default false)."),
+            }),
             (ctx, args) =>
             {
                 var query = args.GetString("query");
@@ -35,6 +44,13 @@ internal static class BuiltInTools
 
         registry.Register(ToolCatalog.InspectElement,
             "Get detailed info for one element. Args: id, includeChildren=false, depth=1, properties=[].",
+            ToolSchemas.Object(new
+            {
+                id = ToolSchemas.String("Element handle from find_elements / inspect."),
+                includeChildren = ToolSchemas.Boolean(),
+                depth = ToolSchemas.Integer(),
+                properties = ToolSchemas.StringArray("Optional property names to read."),
+            }, required: new[] { "id" }),
             (ctx, args) =>
             {
                 var id = args.GetRequiredString("id");
@@ -52,6 +68,12 @@ internal static class BuiltInTools
         registry.Register(ToolCatalog.FindAncestor,
             "Walk up from an element to the nearest ancestor of a given type. "
             + "Args: id, type(optional), maxDepth=25.",
+            ToolSchemas.Object(new
+            {
+                id = ToolSchemas.String(),
+                type = ToolSchemas.String("Ancestor CLR type name (optional)."),
+                maxDepth = ToolSchemas.Integer(),
+            }, required: new[] { "id" }),
             (ctx, args) =>
             {
                 var id = args.GetRequiredString("id");
@@ -76,6 +98,14 @@ internal static class BuiltInTools
         registry.Register(ToolCatalog.WaitForElement,
             "Poll for the first matching element. "
             + "Args: query, root(id optional), timeoutMs=10000, pollMs=200, exact=false.",
+            ToolSchemas.Object(new
+            {
+                query = ToolSchemas.String(),
+                root = ToolSchemas.String(),
+                timeoutMs = ToolSchemas.Integer(),
+                pollMs = ToolSchemas.Integer(),
+                exact = ToolSchemas.Boolean(),
+            }, required: new[] { "query" }),
             (ctx, args) =>
             {
                 var query = args.GetRequiredString("query");
@@ -115,6 +145,7 @@ internal static class BuiltInTools
 
         registry.Register(ToolCatalog.Click,
             "Synthetically click an element (automation invoke / control click fallback). Args: id.",
+            ToolSchemas.Object(new { id = ToolSchemas.String() }, required: new[] { "id" }),
             (ctx, args) =>
             {
                 var id = args.GetRequiredString("id");
@@ -128,6 +159,22 @@ internal static class BuiltInTools
             "End point: toId (element centre), toX/toY (screen px), or dx/dy (offset from start). " +
             "Args: id, fromX, fromY, grabOffsetX, grabOffsetY, toId, toX, toY, dx, dy, " +
             "steps=24, stepDelayMs=12, settleMs=250.",
+            ToolSchemas.Object(new
+            {
+                id = ToolSchemas.String(),
+                fromX = ToolSchemas.Number(),
+                fromY = ToolSchemas.Number(),
+                grabOffsetX = ToolSchemas.Number(),
+                grabOffsetY = ToolSchemas.Number(),
+                toId = ToolSchemas.String(),
+                toX = ToolSchemas.Number(),
+                toY = ToolSchemas.Number(),
+                dx = ToolSchemas.Number(),
+                dy = ToolSchemas.Number(),
+                steps = ToolSchemas.Integer(),
+                stepDelayMs = ToolSchemas.Integer(),
+                settleMs = ToolSchemas.Integer(),
+            }),
             (ctx, args) =>
             {
                 var id = args.GetString("id");
@@ -140,12 +187,11 @@ internal static class BuiltInTools
                 var dy = args.GetDouble("dy");
                 var grabOffsetX = args.GetDouble("grabOffsetX") ?? 0;
                 var grabOffsetY = args.GetDouble("grabOffsetY") ?? 0;
-                var steps = args.GetInt("steps", 24);
-                var stepDelayMs = args.GetInt("stepDelayMs", 12);
-                var settleMs = args.GetInt("settleMs", 250);
+                var steps = Clamp(args.GetInt("steps", 24), 1, 500);
+                var stepDelayMs = Clamp(args.GetInt("stepDelayMs", 12), 0, 1000);
+                var settleMs = Clamp(args.GetInt("settleMs", 250), 0, 10_000);
+                var ct = ctx.CancellationToken;
 
-                // Resolve geometry and raise the window on the UI thread, then inject from this
-                // background pipe thread so the app can keep pumping while the drag runs.
                 var route = OnUi(ctx, () =>
                 {
                     ScreenPoint start;
@@ -175,7 +221,11 @@ internal static class BuiltInTools
                 try
                 {
                     lock (DragGate)
-                        RealInput.Drag(route.start, route.end, steps, stepDelayMs, settleMs);
+                        RealInput.Drag(route.start, route.end, steps, stepDelayMs, settleMs, ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw new PilotToolException(PilotErrorCodes.Canceled, "drag was canceled.");
                 }
                 catch (PlatformNotSupportedException ex)
                 {
@@ -192,6 +242,11 @@ internal static class BuiltInTools
 
         registry.Register(ToolCatalog.TypeText,
             "Set text on a focusable input via automation Value pattern or text control. Args: id, text.",
+            ToolSchemas.Object(new
+            {
+                id = ToolSchemas.String(),
+                text = ToolSchemas.String(),
+            }, required: new[] { "id" }),
             (ctx, args) =>
             {
                 var id = args.GetRequiredString("id");
@@ -201,6 +256,11 @@ internal static class BuiltInTools
 
         registry.Register(ToolCatalog.PressKeys,
             "Send key chords (Ctrl+S, Enter, Tab, Escape) or sequential text. Args: id(optional), keys.",
+            ToolSchemas.Object(new
+            {
+                id = ToolSchemas.String(),
+                keys = ToolSchemas.String(),
+            }, required: new[] { "keys" }),
             (ctx, args) =>
             {
                 var id = args.GetString("id");
@@ -209,7 +269,13 @@ internal static class BuiltInTools
             });
 
         registry.Register(ToolCatalog.Scroll,
-            "Scroll an element by deltas. Args: id, dx=0, dy=0.",
+            "Scroll an element by line deltas (1 ~= one mouse-wheel notch). Args: id, dx=0, dy=0.",
+            ToolSchemas.Object(new
+            {
+                id = ToolSchemas.String(),
+                dx = ToolSchemas.Number("Horizontal scroll lines."),
+                dy = ToolSchemas.Number("Vertical scroll lines."),
+            }, required: new[] { "id" }),
             (ctx, args) =>
             {
                 var id = args.GetRequiredString("id");
@@ -220,6 +286,7 @@ internal static class BuiltInTools
 
         registry.Register(ToolCatalog.Focus,
             "Move keyboard focus to an element. Args: id.",
+            ToolSchemas.Object(new { id = ToolSchemas.String() }, required: new[] { "id" }),
             (ctx, args) =>
             {
                 var id = args.GetRequiredString("id");
@@ -228,6 +295,12 @@ internal static class BuiltInTools
 
         registry.Register(ToolCatalog.SelectItem,
             "Select an item by visible text or zero-based index. Args: id, text(optional), index(optional).",
+            ToolSchemas.Object(new
+            {
+                id = ToolSchemas.String(),
+                text = ToolSchemas.String(),
+                index = ToolSchemas.Integer(),
+            }, required: new[] { "id" }),
             (ctx, args) =>
             {
                 var id = args.GetRequiredString("id");
@@ -238,27 +311,47 @@ internal static class BuiltInTools
 
         registry.Register(ToolCatalog.InvokeCommand,
             "Execute the ICommand bound to an element (e.g. Button.Command). Args: id.",
+            ToolSchemas.Object(new { id = ToolSchemas.String() }, required: new[] { "id" }),
             (ctx, args) =>
             {
                 var id = args.GetRequiredString("id");
-                return OnUi<object>(ctx, () => new { result = ctx.Backend.InvokeCommand(id) });
+                return OnUi<object>(ctx, () =>
+                {
+                    if (ctx.Backend is not ICommandUiBackend commands)
+                        throw UnsupportedCapability(
+                            ctx.Backend, ToolCatalog.InvokeCommand, UiBackendCapabilities.InvokeCommand);
+                    return new { result = commands.InvokeCommand(id) };
+                });
             });
 
         registry.Register(ToolCatalog.Screenshot,
             "Capture a PNG of a window (default main window) or a specific element. Args: id (optional).",
+            ToolSchemas.Object(new { id = ToolSchemas.String() }),
             (ctx, args) =>
             {
                 var id = args.GetString("id");
                 return OnUi<object>(ctx, () =>
                 {
                     var shot = ctx.Backend.Screenshot(id);
-                    if (shot == null) throw new InvalidOperationException("Nothing renderable to capture.");
+                    if (shot == null)
+                    {
+                        throw new PilotToolException(
+                            PilotErrorCodes.NotFound,
+                            "Nothing renderable to capture.",
+                            "Pass a window/element id, or ensure the main window exists.");
+                    }
                     return shot;
                 });
             });
 
         registry.Register(ToolCatalog.SetWindowState,
             "Minimize/restore/maximize a window and optionally bring it to the foreground. Screenshots still work while minimized. Args: id (optional, defaults to main window), state (minimized|normal|maximized), activate=false.",
+            ToolSchemas.Object(new
+            {
+                id = ToolSchemas.String(),
+                state = ToolSchemas.String("minimized|normal|maximized"),
+                activate = ToolSchemas.Boolean(),
+            }),
             (ctx, args) =>
             {
                 var id = args.GetString("id");
@@ -270,6 +363,15 @@ internal static class BuiltInTools
         registry.Register(ToolCatalog.ResizeWindow,
             "Restore a window to normal (if needed) and set its size. Optionally move it and/or activate. "
             + "Args: width, height, id (optional), x (optional), y (optional), activate=false.",
+            ToolSchemas.Object(new
+            {
+                width = ToolSchemas.Number(),
+                height = ToolSchemas.Number(),
+                id = ToolSchemas.String(),
+                x = ToolSchemas.Number(),
+                y = ToolSchemas.Number(),
+                activate = ToolSchemas.Boolean(),
+            }, required: new[] { "width", "height" }),
             (ctx, args) =>
             {
                 var width = RequirePositiveSize(args, "width");
@@ -283,6 +385,7 @@ internal static class BuiltInTools
 
         registry.Register(ToolCatalog.BringToFront,
             "Restore (if minimized) and pull a window to the foreground so a human can see it. Args: id (optional, defaults to main window).",
+            ToolSchemas.Object(new { id = ToolSchemas.String() }),
             (ctx, args) =>
             {
                 var id = args.GetString("id");
@@ -291,16 +394,25 @@ internal static class BuiltInTools
 
         registry.Register(ToolCatalog.GetBindingErrors,
             "Return captured data-binding errors/warnings. Args: clear=false.",
+            ToolSchemas.Object(new { clear = ToolSchemas.Boolean() }),
             (ctx, args) =>
             {
                 var clear = args.GetBool("clear", false);
-                var errors = ctx.Backend.GetBindingErrors();
-                if (clear) ctx.Backend.ClearBindingErrors();
-                return new { count = errors.Count, errors };
+                return OnUi(ctx, () =>
+                {
+                    if (ctx.Backend is not IBindingDiagnosticsUiBackend diagnostics)
+                        throw UnsupportedCapability(
+                            ctx.Backend,
+                            ToolCatalog.GetBindingErrors,
+                            UiBackendCapabilities.BindingDiagnostics);
+                    var errors = diagnostics.GetBindingErrors(clear);
+                    return new { count = errors.Count, errors };
+                });
             });
 
         registry.Register(ToolCatalog.AnalyzeLayout,
             "Flag zero-size and off-screen visible elements. Args: root (id, optional).",
+            ToolSchemas.Object(new { root = ToolSchemas.String() }),
             (ctx, args) =>
             {
                 var root = args.GetString("root");
@@ -313,10 +425,15 @@ internal static class BuiltInTools
 
         registry.Register(ToolCatalog.HighlightElement,
             "Briefly draw a red overlay over an element. Args: id, durationMs=1500.",
+            ToolSchemas.Object(new
+            {
+                id = ToolSchemas.String(),
+                durationMs = ToolSchemas.Integer(),
+            }, required: new[] { "id" }),
             (ctx, args) =>
             {
                 var id = args.GetRequiredString("id");
-                var durationMs = args.GetInt("durationMs", 1500);
+                var durationMs = Clamp(args.GetInt("durationMs", 1500), 0, 30_000);
                 return OnUi<object>(ctx, () => new { highlighted = ctx.Backend.Highlight(id, durationMs) });
             });
     }
@@ -346,34 +463,40 @@ internal static class BuiltInTools
         {
             return ctx.OnUi(func);
         }
-        catch (ArgumentException ex) when (IsStaleElement(ex))
+        catch (PilotToolException ex) when (ex.Code == PilotErrorCodes.StaleElement)
         {
-            throw StaleElement(ex.Message);
+            throw;
         }
     }
 
-    private static bool IsStaleElement(ArgumentException ex) =>
-        ex.Message.IndexOf("Unknown or collected element", StringComparison.OrdinalIgnoreCase) >= 0;
+    private static PilotToolException UnsupportedCapability(
+        IUiBackend backend,
+        string tool,
+        string capability) =>
+        new(
+            PilotErrorCodes.Unsupported,
+            $"Tool '{tool}' is not supported by the {backend.Framework} backend.",
+            $"Check discovery capabilities for '{capability}' before calling this tool.");
 
-    private static PilotToolException StaleElement(string idOrMessage)
-    {
-        var message = idOrMessage.IndexOf("Unknown or collected element", StringComparison.OrdinalIgnoreCase) >= 0
-            ? idOrMessage
-            : $"Unknown or collected element '{idOrMessage}'.";
-        return new PilotToolException(
+    private static PilotToolException StaleElement(string id) =>
+        new(
             PilotErrorCodes.StaleElement,
-            message,
+            $"Unknown or collected element '{id}'.",
             "Refresh element handles with find_elements or inspect_element before retrying.");
-    }
 
     private static int? GetNullableInt(System.Text.Json.JsonElement args, string name)
     {
-        if (args.ValueKind == System.Text.Json.JsonValueKind.Object &&
-            args.TryGetProperty(name, out var v) &&
-            v.ValueKind == System.Text.Json.JsonValueKind.Number &&
-            v.TryGetInt32(out var i))
-            return i;
-        return null;
+        if (args.ValueKind != System.Text.Json.JsonValueKind.Object ||
+            !args.TryGetProperty(name, out var v) ||
+            v.ValueKind is System.Text.Json.JsonValueKind.Null or System.Text.Json.JsonValueKind.Undefined)
+            return null;
+        if (v.ValueKind != System.Text.Json.JsonValueKind.Number || !v.TryGetInt32(out var i))
+        {
+            throw new PilotToolException(
+                PilotErrorCodes.InvalidArgs,
+                $"Argument '{name}' must be an integer (got {v.ValueKind}).");
+        }
+        return i;
     }
 
     private static double RequirePositiveSize(System.Text.Json.JsonElement args, string name)
@@ -385,4 +508,7 @@ internal static class BuiltInTools
             throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Argument '{name}' must be a positive number.");
         return value.Value;
     }
+
+    private static int Clamp(int value, int min, int max) =>
+        value < min ? min : (value > max ? max : value);
 }

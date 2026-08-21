@@ -3,23 +3,13 @@ using Xunit;
 
 namespace UiPilot.Tests;
 
+[Trait("Category", "DesktopE2E")]
 public sealed class UiPilotClientTests
 {
-    [Fact]
+    [WindowsFact]
     public async Task AgentAuthoredFlow_CanBeFrozenAsTypedCSharp()
     {
-        if (!OperatingSystem.IsWindows())
-            return;
-
-        var root = FindRepoRoot();
-        var app = Path.Combine(
-            root,
-            "samples",
-            "AvaloniaSampleApp",
-            "bin",
-            "Debug",
-            "net8.0",
-            "AvaloniaSampleApp.exe");
+        var app = TestPaths.SampleApp("AvaloniaSampleApp", "net8.0", "AvaloniaSampleApp.exe");
         Assert.True(File.Exists(app), $"Sample app was not built: {app}");
 
         await using var pilot = new UiPilotClient();
@@ -41,11 +31,8 @@ public sealed class UiPilotClientTests
 
         var greet = (await pilot.WaitForElementAsync(
             "GreetButton", exact: true, session: "sample")).Single();
-        await pilot.FocusAsync(greet.Id, session: "sample"); // commits the TextBox binding
+        await pilot.FocusAsync(greet.Id, session: "sample");
 
-        // The control can enter the visual tree before its command binding is ready. Because every
-        // call returns its interaction method, ordinary C# can retry the exact condition this test
-        // cares about instead of adding a click-until-* verb to UiPilot.
         InteractionResult? clicked = null;
         var clickDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
         while (DateTime.UtcNow < clickDeadline)
@@ -62,21 +49,5 @@ public sealed class UiPilotClientTests
             "Hello, UiPilot!", exact: true, session: "sample");
         Assert.Contains(greeting.Elements, element =>
             element.Visible && element.Text == "Hello, UiPilot!");
-    }
-
-    private static string FindRepoRoot()
-    {
-        foreach (var start in new[] { Environment.CurrentDirectory, AppContext.BaseDirectory })
-        {
-            var current = new DirectoryInfo(start);
-            while (current is not null)
-            {
-                if (File.Exists(Path.Combine(current.FullName, "UiPilot.sln")))
-                    return current.FullName;
-                current = current.Parent;
-            }
-        }
-
-        throw new DirectoryNotFoundException("Could not locate the UiPilot repository root.");
     }
 }

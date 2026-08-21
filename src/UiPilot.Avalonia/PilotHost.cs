@@ -23,6 +23,7 @@ public static class PilotHost
     private static readonly object Gate = new object();
     private static readonly PilotRuntime Runtime = new PilotRuntime();
     private static bool _hooksAttached;
+    private static bool _starting;
 
     public static bool IsRunning => Runtime.IsRunning;
 
@@ -37,16 +38,21 @@ public static class PilotHost
         options ??= new AvaloniaOptions();
         lock (Gate)
         {
-            if (Runtime.IsRunning)
+            if (Runtime.IsRunning || _starting)
                 return;
+            _starting = true;
+        }
 
+        AvaloniaUiBackend? backend = null;
+        try
+        {
             if (Application.Current == null)
             {
                 Log("UiPilot.Avalonia cannot start: no Avalonia Application.Current.");
                 return;
             }
 
-            var backend = new AvaloniaUiBackend();
+            backend = new AvaloniaUiBackend();
             InvokeOnUi(() => { backend.Install(); return null; });
 
             var pilotOptions = options.ToPilotOptions();
@@ -60,19 +66,33 @@ public static class PilotHost
             if (!started)
             {
                 try { backend.Shutdown(); } catch { /* ignore */ }
+                backend = null;
                 return;
             }
 
-            if (!_hooksAttached)
+            lock (Gate)
             {
-                _hooksAttached = true;
-                AppDomain.CurrentDomain.ProcessExit += (_, _) => Stop();
-                if (Application.Current.ApplicationLifetime is IControlledApplicationLifetime controlled)
-                    controlled.Exit += (_, _) => Stop();
+                if (!_hooksAttached)
+                {
+                    _hooksAttached = true;
+                    AppDomain.CurrentDomain.ProcessExit += (_, _) => Stop();
+                    if (Application.Current.ApplicationLifetime is IControlledApplicationLifetime controlled)
+                        controlled.Exit += (_, _) => Stop();
+                }
             }
 
             if (PilotRuntime.ResolveStartMinimized(pilotOptions))
                 ScheduleMinimize();
+        }
+        catch
+        {
+            if (!Runtime.IsRunning)
+                try { backend?.Shutdown(); } catch { /* ignore */ }
+            throw;
+        }
+        finally
+        {
+            lock (Gate) _starting = false;
         }
     }
 

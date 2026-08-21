@@ -69,7 +69,7 @@ python3 - "$STAGING/install-manifest.json" "$INSTALL_DIR" "$MCP_CONFIG" "$CURSOR
 import json, sys, datetime
 path, install_dir, mcp, settings, version = sys.argv[1:]
 manifest = {
-    "installedAtUtc": datetime.datetime.utcnow().isoformat() + "Z",
+    "installedAtUtc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     "installDirectory": install_dir,
     "mcpConfigPath": mcp,
     "cursorSettingsPath": settings,

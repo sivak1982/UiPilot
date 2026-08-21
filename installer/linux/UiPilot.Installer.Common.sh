@@ -68,7 +68,13 @@ uipilot_merge_mcp() {
   local version="$4"
   local status_port="${5:-$UIPILOT_STATUS_PORT}"
   python3 - "$config_path" "$command_path" "$status_token" "$version" "$status_port" <<'PY'
-import json, os, shutil, sys, datetime
+import json, os, re, shutil, sys, datetime
+
+def loads_jsonc(text):
+    text = re.sub(r"/\*[\s\S]*?\*/", "", text)
+    text = re.sub(r"(?<!:)//.*?$", "", text, flags=re.M)
+    text = re.sub(r",(\s*[}\]])", r"\1", text)
+    return json.loads(text)
 path, command, token, version, port = sys.argv[1:]
 parts = version.split(".")
 if len(parts) != 4 or not all(part.isdigit() for part in parts):
@@ -79,7 +85,7 @@ if os.path.isfile(path):
     with open(path, "r", encoding="utf-8") as handle:
         text = handle.read().strip()
         if text:
-            data = json.loads(text)
+            data = loads_jsonc(text)
     backup = f"{path}.backup-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
     shutil.copy2(path, backup)
     print(f"Backed up existing JSON configuration to {backup}")
@@ -97,9 +103,8 @@ if isinstance(existing, dict) and isinstance(existing.get("env"), dict):
 env["UIPILOT_STATUS_PORT"] = str(port)
 env["UIPILOT_STATUS_TOKEN"] = token
 for name in uipilot_names:
-    configured = str((servers.get(name) or {}).get("command") or "")
-    if name == "uipilot" or os.path.normpath(configured) == os.path.normpath(command):
-        del servers[name]
+    # UiPilot owns this namespace; stale install paths must not retain old tokens/binaries.
+    del servers[name]
 servers[server_name] = {"command": command, "args": [], "env": env}
 os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
 with open(path, "w", encoding="utf-8", newline="\n") as handle:
@@ -111,7 +116,12 @@ PY
 uipilot_read_status_token() {
   local config_path="$1"
   python3 - "$config_path" <<'PY'
-import json, os, sys
+import json, os, re, sys
+def loads_jsonc(text):
+    text = re.sub(r"/\*[\s\S]*?\*/", "", text)
+    text = re.sub(r"(?<!:)//.*?$", "", text, flags=re.M)
+    text = re.sub(r",(\s*[}\]])", r"\1", text)
+    return json.loads(text)
 path = sys.argv[1]
 if not os.path.isfile(path):
     sys.exit(0)
@@ -119,7 +129,7 @@ with open(path, "r", encoding="utf-8") as handle:
     text = handle.read().strip()
     if not text:
         sys.exit(0)
-    data = json.loads(text)
+    data = loads_jsonc(text)
 servers = data.get("mcpServers") or {}
 server = next((
     value for name, value in servers.items()
@@ -136,14 +146,20 @@ uipilot_merge_settings() {
   local status_token="$2"
   local status_port="${3:-$UIPILOT_STATUS_PORT}"
   python3 - "$settings_path" "$status_token" "$status_port" <<'PY'
-import json, os, shutil, sys, datetime
+import json, os, re, shutil, sys, datetime
+
+def loads_jsonc(text):
+    text = re.sub(r"/\*[\s\S]*?\*/", "", text)
+    text = re.sub(r"(?<!:)//.*?$", "", text, flags=re.M)
+    text = re.sub(r",(\s*[}\]])", r"\1", text)
+    return json.loads(text)
 path, token, port = sys.argv[1:]
 data = {}
 if os.path.isfile(path):
     with open(path, "r", encoding="utf-8") as handle:
         text = handle.read().strip()
         if text:
-            data = json.loads(text)
+            data = loads_jsonc(text)
     backup = f"{path}.backup-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
     shutil.copy2(path, backup)
     print(f"Backed up existing JSON configuration to {backup}")
@@ -157,16 +173,51 @@ with open(path, "w", encoding="utf-8", newline="\n") as handle:
 PY
 }
 
+uipilot_remove_settings() {
+  local settings_path="$1"
+  local expected_token="${2:-}"
+  python3 - "$settings_path" "$expected_token" <<'PY'
+import json, os, re, sys
+def loads_jsonc(text):
+    text = re.sub(r"/\*[\s\S]*?\*/", "", text)
+    text = re.sub(r"(?<!:)//.*?$", "", text, flags=re.M)
+    text = re.sub(r",(\s*[}\]])", r"\1", text)
+    return json.loads(text)
+path, expected = sys.argv[1:]
+if not os.path.isfile(path):
+    sys.exit(0)
+with open(path, "r", encoding="utf-8") as handle:
+    data = loads_jsonc(handle.read() or "{}")
+actual = data.get("uipilotStatus.token")
+if actual is None:
+    sys.exit(0)
+if expected and actual != expected:
+    print("warning: Cursor's UiPilot status token changed after install; extension settings were left unchanged.", file=sys.stderr)
+    sys.exit(0)
+for name in ("uipilotStatus.host", "uipilotStatus.port", "uipilotStatus.token"):
+    data.pop(name, None)
+with open(path, "w", encoding="utf-8", newline="\n") as handle:
+    json.dump(data, handle, indent=2)
+    handle.write("\n")
+PY
+}
+
 uipilot_remove_mcp() {
   local config_path="$1"
   local installed_command="$2"
   python3 - "$config_path" "$installed_command" <<'PY'
-import json, os, shutil, sys, datetime
+import json, os, re, shutil, sys, datetime
+
+def loads_jsonc(text):
+    text = re.sub(r"/\*[\s\S]*?\*/", "", text)
+    text = re.sub(r"(?<!:)//.*?$", "", text, flags=re.M)
+    text = re.sub(r",(\s*[}\]])", r"\1", text)
+    return json.loads(text)
 path, installed = sys.argv[1:]
 if not os.path.isfile(path):
     sys.exit(1)
 with open(path, "r", encoding="utf-8") as handle:
-    data = json.loads(handle.read() or "{}")
+    data = loads_jsonc(handle.read() or "{}")
 servers = data.get("mcpServers")
 if not isinstance(servers, dict):
     sys.exit(1)
@@ -206,6 +257,18 @@ uipilot_install_extension() {
     return 0
   fi
   echo "warning: Cursor CLI was not found. In Cursor, use Extensions: Install from VSIX and select '$vsix_path'." >&2
+}
+
+uipilot_uninstall_extension() {
+  if ! command -v cursor >/dev/null 2>&1; then
+    echo "warning: Cursor CLI was not found; remove extension 'uipilot.uipilot-status' manually." >&2
+    return 0
+  fi
+  if cursor --uninstall-extension uipilot.uipilot-status; then
+    echo "Removed the UiPilot Status extension from Cursor."
+  else
+    echo "warning: Cursor CLI could not remove extension 'uipilot.uipilot-status'." >&2
+  fi
 }
 
 uipilot_register_nuget() {

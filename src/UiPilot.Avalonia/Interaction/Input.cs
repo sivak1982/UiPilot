@@ -56,13 +56,14 @@ internal static class Input
 
         if (obj is Button button)
         {
+            control.Focus();
             if (button.Command != null && button.Command.CanExecute(button.CommandParameter))
             {
                 button.Command.Execute(button.CommandParameter);
+                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 return "synthetic:button-command";
             }
 
-            control.Focus();
             button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             return "synthetic:raise-click";
         }
@@ -140,17 +141,19 @@ internal static class Input
         if (obj is not Control control)
             throw new PilotToolException(PilotErrorCodes.InvalidArgs, "Target is not a Control.");
 
+        // Contract: dx/dy are scroll lines (Avalonia PointerWheelEventArgs.Delta is in lines).
         var delta = new Vector(dx, dy);
         if (delta == default)
             return "synthetic:scroll";
 
+        var props = new PointerPointProperties();
         var args = new PointerWheelEventArgs(
             control,
-            null!,
+            new Pointer(0, PointerType.Mouse, isPrimary: true),
             control,
             new Point(control.Bounds.Width / 2, control.Bounds.Height / 2),
             unchecked((ulong)Environment.TickCount64),
-            default!,
+            props,
             KeyModifiers.None,
             delta)
         {

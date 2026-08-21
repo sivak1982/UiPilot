@@ -4,7 +4,6 @@ using System.Text.Json.Serialization;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using UiPilot.Client;
-using UiPilot.Client.Pipe;
 using UiPilot.Cli.Status;
 using UiPilot.Tools;
 
@@ -235,13 +234,27 @@ public sealed class ForwardingTools
             try
             {
                 var result = await _connection.SendAsync(ToolCatalog.Screenshot, new { id }, session, ct).ConfigureAwait(false);
-                var base64 = result.GetProperty("base64").GetString() ?? "";
-                var width = result.GetProperty("width").GetInt32();
-                var height = result.GetProperty("height").GetInt32();
-                var sessionName = result.TryGetProperty("session", out var sessionProp)
-                    ? sessionProp.GetString()
-                    : session ?? _connection.ActiveSessionName;
-                var bytes = Convert.FromBase64String(base64);
+                var screenshot = result.Deserialize<ScreenshotResult>(Json)
+                    ?? throw new PilotCliException(
+                        "tool_error", "Target returned an empty screenshot payload.");
+                if (string.IsNullOrWhiteSpace(screenshot.Base64) ||
+                    screenshot.Width <= 0 ||
+                    screenshot.Height <= 0)
+                {
+                    throw new PilotCliException(
+                        "tool_error", "Target returned an invalid screenshot payload.");
+                }
+                var sessionName = screenshot.Session ?? session ?? _connection.ActiveSessionName;
+                byte[] bytes;
+                try
+                {
+                    bytes = screenshot.GetBytes();
+                }
+                catch (FormatException ex)
+                {
+                    throw new PilotCliException(
+                        "tool_error", "Target returned invalid screenshot bytes.", innerException: ex);
+                }
 
                 var dir = Path.Combine(Path.GetTempPath(), "uipilot", "shots");
                 System.IO.Directory.CreateDirectory(dir);
@@ -249,7 +262,13 @@ public sealed class ForwardingTools
                 var path = Path.Combine(dir, $"{Guid.NewGuid():N}.png");
                 await File.WriteAllBytesAsync(path, bytes, ct).ConfigureAwait(false);
 
-                var metadata = JsonSerializer.Serialize(new { path, width, height, session = sessionName }, Json);
+                var metadata = JsonSerializer.Serialize(new
+                {
+                    path,
+                    width = screenshot.Width,
+                    height = screenshot.Height,
+                    session = sessionName,
+                }, Json);
                 return new CallToolResult
                 {
                     Content = new List<ContentBlock>
@@ -259,7 +278,7 @@ public sealed class ForwardingTools
                     },
                 };
             }
-            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            catch (Exception ex) when (ToolErrorResult.TryCreate(ex, out var error))
             {
                 return error;
             }
@@ -314,7 +333,7 @@ public sealed class ForwardingTools
             var result = await _connection.SendAsync(method, args, session, ct).ConfigureAwait(false);
             return Ok(result.ValueKind == JsonValueKind.Undefined ? "null" : result.GetRawText());
         }
-        catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+        catch (Exception ex) when (ToolErrorResult.TryCreate(ex, out var error))
         {
             return error;
         }
@@ -324,41 +343,6 @@ public sealed class ForwardingTools
         string.IsNullOrWhiteSpace(properties)
             ? null
             : properties.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-    private static bool TrySerializeToolError(Exception ex, out string json)
-    {
-        switch (ex)
-        {
-            case PilotCliException cli:
-                json = ErrorJson(cli.Code, cli.Message, cli.Hint);
-                return true;
-            case PipeRpcException pipe:
-                json = ErrorJson(pipe.Code ?? $"rpc_{pipe.RpcCode}", pipe.Message, pipe.Hint);
-                return true;
-            default:
-                json = "";
-                return false;
-        }
-    }
-
-    private static bool TryCreateErrorResult(Exception ex, out CallToolResult result)
-    {
-        if (!TrySerializeToolError(ex, out var json))
-        {
-            result = new CallToolResult();
-            return false;
-        }
-
-        result = new CallToolResult
-        {
-            IsError = true,
-            Content = new List<ContentBlock>
-            {
-                new TextContentBlock { Text = json },
-            },
-        };
-        return true;
-    }
 
     private static CallToolResult Ok(string text) => new()
     {

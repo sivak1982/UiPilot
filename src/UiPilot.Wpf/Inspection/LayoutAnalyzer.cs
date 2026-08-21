@@ -116,7 +116,8 @@ public static class LayoutAnalyzer
         try
         {
             var origin = fe.PointToScreen(new Point(0, 0));
-            return new Rect(origin.X, origin.Y, fe.ActualWidth, fe.ActualHeight);
+            var corner = fe.PointToScreen(new Point(fe.ActualWidth, fe.ActualHeight));
+            return new Rect(origin.X, origin.Y, Math.Abs(corner.X - origin.X), Math.Abs(corner.Y - origin.Y));
         }
         catch
         {

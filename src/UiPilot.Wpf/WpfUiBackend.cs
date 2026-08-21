@@ -14,7 +14,7 @@ using UiPilot.Media;
 namespace UiPilot.Wpf;
 
 /// <summary>WPF implementation of the shared <see cref="IUiBackend"/> contract.</summary>
-internal sealed class WpfUiBackend : IUiBackend
+internal sealed class WpfUiBackend : IUiBackend, ICommandUiBackend, IBindingDiagnosticsUiBackend
 {
     private readonly BindingDiagnostics _bindings = new BindingDiagnostics();
 
@@ -54,7 +54,7 @@ internal sealed class WpfUiBackend : IUiBackend
     {
         var obj = Require(id);
         if (obj is not UIElement element)
-            throw new InvalidOperationException("Target is not a UIElement.");
+            throw Unsupported("Target is not a UIElement and cannot receive focus.");
         element.Focus();
         Keyboard.Focus(element as IInputElement);
         return "synthetic:focus";
@@ -78,7 +78,7 @@ internal sealed class WpfUiBackend : IUiBackend
     {
         var target = id == null ? null : Require(id);
         var window = WindowControl.ResolveWindow(target)
-            ?? throw new InvalidOperationException("No window to control.");
+            ?? throw new PilotToolException(PilotErrorCodes.NotFound, "No window to control.");
         return WindowControl.SetState(window, state, activate);
     }
 
@@ -86,7 +86,7 @@ internal sealed class WpfUiBackend : IUiBackend
     {
         var target = id == null ? null : Require(id);
         var window = WindowControl.ResolveWindow(target)
-            ?? throw new InvalidOperationException("No window to resize.");
+            ?? throw new PilotToolException(PilotErrorCodes.NotFound, "No window to resize.");
         return WindowControl.Resize(window, width, height, x, y, activate);
     }
 
@@ -94,13 +94,11 @@ internal sealed class WpfUiBackend : IUiBackend
     {
         var target = id == null ? null : Require(id);
         var window = WindowControl.ResolveWindow(target)
-            ?? throw new InvalidOperationException("No window to bring to front.");
+            ?? throw new PilotToolException(PilotErrorCodes.NotFound, "No window to bring to front.");
         return WindowControl.Foreground(window);
     }
 
-    public IReadOnlyList<string> GetBindingErrors() => _bindings.Snapshot();
-
-    public void ClearBindingErrors() => _bindings.Clear();
+    public IReadOnlyList<string> GetBindingErrors(bool clear) => _bindings.Snapshot(clear);
 
     public IReadOnlyList<LayoutIssue> AnalyzeLayout(string? rootId) =>
         LayoutAnalyzer.Analyze(Elements, rootId);
@@ -112,9 +110,11 @@ internal sealed class WpfUiBackend : IUiBackend
     {
         var obj = Require(id);
         if (obj is not Visual visual || obj is not UIElement element)
-            throw new InvalidOperationException($"Element of type '{obj.GetType().Name}' has no on-screen position.");
+            throw Unsupported($"Element of type '{obj.GetType().Name}' has no on-screen position.");
         if (!element.IsVisible)
-            throw new InvalidOperationException("Element is not visible, so it cannot be pointed at.");
+            throw new PilotToolException(
+                PilotErrorCodes.NotFound,
+                "Element is not visible, so it cannot be pointed at.");
 
         var frameworkElement = obj as FrameworkElement;
         var width = frameworkElement?.ActualWidth ?? 0;

@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json;
 using UiPilot.Client;
 using UiPilot.Client.Process;
 using UiPilot.Tools;
@@ -8,6 +9,29 @@ namespace UiPilot.Tests;
 
 public class ConnectionManagerTests
 {
+    [Theory]
+    [InlineData("null")]
+    [InlineData("42")]
+    [InlineData("[1,2]")]
+    public void WrapWithSession_PreservesNonObjectResults(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+
+        var wrapped = ConnectionManager.WrapWithSession(document.RootElement, "sample");
+
+        Assert.Equal("sample", wrapped.GetProperty("session").GetString());
+        Assert.Equal(json, wrapped.GetProperty("result").GetRawText());
+    }
+
+    [Fact]
+    public void WrapWithSession_HandlesUndefinedResult()
+    {
+        var wrapped = ConnectionManager.WrapWithSession(default, "sample");
+
+        Assert.Equal("sample", wrapped.GetProperty("session").GetString());
+        Assert.Equal(JsonValueKind.Null, wrapped.GetProperty("result").ValueKind);
+    }
+
     [Fact]
     public async Task SendWithoutAttachment_DoesNotAutoAttach()
     {
@@ -112,12 +136,9 @@ public class ConnectionManagerTests
         Assert.Null(manager.StopApp());
     }
 
-    [Fact]
+    [WindowsFact]
     public async Task ListSessions_RemovesProcessClosedOutsideUiPilot()
     {
-        if (!OperatingSystem.IsWindows())
-            return;
-
         using var manager = new ConnectionManager();
         var command = Path.Combine(Environment.SystemDirectory, "cmd.exe");
         var started = await manager.StartProcessAsync(
@@ -222,30 +243,42 @@ public class AppLauncherTests
     /// child is gone the parent/child link is too, so <c>Kill(entireProcessTree)</c> cannot reach
     /// the survivors — the job object created at launch can.
     /// </summary>
-    [Fact]
+    [WindowsFact]
     public void KillTree_StopsDetachedGrandchildren()
     {
-        if (!OperatingSystem.IsWindows())
-            return;
-
-        var before = PingPids();
         var cmd = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+        var markerDir = Path.Combine(Path.GetTempPath(), "uipilot-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(markerDir);
+        var markerPid = Path.Combine(markerDir, "pid.txt");
 
-        // `start /b` detaches the ping, then cmd itself exits immediately.
+        // Record the grandchild PID in a private file — never scan machine-wide process lists.
         var parent = UiPilot.Client.Process.AppLauncher.StartProcess(
-            cmd, arguments: "/c start /b ping -n 120 127.0.0.1", showWindow: false);
+            cmd,
+            arguments: "/c start /b powershell -NoProfile -Command \"" +
+                       "$p = Start-Process -FilePath ping -ArgumentList '-n','120','127.0.0.1' -PassThru; " +
+                       "Set-Content -LiteralPath '" + markerPid.Replace("'", "''") + "' -Value $p.Id; " +
+                       "Start-Sleep -Seconds 90\"",
+            showWindow: false);
         try
         {
-            var grandchild = WaitFor(
-                () => PingPids().Except(before).Cast<int?>().FirstOrDefault(),
-                pid => pid is not null,
+            var pingPid = WaitFor(
+                () => File.Exists(markerPid) && int.TryParse(File.ReadAllText(markerPid).Trim(), out var id) ? id : (int?)null,
+                pid => pid is int,
                 TimeSpan.FromSeconds(20));
-            Assert.NotNull(grandchild);
+            Assert.NotNull(pingPid);
 
             UiPilot.Client.Process.AppLauncher.KillTree(parent);
 
             var stillAlive = WaitFor(
-                () => PingPids().Contains(grandchild!.Value),
+                () =>
+                {
+                    try
+                    {
+                        using var p = System.Diagnostics.Process.GetProcessById(pingPid!.Value);
+                        return !p.HasExited;
+                    }
+                    catch { return false; }
+                },
                 alive => !alive,
                 TimeSpan.FromSeconds(20));
             Assert.False(stillAlive, "the detached grandchild was still running after KillTree.");
@@ -254,6 +287,7 @@ public class AppLauncherTests
         {
             UiPilot.Client.Process.AppLauncher.KillTree(parent);
             parent.Dispose();
+            try { Directory.Delete(markerDir, recursive: true); } catch { /* ignore */ }
         }
     }
 
@@ -262,9 +296,6 @@ public class AppLauncherTests
     {
         UiPilot.Client.Process.AppLauncher.KillByPid(-1);
     }
-
-    private static HashSet<int> PingPids() =>
-        System.Diagnostics.Process.GetProcessesByName("PING").Select(p => p.Id).ToHashSet();
 
     private static T WaitFor<T>(Func<T> read, Func<T, bool> done, TimeSpan timeout)
     {

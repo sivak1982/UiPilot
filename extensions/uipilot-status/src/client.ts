@@ -1,7 +1,7 @@
 import * as http from "node:http";
 import WebSocket from "ws";
 import { BackoffOptions, backoffDelay, DEFAULT_BACKOFF } from "./backoff";
-import { UiPilotConfig } from "./config";
+import { UiPilotConfig, UiPilotConfigError } from "./config";
 import {
   applyStatusEvent,
   OperationDto,
@@ -57,7 +57,11 @@ export class UiPilotStatusClient {
       this.callbacks.log("Status refreshed over HTTP.");
     } catch (error) {
       const message = errorMessage(error);
-      this.callbacks.onState("error", message);
+      // A manual refresh is supplementary while the event stream is healthy. Do not replace a
+      // live connection indicator with an HTTP-only transient failure.
+      if (this.socket?.readyState !== WebSocket.OPEN) {
+        this.callbacks.onState("error", message);
+      }
       this.callbacks.log(`HTTP recovery failed: ${message}`);
       throw error;
     }
@@ -120,7 +124,9 @@ export class UiPilotStatusClient {
           this.markConnected(config);
         } catch (error) {
           this.callbacks.log(`Ignored invalid event: ${errorMessage(error)}`);
-          void this.recoverOverHttp(generation, config);
+          void this.recoverOverHttp(generation, config).then((recovered) => {
+            if (recovered && generation === this.generation) snapshot = recovered;
+          });
         }
       });
       socket.on("error", (error) => {
@@ -143,13 +149,20 @@ export class UiPilotStatusClient {
     this.callbacks.log(`Connected to ${config.httpBaseUrl}.`);
   }
 
-  private async recoverOverHttp(generation: number, config: UiPilotConfig): Promise<void> {
-    if (this.stopped || generation !== this.generation) return;
+  private async recoverOverHttp(
+    generation: number,
+    config: UiPilotConfig,
+  ): Promise<StatusDto | undefined> {
+    if (this.stopped || generation !== this.generation) return undefined;
     try {
-      this.callbacks.onStatus(await this.fetchStatus(config));
+      const snapshot = await this.fetchStatus(config);
+      if (this.stopped || generation !== this.generation) return undefined;
+      this.callbacks.onStatus(snapshot);
       this.callbacks.log("Recovered snapshot over HTTP.");
+      return snapshot;
     } catch (error) {
       this.callbacks.log(`HTTP recovery after invalid event failed: ${errorMessage(error)}`);
+      return undefined;
     }
   }
 
@@ -191,6 +204,10 @@ export class UiPilotStatusClient {
     const message = errorMessage(error);
     this.callbacks.onState("error", message);
     this.callbacks.log(`Connection failed: ${message}`);
+    if (error instanceof UiPilotConfigError) {
+      this.callbacks.log("Reconnect paused until UiPilot status settings change.");
+      return;
+    }
     this.scheduleReconnect(generation);
   }
 

@@ -32,6 +32,10 @@ try {
         command = "C:\UiPilot\UiPilot.Cli.exe"
         env = [pscustomobject]@{ UIPILOT_STATUS_TOKEN = $token }
     }) -Force
+    $legacy.mcpServers | Add-Member -MemberType NoteProperty -Name "uipilot-0.0.9.1" -Value ([pscustomobject]@{
+        command = "C:\OldUiPilot\UiPilot.Cli.exe"
+        env = [pscustomobject]@{ UIPILOT_STATUS_TOKEN = "stale" }
+    }) -Force
     Write-UiPilotJson -Path $mcpPath -Value $legacy
 
     Set-UiPilotMcpServer `
@@ -50,6 +54,9 @@ try {
     Assert-Equal "17831" $mcp.mcpServers."uipilot-0.1.0.42".env.UIPILOT_STATUS_PORT "MCP port mismatch."
     if ($null -ne $mcp.mcpServers.PSObject.Properties["uipilot"]) {
         throw "Registration must migrate the legacy unversioned MCP entry."
+    }
+    if ($null -ne $mcp.mcpServers.PSObject.Properties["uipilot-0.0.9.1"]) {
+        throw "Registration must remove stale versioned MCP entries from old install paths."
     }
 
     $mcp.mcpServers."uipilot-0.1.0.42".env | Add-Member -MemberType NoteProperty -Name "CUSTOM_ENV" -Value "keep-me" -Force
@@ -76,6 +83,21 @@ try {
 
     Assert-Equal 8 $script:UiPilotRequiredRuntimeMajor "Installed CLI must accept .NET 8 or later."
     Assert-Equal "8.0.400" $script:UiPilotRequiredSdkVersion.ToString() "Build SDK floor should be 8.0.400."
+
+    $packageTemplate = Get-Content -LiteralPath (Join-Path $PSScriptRoot "..\wix\Package.wxs") -Raw
+    if ($packageTemplate -notmatch 'Id="RollbackCursor"' -or
+        $packageTemplate -notmatch 'RegisterCursor" After="InstallFiles"') {
+        throw "MSI Cursor registration must run transactionally with a rollback action."
+    }
+    if ($packageTemplate -match 'RegisterCursor" After="InstallFinalize"') {
+        throw "MSI Cursor registration must not run after InstallFinalize."
+    }
+
+    $buildScript = Get-Content -LiteralPath (Join-Path $PSScriptRoot "..\build-installer.ps1") -Raw
+    if ($buildScript -match '& powershell\.exe' -or
+        $buildScript -notmatch 'ExternalAttributes') {
+        throw "Cross-platform installer builds must use the current shell and preserve executable ZIP modes."
+    }
 
     $cursorCommand = Get-UiPilotCursorCommand
     if ($null -ne (Get-Command cursor -ErrorAction SilentlyContinue) -and
@@ -144,7 +166,12 @@ try {
         throw "Uninstall must delete install-manifest.json so the install directory can be removed."
     }
     $settings = Read-UiPilotJson -Path $settingsPath
-    Assert-Equal $token $settings."uipilotStatus.token" "Uninstall must leave Cursor user settings alone."
+    Assert-Equal 15 $settings."editor.fontSize" "Uninstall changed an unrelated Cursor setting."
+    foreach ($name in @("uipilotStatus.host", "uipilotStatus.port", "uipilotStatus.token")) {
+        if ($null -ne $settings.PSObject.Properties[$name]) {
+            throw "Uninstall must remove extension setting '$name'."
+        }
+    }
 
     $packagesDirectory = Join-Path $root "packages"
     New-Item -ItemType Directory -Path $packagesDirectory -Force | Out-Null

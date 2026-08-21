@@ -17,35 +17,49 @@ namespace UiPilot.Interaction;
 public static class RealInput
 {
     /// <summary>Presses at <paramref name="from"/>, glides to <paramref name="to"/>, then releases.</summary>
-    public static void Drag(ScreenPoint from, ScreenPoint to, int steps, int stepDelayMs, int settleMs)
+    public static void Drag(
+        ScreenPoint from,
+        ScreenPoint to,
+        int steps,
+        int stepDelayMs,
+        int settleMs,
+        CancellationToken cancellationToken = default)
     {
 #if !NETFRAMEWORK
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             throw new PlatformNotSupportedException("Real mouse drag currently requires Windows (SendInput).");
 #endif
 
-        steps = Math.Max(2, steps);
-        stepDelayMs = Math.Max(1, stepDelayMs);
+        steps = Math.Clamp(steps, 2, 500);
+        stepDelayMs = Math.Clamp(stepDelayMs, 0, 1000);
+        settleMs = Math.Clamp(settleMs, 0, 10_000);
 
-        // Settle the pointer on the grab point before pressing, otherwise the app sees the press
-        // and the first move in the same tick and may miss its drag threshold.
+        cancellationToken.ThrowIfCancellationRequested();
         MoveTo(from);
-        Thread.Sleep(stepDelayMs * 2);
+        Wait(stepDelayMs * 2, cancellationToken);
         LeftDown();
-        Thread.Sleep(stepDelayMs * 2);
+        Wait(stepDelayMs * 2, cancellationToken);
 
         for (var step = 1; step <= steps; step++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var progress = (double)step / steps;
             MoveTo(new ScreenPoint(
                 from.X + (to.X - from.X) * progress,
                 from.Y + (to.Y - from.Y) * progress));
-            Thread.Sleep(stepDelayMs);
+            Wait(stepDelayMs, cancellationToken);
         }
 
-        Thread.Sleep(stepDelayMs * 2);
+        Wait(stepDelayMs * 2, cancellationToken);
         LeftUp();
-        Thread.Sleep(Math.Max(0, settleMs));
+        Wait(settleMs, cancellationToken);
+    }
+
+    private static void Wait(int milliseconds, CancellationToken cancellationToken)
+    {
+        if (milliseconds <= 0) return;
+        if (cancellationToken.WaitHandle.WaitOne(milliseconds))
+            cancellationToken.ThrowIfCancellationRequested();
     }
 
     public static void MoveTo(ScreenPoint screenPoint)

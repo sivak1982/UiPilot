@@ -25,18 +25,31 @@ $manifestPath = Get-UiPilotManifestPath -InstallDirectory $InstallDirectory
 
 if ($Action -eq "Unregister") {
     $commandPath = Get-UiPilotInstalledCommandPath -InstallDirectory $InstallDirectory
-    if ([string]::IsNullOrWhiteSpace($McpConfigPath) -and (Test-Path -LiteralPath $manifestPath)) {
+    $manifest = $null
+    if (Test-Path -LiteralPath $manifestPath) {
         $manifest = Read-UiPilotJson -Path $manifestPath
+    }
+    if ([string]::IsNullOrWhiteSpace($McpConfigPath) -and $null -ne $manifest) {
         $McpConfigPath = [string]$manifest.mcpConfigPath
+    }
+    if ([string]::IsNullOrWhiteSpace($CursorSettingsPath) -and $null -ne $manifest) {
+        $CursorSettingsPath = [string]$manifest.cursorSettingsPath
     }
     if ([string]::IsNullOrWhiteSpace($McpConfigPath)) {
         $McpConfigPath = Join-Path $HOME ".cursor\mcp.json"
     }
 
+    $statusToken = Get-UiPilotStatusToken -ConfigPath $McpConfigPath
     $removed = Remove-UiPilotMcpServer -ConfigPath $McpConfigPath -InstalledCommandPath $commandPath
     if ($removed) {
         Write-Host "Removed UiPilot from Cursor's MCP configuration."
     }
+    if (-not [string]::IsNullOrWhiteSpace($CursorSettingsPath)) {
+        Remove-UiPilotExtensionSettings `
+            -SettingsPath $CursorSettingsPath `
+            -ExpectedToken $statusToken | Out-Null
+    }
+    Uninstall-UiPilotCursorExtension | Out-Null
 
     Unregister-UiPilotNugetSource -PackagesDirectory (Get-UiPilotPackagesDirectory -InstallDirectory $InstallDirectory) | Out-Null
     Uninstall-UiPilotCursorSkill | Out-Null

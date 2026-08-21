@@ -11,6 +11,8 @@
 
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol" />
+    <InternalsVisibleTo Include="UiPilot.Cli" />
+    <InternalsVisibleTo Include="UiPilot.Tests" />
   </ItemGroup>
 
   <ItemGroup>

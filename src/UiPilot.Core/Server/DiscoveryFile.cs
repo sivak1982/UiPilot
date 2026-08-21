@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -22,6 +23,8 @@ public sealed class DiscoveryInfo
 
     /// <summary>UI stack hosting the in-process tools (<c>wpf</c>, <c>avalonia</c>, …).</summary>
     [JsonPropertyName("uiFramework")] public string? UiFramework { get; set; }
+    /// <summary>Optional backend features that callers can check before invoking a tool.</summary>
+    [JsonPropertyName("capabilities")] public IReadOnlyList<string> Capabilities { get; set; } = Array.Empty<string>();
 }
 
 internal static class DiscoveryFile
@@ -39,9 +42,36 @@ internal static class DiscoveryFile
         var dir = string.IsNullOrEmpty(directory) ? DefaultDirectory : directory!;
         Directory.CreateDirectory(dir);
         var path = Path.Combine(dir, info.Pid + ".json");
+        var temporaryPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         var json = JsonSerializer.Serialize(info, JsonOptions);
-        File.WriteAllText(path, json, new UTF8Encoding(false));
-        return path;
+        try
+        {
+            File.WriteAllText(temporaryPath, json, new UTF8Encoding(false));
+            File.Move(temporaryPath, path, overwrite: true);
+            return path;
+        }
+        finally
+        {
+            try { File.Delete(temporaryPath); } catch { /* best-effort temp cleanup */ }
+        }
+    }
+
+    public static FileStream? TryAcquireProcessLock(int pid, string? directory)
+    {
+        var dir = string.IsNullOrEmpty(directory) ? DefaultDirectory : directory!;
+        Directory.CreateDirectory(dir);
+        try
+        {
+            return new FileStream(
+                Path.Combine(dir, pid + ".lock"),
+                FileMode.OpenOrCreate,
+                FileAccess.ReadWrite,
+                FileShare.None);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
     }
 
     public static void Delete(string path)

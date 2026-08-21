@@ -277,24 +277,38 @@ public static class VisualTreeQuery
 
     private static void FillBounds(DependencyObject obj, ElementInfo info)
     {
-        if (obj is FrameworkElement fe)
-        {
-            info.Width = fe.ActualWidth;
-            info.Height = fe.ActualHeight;
-        }
-
         if (obj is Visual visual && obj is UIElement uiElement && uiElement.IsVisible)
         {
             try
             {
+                double width = 0, height = 0;
+                if (obj is FrameworkElement fe)
+                {
+                    width = fe.ActualWidth;
+                    height = fe.ActualHeight;
+                }
+
+                // PointToScreen returns physical pixels; convert size the same way so X/Y/W/H share one unit.
                 var origin = visual.PointToScreen(new Point(0, 0));
+                var corner = visual.PointToScreen(new Point(width, height));
                 info.X = origin.X;
                 info.Y = origin.Y;
+                info.Width = Math.Abs(corner.X - origin.X);
+                info.Height = Math.Abs(corner.Y - origin.Y);
             }
             catch
             {
-                // PointToScreen throws when the element is not connected to a presentation source.
+                if (obj is FrameworkElement fe)
+                {
+                    info.Width = fe.ActualWidth;
+                    info.Height = fe.ActualHeight;
+                }
             }
+        }
+        else if (obj is FrameworkElement fe)
+        {
+            info.Width = fe.ActualWidth;
+            info.Height = fe.ActualHeight;
         }
     }
 

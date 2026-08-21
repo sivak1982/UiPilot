@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls;
@@ -98,7 +99,8 @@ internal static class Layout
         try
         {
             var origin = control.PointToScreen(new Point(0, 0));
-            return new Rect(origin.X, origin.Y, control.Bounds.Width, control.Bounds.Height);
+            var corner = control.PointToScreen(new Point(control.Bounds.Width, control.Bounds.Height));
+            return new Rect(origin.X, origin.Y, Math.Abs(corner.X - origin.X), Math.Abs(corner.Y - origin.Y));
         }
         catch
         {

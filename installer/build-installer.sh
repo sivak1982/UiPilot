@@ -21,12 +21,21 @@ uipilot_assert_build_sdk
 VERSION="$(python3 - <<PY
 import xml.etree.ElementTree as ET
 root = ET.parse("$REPO_ROOT/Directory.Build.props").getroot()
-print(next(node.text for node in root.iter() if node.tag.endswith("Version") and node.text))
+# Local name must be exactly Version (not LangVersion / PackageVersion / etc.).
+print(next(
+    node.text for node in root.iter()
+    if node.tag.rsplit("}", 1)[-1] == "Version" and node.text and node.text.strip()
+))
 PY
 )"
 BUILD_NUMBER="${BUILD_NUMBER:-${BUILD_BUILDID:-${GITHUB_RUN_NUMBER:-0}}}"
 [[ "$BUILD_NUMBER" =~ ^[0-9]+$ ]] || uipilot_die "build number must be a non-negative integer"
 FULL_VERSION="$VERSION.$BUILD_NUMBER"
+# NuGet normalizes a trailing zero revision (0.1.0.0 -> 0.1.0) in package identities.
+PACKAGE_VERSION="$FULL_VERSION"
+if [[ "$BUILD_NUMBER" == "0" ]]; then
+  PACKAGE_VERSION="$VERSION"
+fi
 OUT_DIR="${OUTPUT_DIRECTORY:-$REPO_ROOT/artifacts/installer}"
 BUNDLE_NAME="UiPilot-$FULL_VERSION-$RID"
 BUNDLE_ROOT="$OUT_DIR/$BUNDLE_NAME"
@@ -70,8 +79,8 @@ for project in UiPilot.Core UiPilot.Client; do
     --configuration "$CONFIGURATION" \
     --output "$PACKAGES" \
     -p:BuildNumber="$BUILD_NUMBER" \
-    -p:Version="$FULL_VERSION" \
-    -p:PackageVersion="$FULL_VERSION" \
+    -p:Version="$PACKAGE_VERSION" \
+    -p:PackageVersion="$PACKAGE_VERSION" \
     --nologo
 done
 mkdir -p "$PAYLOAD/skills/uipilot-csharp-tests"
@@ -86,8 +95,8 @@ required=(
   "$PAYLOAD/version.txt"
   "$PAYLOAD/hooks/UiPilot.StartupHook.dll"
   "$PAYLOAD/hooks/avalonia/UiPilot.Avalonia.dll"
-  "$PACKAGES/UiPilot.Client.$FULL_VERSION.nupkg"
-  "$PACKAGES/UiPilot.Core.$FULL_VERSION.nupkg"
+  "$PACKAGES/UiPilot.Client.$PACKAGE_VERSION.nupkg"
+  "$PACKAGES/UiPilot.Core.$PACKAGE_VERSION.nupkg"
   "$PAYLOAD/skills/uipilot-csharp-tests/SKILL.md"
   "$VSIX"
 )

@@ -23,6 +23,7 @@ public static class PilotHost
     private static readonly object Gate = new object();
     private static readonly PilotRuntime Runtime = new PilotRuntime();
     private static bool _hooksAttached;
+    private static bool _starting;
 
     /// <summary>True once the automation surface is live.</summary>
     public static bool IsRunning => Runtime.IsRunning;
@@ -42,9 +43,14 @@ public static class PilotHost
         options ??= new WpfOptions();
         lock (Gate)
         {
-            if (Runtime.IsRunning)
+            if (Runtime.IsRunning || _starting)
                 return;
+            _starting = true;
+        }
 
+        WpfUiBackend? backend = null;
+        try
+        {
             var app = Application.Current;
             if (app == null)
             {
@@ -53,7 +59,7 @@ public static class PilotHost
             }
 
             var dispatcher = app.Dispatcher;
-            var backend = new WpfUiBackend();
+            backend = new WpfUiBackend();
             dispatcher.Invoke(() => backend.Install());
 
             Func<Func<object?>, object?> invoke = func => dispatcher.Invoke(func);
@@ -69,18 +75,32 @@ public static class PilotHost
             if (!started)
             {
                 try { backend.Shutdown(); } catch { /* ignore */ }
+                backend = null;
                 return;
             }
 
-            if (!_hooksAttached)
+            lock (Gate)
             {
-                _hooksAttached = true;
-                AppDomain.CurrentDomain.ProcessExit += (_, _) => Stop();
-                dispatcher.ShutdownStarted += (_, _) => Stop();
+                if (!_hooksAttached)
+                {
+                    _hooksAttached = true;
+                    AppDomain.CurrentDomain.ProcessExit += (_, _) => Stop();
+                    dispatcher.ShutdownStarted += (_, _) => Stop();
+                }
             }
 
             if (PilotRuntime.ResolveStartMinimized(pilotOptions))
                 ScheduleMinimize(app, dispatcher);
+        }
+        catch
+        {
+            if (!Runtime.IsRunning)
+                try { backend?.Shutdown(); } catch { /* ignore */ }
+            throw;
+        }
+        finally
+        {
+            lock (Gate) _starting = false;
         }
     }
 

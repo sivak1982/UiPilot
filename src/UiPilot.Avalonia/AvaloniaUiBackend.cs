@@ -11,7 +11,7 @@ using UiPilot.Media;
 namespace UiPilot.Avalonia;
 
 /// <summary>Avalonia implementation of the shared <see cref="IUiBackend"/> contract.</summary>
-internal sealed class AvaloniaUiBackend : IUiBackend
+internal sealed class AvaloniaUiBackend : IUiBackend, ICommandUiBackend, IBindingDiagnosticsUiBackend
 {
     private readonly BindingDiagnostics _bindings = new BindingDiagnostics();
 
@@ -81,9 +81,7 @@ internal sealed class AvaloniaUiBackend : IUiBackend
         return WindowOps.Foreground(window);
     }
 
-    public IReadOnlyList<string> GetBindingErrors() => _bindings.Snapshot();
-
-    public void ClearBindingErrors() => _bindings.Clear();
+    public IReadOnlyList<string> GetBindingErrors(bool clear) => _bindings.Snapshot(clear);
 
     public IReadOnlyList<LayoutIssue> AnalyzeLayout(string? rootId) =>
         Layout.Analyze(Elements, rootId);
@@ -100,8 +98,9 @@ internal sealed class AvaloniaUiBackend : IUiBackend
             throw new InvalidOperationException("Element is not visible, so it cannot be pointed at.");
 
         var bounds = control.Bounds;
-        var topLeft = control.PointToScreen(new Point(0, 0));
-        return new ScreenPoint(topLeft.X + bounds.Width / 2, topLeft.Y + bounds.Height / 2);
+        // PointToScreen converts DIP -> physical; pass the centre in DIP so both axes share one unit system.
+        var centre = control.PointToScreen(new Point(bounds.Width / 2, bounds.Height / 2));
+        return new ScreenPoint(centre.X, centre.Y);
     }
 
     public void PrepareForRealInput(string? elementId)

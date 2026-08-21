@@ -27,10 +27,26 @@ public static class AppLauncher
         if (exit != 0)
             throw new InvalidOperationException($"Build failed (exit {exit}).\n{stdout}\n{stderr}");
 
-        var targetPath = stdout.Trim().Split('\n', StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim();
+        var targetPath = ResolveTargetPath(stdout);
         if (string.IsNullOrEmpty(targetPath) || !File.Exists(targetPath))
             throw new InvalidOperationException($"Could not resolve build output (TargetPath='{targetPath}').\n{stdout}");
         return targetPath!;
+    }
+
+    private static string? ResolveTargetPath(string stdout)
+    {
+        // Prefer an existing file path from --getProperty:TargetPath (multi-TFM can emit several).
+        string? fallback = null;
+        foreach (var raw in stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var line = raw.Trim().Trim('"');
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            if (File.Exists(line))
+                return line;
+            if (line.Contains(Path.DirectorySeparatorChar) || line.Contains(Path.AltDirectorySeparatorChar))
+                fallback = line;
+        }
+        return fallback;
     }
 
     /// <summary>
@@ -143,11 +159,40 @@ public static class AppLauncher
 
         // Track descendants from the moment the process starts, so stopping the session also stops
         // whatever it spawns (service hosts, helper processes) even after it has exited itself.
-        var job = ProcessJob.TryCreateFor(process, $"uipilot-{process.Id}");
+        var job = ProcessJob.TryCreateFor(process);
         if (job != null)
-            Jobs[process.Id] = job;
+        {
+            var pid = process.Id;
+            Jobs[pid] = job;
+            try
+            {
+                process.EnableRaisingEvents = true;
+                process.Exited += (_, _) => _ = ReapJobWhenEmptyAsync(pid, job);
+            }
+            catch
+            {
+                // EnableRaisingEvents can fail for some process types; keep the job until KillTree.
+            }
+        }
 
         return process;
+    }
+
+    private static async Task ReapJobWhenEmptyAsync(int pid, ProcessJob job)
+    {
+        // The direct child may be a short-lived supervisor while descendants keep running.
+        // Keep the job handle until its last process exits; then release it without waiting for
+        // an explicit stop command.
+        while (Jobs.TryGetValue(pid, out var current) && ReferenceEquals(current, job))
+        {
+            if (!job.HasActiveProcesses())
+            {
+                if (Jobs.TryRemove(pid, out var finished))
+                    finished.Dispose();
+                return;
+            }
+            await Task.Delay(1000).ConfigureAwait(false);
+        }
     }
 
     /// <summary>Minimal argument splitter for optional <c>dotnet dll …</c> extras; keeps quoted spans intact.</summary>
@@ -202,7 +247,20 @@ public static class AppLauncher
         process.Start();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
-        await process.WaitForExitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await process.WaitForExitAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            try
+            {
+                if (!process.HasExited)
+                    process.Kill(entireProcessTree: true);
+            }
+            catch { /* ignore */ }
+            throw;
+        }
         return (process.ExitCode, stdout.ToString(), stderr.ToString());
     }
 

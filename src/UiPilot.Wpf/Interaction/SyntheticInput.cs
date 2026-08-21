@@ -9,6 +9,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using UiPilot.Tools;
 using UiPilot.Inspection;
 using UiPilot.Media;
@@ -176,12 +177,12 @@ public static class SyntheticInput
         if (obj is not UIElement element)
             throw new PilotToolException(PilotErrorCodes.InvalidArgs, "Target is not a UIElement.");
 
-        var delta = WheelDelta(dy);
-        if (delta == 0 && Math.Abs(dx) > 0)
-            delta = WheelDelta(dx);
-        if (delta == 0)
+        var vertical = WheelDelta(dy);
+        var horizontal = WheelDelta(dx);
+        if (vertical == 0 && horizontal == 0)
             return "synthetic:scroll";
 
+        var delta = vertical != 0 ? vertical : horizontal;
         RaiseMouseWheel(element, UIElement.PreviewMouseWheelEvent, delta);
         RaiseMouseWheel(element, UIElement.MouseWheelEvent, delta);
         return "synthetic:scroll";
@@ -258,6 +259,12 @@ public static class SyntheticInput
 
         RaiseKey(element, key, UIElement.PreviewKeyDownEvent);
         RaiseKey(element, key, Keyboard.KeyDownEvent);
+
+        // Synthetic KeyEventArgs do not update Keyboard.Modifiers, so InputBindings that key off
+        // Ctrl/Alt/Shift would otherwise silently no-op. Execute matching bindings explicitly.
+        if (modifiers != ModifierKeys.None)
+            TryExecuteInputBindings(element, key, modifiers);
+
         RaiseKey(element, key, UIElement.PreviewKeyUpEvent);
         RaiseKey(element, key, Keyboard.KeyUpEvent);
 
@@ -265,6 +272,49 @@ public static class SyntheticInput
             RaiseKey(element, modifierKeys[i], UIElement.PreviewKeyUpEvent);
         for (var i = modifierKeys.Count - 1; i >= 0; i--)
             RaiseKey(element, modifierKeys[i], Keyboard.KeyUpEvent);
+    }
+
+    private static void TryExecuteInputBindings(DependencyObject start, Key key, ModifierKeys modifiers)
+    {
+        for (var current = start; current != null; )
+        {
+            if (current is UIElement uie)
+            {
+                foreach (InputBinding binding in uie.InputBindings)
+                {
+                    if (binding is KeyBinding kb &&
+                        kb.Key == key &&
+                        kb.Modifiers == modifiers &&
+                        kb.Command != null &&
+                        kb.Command.CanExecute(kb.CommandParameter))
+                    {
+                        kb.Command.Execute(kb.CommandParameter);
+                        return;
+                    }
+                }
+            }
+
+            var parent = VisualTreeHelper.GetParent(current) ?? LogicalTreeHelper.GetParent(current);
+            if (parent == null && current is FrameworkElement fe)
+                parent = fe.Parent;
+            current = parent;
+        }
+
+        if (Application.Current?.MainWindow is UIElement window && !ReferenceEquals(window, start))
+        {
+            foreach (InputBinding binding in window.InputBindings)
+            {
+                if (binding is KeyBinding kb &&
+                    kb.Key == key &&
+                    kb.Modifiers == modifiers &&
+                    kb.Command != null &&
+                    kb.Command.CanExecute(kb.CommandParameter))
+                {
+                    kb.Command.Execute(kb.CommandParameter);
+                    return;
+                }
+            }
+        }
     }
 
     private static void RaiseKey(UIElement element, Key key, RoutedEvent routedEvent)
@@ -291,11 +341,11 @@ public static class SyntheticInput
         element.RaiseEvent(args);
     }
 
-    private static int WheelDelta(double value)
+    private static int WheelDelta(double lines)
     {
-        if (value == 0) return 0;
-        if (Math.Abs(value) < 1) return Math.Sign(value) * 120;
-        return (int)Math.Round(value, MidpointRounding.AwayFromZero);
+        if (lines == 0) return 0;
+        // Contract: dx/dy are scroll lines; one line = one mouse-wheel notch (WHEEL_DELTA = 120).
+        return (int)Math.Round(lines * 120, MidpointRounding.AwayFromZero);
     }
 
     private static string SelectFromSelector(Selector selector, string? text, int? index)

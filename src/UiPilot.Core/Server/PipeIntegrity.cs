@@ -16,8 +16,9 @@ namespace UiPilot.Server;
 /// </summary>
 internal static class PipeIntegrity
 {
-    // Authenticated Users + Administrators get full access (DACL); Low integrity label (SACL).
-    private const string Sddl = "D:(A;;FA;;;AU)(A;;FA;;;BA)S:(ML;;NW;;;LW)";
+    // Interactive user + Administrators (not all Authenticated Users) get full access;
+    // Low integrity label still allows a Medium-IL agent to connect to an elevated app.
+    private const string Sddl = "D:(A;;FA;;;IU)(A;;FA;;;BA)S:(ML;;NW;;;LW)";
 
     private const uint PIPE_ACCESS_DUPLEX = 0x00000003;
     private const uint FILE_FLAG_OVERLAPPED = 0x40000000;

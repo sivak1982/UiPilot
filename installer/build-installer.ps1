@@ -38,6 +38,8 @@ if ([string]::IsNullOrWhiteSpace($version)) {
     throw "Could not read UiPilot's version from Directory.Build.props."
 }
 $fullVersion = "$version.$BuildNumber"
+# NuGet normalizes a trailing zero revision (0.1.0.0 -> 0.1.0) in package identities.
+$packageVersion = if ($BuildNumber -eq 0) { $version } else { $fullVersion }
 
 $bundleName = "UiPilot-$fullVersion-$RuntimeIdentifier"
 # Windows uses this only as MSI staging; Linux ships it as the ZIP bundle.
@@ -93,11 +95,8 @@ if (-not $SkipTests) {
         throw "UiPilot tests failed."
     }
 
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass `
-        -File (Join-Path $PSScriptRoot "tests\Installer.Common.Tests.ps1")
-    if ($LASTEXITCODE -ne 0) {
-        throw "UiPilot installer tests failed."
-    }
+    # Run in the current PowerShell host so Linux builds do not depend on powershell.exe.
+    & (Join-Path $PSScriptRoot "tests\Installer.Common.Tests.ps1")
 }
 
 & dotnet publish (Join-Path $repoRoot "src\UiPilot.Cli\UiPilot.Cli.csproj") `
@@ -124,8 +123,8 @@ foreach ($projectName in @("UiPilot.Core", "UiPilot.Client")) {
         --configuration $Configuration `
         --output $packagesDirectory `
         -p:BuildNumber=$BuildNumber `
-        -p:Version=$fullVersion `
-        -p:PackageVersion=$fullVersion `
+        -p:Version=$packageVersion `
+        -p:PackageVersion=$packageVersion `
         --nologo
     if ($LASTEXITCODE -ne 0) {
         throw "$projectName pack failed."
@@ -153,8 +152,8 @@ $requiredFiles = @(
     (Join-Path $payloadDirectory "UiPilot.Cli.dll"),
     (Join-Path $payloadDirectory "hooks\UiPilot.StartupHook.dll"),
     (Join-Path $payloadDirectory "hooks\avalonia\UiPilot.Avalonia.dll"),
-    (Join-Path $payloadDirectory "packages\UiPilot.Client.$fullVersion.nupkg"),
-    (Join-Path $payloadDirectory "packages\UiPilot.Core.$fullVersion.nupkg"),
+    (Join-Path $payloadDirectory "packages\UiPilot.Client.$packageVersion.nupkg"),
+    (Join-Path $payloadDirectory "packages\UiPilot.Core.$packageVersion.nupkg"),
     (Join-Path $payloadDirectory "skills\uipilot-csharp-tests\SKILL.md"),
     $extensionVsix
 )
@@ -234,6 +233,24 @@ else {
         Remove-Item -LiteralPath $archivePath -Force
     }
     Compress-Archive -Path (Join-Path $bundleRoot "*") -DestinationPath $archivePath -CompressionLevel Optimal
+
+    # Compress-Archive defaults entries to non-executable DOS attributes. Mark Linux launchers
+    # and shell scripts as regular 0755 files so extraction preserves a runnable bundle.
+    $executableAttributes = [BitConverter]::ToInt32(
+        [BitConverter]::GetBytes([uint32]0x81ED0000), 0)
+    $archive = [IO.Compression.ZipFile]::Open(
+        $archivePath, [IO.Compression.ZipArchiveMode]::Update)
+    try {
+        foreach ($entry in $archive.Entries) {
+            if ($entry.FullName.EndsWith(".sh", [StringComparison]::OrdinalIgnoreCase) -or
+                $entry.FullName -eq "payload/UiPilot.Cli") {
+                $entry.ExternalAttributes = $executableAttributes
+            }
+        }
+    }
+    finally {
+        $archive.Dispose()
+    }
 
     Write-Host ""
     Write-Host "Linux installer bundle: $archivePath" -ForegroundColor Green

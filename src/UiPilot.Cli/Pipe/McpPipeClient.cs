@@ -15,7 +15,7 @@ public sealed class McpPipeClient : IDisposable
     private readonly NamedPipeClientStream _stream;
     private readonly McpClient _client;
     private readonly SemaphoreSlim _lock = new(1, 1);
-    private bool _disposed;
+    private int _disposed;
 
     private McpPipeClient(NamedPipeClientStream stream, McpClient client)
     {
@@ -29,14 +29,19 @@ public sealed class McpPipeClient : IDisposable
         int timeoutMs = 5000,
         CancellationToken ct = default)
     {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(Math.Max(1, timeoutMs));
+        var linked = timeoutCts.Token;
+
         var stream = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-        await stream.ConnectAsync(timeoutMs, ct).ConfigureAwait(false);
         try
         {
-            await PipeSessionAuth.WriteClientAsync(stream, token, ct).ConfigureAwait(false);
+            // timeoutMs covers connect + auth + MCP initialize, not connect alone.
+            await stream.ConnectAsync(linked).ConfigureAwait(false);
+            await PipeSessionAuth.WriteClientAsync(stream, token, linked).ConfigureAwait(false);
             var client = await McpClient.CreateAsync(
                 new StreamClientTransport(stream, stream),
-                cancellationToken: ct).ConfigureAwait(false);
+                cancellationToken: linked).ConfigureAwait(false);
             return new McpPipeClient(stream, client);
         }
         catch
@@ -46,7 +51,7 @@ public sealed class McpPipeClient : IDisposable
         }
     }
 
-    public bool IsConnected => !_disposed && _stream.IsConnected;
+    public bool IsConnected => Volatile.Read(ref _disposed) == 0 && _stream.IsConnected;
 
     /// <summary>
     /// Invoke an in-app tool (or control method mapped by <see cref="ConnectionManager"/>).
@@ -54,6 +59,7 @@ public sealed class McpPipeClient : IDisposable
     /// </summary>
     public async Task<JsonElement> CallToolAsync(string name, object? args, CancellationToken ct = default)
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         await _lock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -69,6 +75,7 @@ public sealed class McpPipeClient : IDisposable
 
     public async Task<JsonElement> ListToolsAsync(CancellationToken ct = default)
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         await _lock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -86,6 +93,7 @@ public sealed class McpPipeClient : IDisposable
 
     public async Task PingAsync(CancellationToken ct = default)
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         await _lock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -172,11 +180,17 @@ public sealed class McpPipeClient : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        try { _client.DisposeAsync().AsTask().GetAwaiter().GetResult(); } catch { /* ignore */ }
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        // Closing the transport synchronously unblocks active calls. MCP teardown may perform
+        // asynchronous protocol work, so never wait for it while ConnectionManager holds its gate.
         try { _stream.Dispose(); } catch { /* ignore */ }
-        _lock.Dispose();
+        _ = DisposeClientAsync();
+    }
+
+    private async Task DisposeClientAsync()
+    {
+        try { await _client.DisposeAsync().ConfigureAwait(false); }
+        catch { /* disposal is best-effort after the transport closes */ }
     }
 }
 

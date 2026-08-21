@@ -4,7 +4,6 @@ using System.Text.Json.Serialization;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using UiPilot.Client;
-using UiPilot.Client.Pipe;
 using UiPilot.Cli.Status;
 using UiPilot.Tools;
 
@@ -40,7 +39,16 @@ public sealed class LifecycleTools
         return _telemetry.Run("list_apps", "lifecycle", null, () =>
         {
             var apps = _connection.ListAlive()
-                .Select(a => new { a.Pid, a.ProcessName, a.MainWindowTitle, a.ProtocolVersion, a.StartedUtc, a.UiFramework })
+                .Select(a => new
+                {
+                    a.Pid,
+                    a.ProcessName,
+                    a.MainWindowTitle,
+                    a.ProtocolVersion,
+                    a.StartedUtc,
+                    a.UiFramework,
+                    a.Capabilities,
+                })
                 .ToList();
             return Ok(JsonSerializer.Serialize(new { count = apps.Count, apps }, Json));
         });
@@ -74,7 +82,7 @@ public sealed class LifecycleTools
                 var info = _connection.SelectSession(session);
                 return Ok(JsonSerializer.Serialize(new { selected = true, session = info }, Json));
             }
-            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            catch (Exception ex) when (ToolErrorResult.TryCreate(ex, out var error))
             {
                 return error;
             }
@@ -97,7 +105,7 @@ public sealed class LifecycleTools
                 var info = await _connection.AttachAsync(pid, processName, uiFramework, session, ct).ConfigureAwait(false);
                 return Ok(JsonSerializer.Serialize(new { attached = true, session = info }, Json));
             }
-            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            catch (Exception ex) when (ToolErrorResult.TryCreate(ex, out var error))
             {
                 return error;
             }
@@ -121,7 +129,7 @@ public sealed class LifecycleTools
                 var info = await _connection.BuildAndStartAsync(project, configuration, platform, session, foreground, ct).ConfigureAwait(false);
                 return Ok(JsonSerializer.Serialize(new { started = true, session = info }, Json));
             }
-            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            catch (Exception ex) when (ToolErrorResult.TryCreate(ex, out var error))
             {
                 return error;
             }
@@ -146,7 +154,7 @@ public sealed class LifecycleTools
                 var info = await _connection.StartAppAsync(path, session, workingDirectory, useStartupHook, uiFramework, foreground, ct).ConfigureAwait(false);
                 return Ok(JsonSerializer.Serialize(new { started = true, session = info }, Json));
             }
-            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            catch (Exception ex) when (ToolErrorResult.TryCreate(ex, out var error))
             {
                 return error;
             }
@@ -170,7 +178,7 @@ public sealed class LifecycleTools
                 var info = await _connection.StartProcessAsync(path, session, workingDirectory, arguments, showWindow, ct).ConfigureAwait(false);
                 return Ok(JsonSerializer.Serialize(new { started = true, session = info }, Json));
             }
-            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            catch (Exception ex) when (ToolErrorResult.TryCreate(ex, out var error))
             {
                 return error;
             }
@@ -202,7 +210,7 @@ public sealed class LifecycleTools
                     elapsedMs = result.ElapsedMs,
                 }, Json));
             }
-            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            catch (Exception ex) when (ToolErrorResult.TryCreate(ex, out var error))
             {
                 return error;
             }
@@ -222,7 +230,7 @@ public sealed class LifecycleTools
                 var info = await _connection.RestartAsync(session, ct).ConfigureAwait(false);
                 return Ok(JsonSerializer.Serialize(new { restarted = true, session = info }, Json));
             }
-            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            catch (Exception ex) when (ToolErrorResult.TryCreate(ex, out var error))
             {
                 return error;
             }
@@ -245,7 +253,7 @@ public sealed class LifecycleTools
                 var info = _connection.Detach(session);
                 return Ok(JsonSerializer.Serialize(new { detached = true, session = info }, Json));
             }
-            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            catch (Exception ex) when (ToolErrorResult.TryCreate(ex, out var error))
             {
                 return error;
             }
@@ -267,7 +275,7 @@ public sealed class LifecycleTools
                 var info = _connection.StopApp(session);
                 return Ok(JsonSerializer.Serialize(new { stopped = true, session = info }, Json));
             }
-            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            catch (Exception ex) when (ToolErrorResult.TryCreate(ex, out var error))
             {
                 return error;
             }
@@ -285,49 +293,11 @@ public sealed class LifecycleTools
                 var sessions = _connection.StopAll();
                 return Ok(JsonSerializer.Serialize(new { stopped = true, count = sessions.Count, sessions }, Json));
             }
-            catch (Exception ex) when (TryCreateErrorResult(ex, out var error))
+            catch (Exception ex) when (ToolErrorResult.TryCreate(ex, out var error))
             {
                 return error;
             }
         });
-    }
-
-    private static bool TrySerializeToolError(Exception ex, out string json)
-    {
-        switch (ex)
-        {
-            case PilotCliException cli:
-                json = ErrorJson(cli.Code, cli.Message, cli.Hint);
-                return true;
-            case PipeRpcException pipe:
-                json = ErrorJson(pipe.Code ?? $"rpc_{pipe.RpcCode}", pipe.Message, pipe.Hint);
-                return true;
-            case TimeoutException timeout:
-                json = ErrorJson(PilotErrorCodes.Timeout, timeout.Message);
-                return true;
-            default:
-                json = "";
-                return false;
-        }
-    }
-
-    private static bool TryCreateErrorResult(Exception ex, out CallToolResult result)
-    {
-        if (!TrySerializeToolError(ex, out var json))
-        {
-            result = new CallToolResult();
-            return false;
-        }
-
-        result = new CallToolResult
-        {
-            IsError = true,
-            Content = new List<ContentBlock>
-            {
-                new TextContentBlock { Text = json },
-            },
-        };
-        return true;
     }
 
     private static CallToolResult Ok(string text) => new()

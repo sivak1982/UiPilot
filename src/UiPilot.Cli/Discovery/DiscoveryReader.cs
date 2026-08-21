@@ -1,9 +1,10 @@
+using System.Globalization;
 using System.Text.Json;
 using UiPilot.Server;
 
 namespace UiPilot.Client.Discovery;
 
-/// <summary>Reads discovery files and filters out entries whose process is gone.</summary>
+/// <summary>Reads discovery files and filters out entries whose process is gone or stale.</summary>
 public sealed class DiscoveryReader
 {
     public string Directory { get; }
@@ -24,7 +25,7 @@ public sealed class DiscoveryReader
         {
             var info = TryRead(file);
             if (info == null) continue;
-            if (!IsAlive(info.Pid))
+            if (!IsAlive(info.Pid) || !IsTrusted(info))
             {
                 TryDelete(file);
                 continue;
@@ -54,12 +55,29 @@ public sealed class DiscoveryReader
         }
     }
 
+    /// <summary>
+    /// Require a live PID plus a usable pipe/token and a parseable StartedUtc so recycled PIDs
+    /// with leftover discovery files are less likely to be trusted blindly.
+    /// </summary>
+    private static bool IsTrusted(DiscoveryInfo info)
+    {
+        if (info.Pid <= 0) return false;
+        if (string.IsNullOrWhiteSpace(info.PipeName)) return false;
+        if (string.IsNullOrWhiteSpace(info.Token)) return false;
+        if (string.IsNullOrWhiteSpace(info.StartedUtc)) return false;
+        return DateTime.TryParse(
+            info.StartedUtc,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.RoundtripKind,
+            out _);
+    }
+
     private static bool IsAlive(int pid)
     {
         try
         {
-            using var _ = System.Diagnostics.Process.GetProcessById(pid);
-            return true;
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            return !process.HasExited;
         }
         catch
         {

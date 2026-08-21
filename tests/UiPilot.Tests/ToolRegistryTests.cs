@@ -61,6 +61,21 @@ public class ToolRegistryTests
     }
 
     [Fact]
+    public void GetBindingErrors_PassesAtomicClearRequestToBackend()
+    {
+        var backend = new BindingBackend();
+        var registry = new ToolRegistry(TestSupport.CreateContext(backend));
+        BuiltInTools.RegisterAll(registry);
+
+        var result = registry.Invoke(
+            ToolCatalog.GetBindingErrors, TestSupport.Json("""{"clear":true}"""));
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(result));
+
+        Assert.True(backend.LastClear);
+        Assert.Equal(1, json.RootElement.GetProperty("count").GetInt32());
+    }
+
+    [Fact]
     public void WaitForElement_TimesOutWhenNoMatchAppears()
     {
         var registry = new ToolRegistry(TestSupport.CreateContext());
@@ -78,13 +93,14 @@ public class ToolRegistryTests
     {
         using var cts = new CancellationTokenSource();
         cts.Cancel();
-        var context = TestSupport.CreateContext();
-        context.CancellationToken = cts.Token;
-        var registry = new ToolRegistry(context);
+        var registry = new ToolRegistry(TestSupport.CreateContext());
         BuiltInTools.RegisterAll(registry);
 
         var ex = Assert.Throws<PilotToolException>(() =>
-            registry.Invoke(ToolCatalog.WaitForElement, TestSupport.Json("""{"query":"missing","timeoutMs":10000,"pollMs":10000}""")));
+            registry.Invoke(
+                ToolCatalog.WaitForElement,
+                TestSupport.Json("""{"query":"missing","timeoutMs":10000,"pollMs":10000}"""),
+                cts.Token));
 
         Assert.Equal(PilotErrorCodes.Canceled, ex.Code);
     }
@@ -262,6 +278,17 @@ public class ToolRegistryTests
             LastType = type;
             LastMaxDepth = maxDepth;
             return new ElementInfo { Id = "e2", Type = type ?? "Border" };
+        }
+    }
+
+    private sealed class BindingBackend : TestSupport.StubBackend
+    {
+        public bool LastClear { get; private set; }
+
+        public override IReadOnlyList<string> GetBindingErrors(bool clear)
+        {
+            LastClear = clear;
+            return new[] { "binding failed" };
         }
     }
 

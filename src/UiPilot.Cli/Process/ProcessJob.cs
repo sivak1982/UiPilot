@@ -22,7 +22,7 @@ public sealed class ProcessJob : IDisposable
     private ProcessJob(IntPtr handle) => _handle = handle;
 
     /// <summary>Creates a job and puts <paramref name="process"/> in it, or null when unsupported.</summary>
-    public static ProcessJob? TryCreateFor(System.Diagnostics.Process process, string name)
+    public static ProcessJob? TryCreateFor(System.Diagnostics.Process process)
     {
         if (!OperatingSystem.IsWindows()) return null;
 
@@ -53,6 +53,26 @@ public sealed class ProcessJob : IDisposable
         catch { /* nothing left to kill */ }
     }
 
+    /// <summary>
+    /// Returns whether the job still owns any live process. Query failures are treated as active
+    /// so a transient Win32 error never makes the CLI drop its only descendant-tracking handle.
+    /// </summary>
+    public bool HasActiveProcesses()
+    {
+        var handle = _handle;
+        if (handle == IntPtr.Zero) return false;
+        if (!QueryInformationJobObject(
+                handle,
+                JOBOBJECTINFOCLASS.JobObjectBasicAccountingInformation,
+                out var accounting,
+                Marshal.SizeOf<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION>(),
+                IntPtr.Zero))
+        {
+            return true;
+        }
+        return accounting.ActiveProcesses != 0;
+    }
+
     public void Dispose()
     {
         var handle = Interlocked.Exchange(ref _handle, IntPtr.Zero);
@@ -70,5 +90,31 @@ public sealed class ProcessJob : IDisposable
     private static extern bool TerminateJobObject(IntPtr job, uint exitCode);
 
     [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool QueryInformationJobObject(
+        IntPtr job,
+        JOBOBJECTINFOCLASS informationClass,
+        out JOBOBJECT_BASIC_ACCOUNTING_INFORMATION information,
+        int informationLength,
+        IntPtr returnLength);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool CloseHandle(IntPtr handle);
+
+    private enum JOBOBJECTINFOCLASS
+    {
+        JobObjectBasicAccountingInformation = 1,
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct JOBOBJECT_BASIC_ACCOUNTING_INFORMATION
+    {
+        public long TotalUserTime;
+        public long TotalKernelTime;
+        public long ThisPeriodTotalUserTime;
+        public long ThisPeriodTotalKernelTime;
+        public uint TotalPageFaultCount;
+        public uint TotalProcesses;
+        public uint ActiveProcesses;
+        public uint TotalTerminatedProcesses;
+    }
 }

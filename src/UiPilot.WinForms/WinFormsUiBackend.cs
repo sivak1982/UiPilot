@@ -37,10 +37,6 @@ internal sealed class WinFormsUiBackend : IUiBackend
     public string SelectItem(string id, string? text, int? index) =>
         SyntheticInput.SelectItem(Require(id), text, index);
 
-    public string InvokeCommand(string id) => throw new PilotToolException(
-        PilotErrorCodes.Unsupported,
-        "invoke_command is not supported by WinForms because it has no shared ICommand model.");
-
     ScreenshotData? IUiBackend.Screenshot(string? id) =>
         Media.Screenshot.Capture(id == null ? null : Require(id));
 
@@ -66,8 +62,6 @@ internal sealed class WinFormsUiBackend : IUiBackend
         return WindowControl.Foreground(form);
     }
 
-    public IReadOnlyList<string> GetBindingErrors() => Array.Empty<string>();
-    public void ClearBindingErrors() { }
     public IReadOnlyList<LayoutIssue> AnalyzeLayout(string? rootId) =>
         LayoutAnalyzer.Analyze(Elements, rootId);
     public bool Highlight(string id, int durationMs) =>
