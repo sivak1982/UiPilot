@@ -16,6 +16,9 @@ For a NuGet-only setup, install the packaged skill into the current repository o
 dotnet msbuild Your.Tests.csproj -t:UiPilotInstallCursorSkill
 ```
 
+This installs the test-authoring guidance only. A configured UiPilot MCP server is still required
+to inspect the live application and prove the flow before generating C#.
+
 Then ask the agent for the test in plain language. The agent must:
 
 1. Start or attach to the application with UiPilot MCP.

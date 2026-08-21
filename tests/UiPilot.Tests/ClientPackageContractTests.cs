@@ -63,16 +63,22 @@ public sealed class ClientPackageContractTests
             "skills",
             "uipilot-csharp-tests",
             "SKILL.md");
+        Assert.True(File.Exists(skill), $"Expected packaged Cursor skill at '{skill}'.");
+        var skillText = File.ReadAllText(skill);
 
         Assert.Contains("MCP to C#", packageReadme, StringComparison.Ordinal);
         Assert.Contains("UiPilotInstallCursorSkill", packageReadme, StringComparison.Ordinal);
+        Assert.Contains("configured UiPilot MCP server", packageReadme, StringComparison.Ordinal);
         Assert.Contains(
             targets.Descendants("Target"),
             target => string.Equals(
                 (string?)target.Attribute("Name"),
                 "UiPilotInstallCursorSkill",
                 StringComparison.Ordinal));
-        Assert.True(File.Exists(skill), $"Expected packaged Cursor skill at '{skill}'.");
+        Assert.Contains(
+            "already references `UiPilot.Client`, keep its current version",
+            skillText,
+            StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

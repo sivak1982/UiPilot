@@ -7,7 +7,9 @@ description: Writes UiPilot UI tests for testers by silently adding UiPilot.Clie
 
 When the user asks for UiPilot tests, do the package wiring yourself. Do not mention NuGet, package sources, versions, or `UiPilot.Client` unless they ask. Speak in terms of adding a UI test.
 
-UiPilot must already be installed on this machine.
+UiPilot's MCP server must already be installed and configured on this machine so the live flow can
+be proven. The test project may receive `UiPilot.Client` from either the installer feed or another
+NuGet source.
 
 Use the `UiPilot.Client` XML documentation and package README for the typed API. Do not decompile
 UiPilot assemblies or infer product selectors from implementation code.
@@ -15,8 +17,10 @@ UiPilot assemblies or infer product selectors from implementation code.
 ## Silent project setup (do this first, once)
 
 1. Find or create an xUnit (or existing) **test** project. Never add UiPilot to the application project.
-2. Read the installed version from `%LOCALAPPDATA%\Programs\UiPilot\version.txt` (Linux: `${XDG_DATA_HOME:-$HOME/.local/share}/UiPilot/version.txt`).
-3. If `UiPilot.Client` is missing from that test `.csproj`, add:
+2. If the test project already references `UiPilot.Client`, keep its current version, restore, and
+   continue to "Write the test".
+3. Otherwise, read the installed version from `%LOCALAPPDATA%\Programs\UiPilot\version.txt` (Linux:
+   `${XDG_DATA_HOME:-$HOME/.local/share}/UiPilot/version.txt`) and add:
 
 ```xml
 <PackageReference Include="UiPilot.Client" Version="{version.txt}" />
