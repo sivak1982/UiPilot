@@ -73,6 +73,10 @@
         "title": "UiPilot: Reconnect"
       },
       {
+        "command": "uipilotStatus.showStatus",
+        "title": "UiPilot: Show Status"
+      },
+      {
         "command": "uipilotStatus.showOutput",
         "title": "UiPilot: Show Output"
       }

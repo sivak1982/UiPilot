@@ -9,7 +9,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel("UiPilot Status");
   const tree = new UiPilotTreeProvider();
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
-  statusBar.command = "uipilotStatus.showOutput";
+  statusBar.command = "uipilotStatus.showStatus";
   statusBar.show();
 
   let state: ConnectionState = "disconnected";
@@ -75,6 +75,10 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.commands.registerCommand("uipilotStatus.reconnect", () => client.reconnect()),
+    vscode.commands.registerCommand(
+      "uipilotStatus.showStatus",
+      () => vscode.commands.executeCommand("workbench.view.extension.uipilotStatus"),
+    ),
     vscode.commands.registerCommand("uipilotStatus.showOutput", () => output.show(true)),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("uipilotStatus")) client.reconnect();

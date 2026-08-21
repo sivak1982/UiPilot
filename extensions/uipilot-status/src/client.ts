@@ -28,6 +28,7 @@ export class UiPilotStatusClient {
   private generation = 0;
   private reconnectAttempt = 0;
   private stopped = true;
+  private connected = false;
   private readonly backoff: BackoffOptions;
 
   constructor(
@@ -134,6 +135,7 @@ export class UiPilotStatusClient {
       });
       socket.on("close", () => {
         if (this.socket === socket) this.socket = undefined;
+        this.connected = false;
         if (generation !== this.generation || this.stopped) return;
         this.callbacks.onState("disconnected", "Event stream closed; reconnecting.");
         this.scheduleReconnect(generation);
@@ -145,6 +147,8 @@ export class UiPilotStatusClient {
 
   private markConnected(config: UiPilotConfig): void {
     this.reconnectAttempt = 0;
+    if (this.connected) return;
+    this.connected = true;
     this.callbacks.onState("connected");
     this.callbacks.log(`Connected to ${config.httpBaseUrl}.`);
   }
@@ -201,6 +205,7 @@ export class UiPilotStatusClient {
 
   private connectionFailed(generation: number, error: unknown): void {
     if (generation !== this.generation || this.stopped) return;
+    this.connected = false;
     const message = errorMessage(error);
     this.callbacks.onState("error", message);
     this.callbacks.log(`Connection failed: ${message}`);
@@ -230,6 +235,7 @@ export class UiPilotStatusClient {
     this.clearReconnectTimer();
     const socket = this.socket;
     this.socket = undefined;
+    this.connected = false;
     if (socket && socket.readyState !== WebSocket.CLOSED) socket.close();
   }
 }

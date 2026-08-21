@@ -203,6 +203,7 @@ describe("status client against a mock loopback endpoint", () => {
     await client.refresh();
     expect(snapshots.at(-1)?.activeSession).toBe("recovered");
     expect(operations[0].name).toBe("click");
+    expect(states.filter((state) => state === "connected")).toHaveLength(1);
     expect(mock.inbound).toEqual([]);
   });
 
