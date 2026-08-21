@@ -159,7 +159,7 @@ public static class AppLauncher
 
         // Track descendants from the moment the process starts, so stopping the session also stops
         // whatever it spawns (service hosts, helper processes) even after it has exited itself.
-        var job = ProcessJob.TryCreateFor(process, $"uipilot-{process.Id}");
+        var job = ProcessJob.TryCreateFor(process);
         if (job != null)
         {
             var pid = process.Id;

@@ -22,7 +22,7 @@ public sealed class ProcessJob : IDisposable
     private ProcessJob(IntPtr handle) => _handle = handle;
 
     /// <summary>Creates a job and puts <paramref name="process"/> in it, or null when unsupported.</summary>
-    public static ProcessJob? TryCreateFor(System.Diagnostics.Process process, string name)
+    public static ProcessJob? TryCreateFor(System.Diagnostics.Process process)
     {
         if (!OperatingSystem.IsWindows()) return null;
 
