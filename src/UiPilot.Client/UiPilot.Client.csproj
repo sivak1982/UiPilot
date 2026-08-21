@@ -6,6 +6,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>UiPilot.Client</PackageId>
     <Description>Typed C# client that mirrors UiPilot MCP tools for tester-authored regression tests.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Linked CLI infrastructure remains public for compatibility but is not the tester API. -->
+    <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <IsPackable>true</IsPackable>
   </PropertyGroup>
 
@@ -63,6 +67,13 @@
   <ItemGroup>
     <None Include="build\UiPilot.Client.targets" Pack="true" PackagePath="build\UiPilot.Client.targets" />
     <None Include="build\UiPilot.Client.targets" Pack="true" PackagePath="buildTransitive\UiPilot.Client.targets" />
+    <None Include="PACKAGE.md" Pack="true" PackagePath="README.md" />
+    <None Include="..\..\.cursor\skills\uipilot-csharp-tests\SKILL.md"
+          Pack="true"
+          PackagePath="build\skills\uipilot-csharp-tests\SKILL.md" />
+    <None Include="..\..\.cursor\skills\uipilot-csharp-tests\SKILL.md"
+          Pack="true"
+          PackagePath="buildTransitive\skills\uipilot-csharp-tests\SKILL.md" />
   </ItemGroup>
 
   <PropertyGroup>

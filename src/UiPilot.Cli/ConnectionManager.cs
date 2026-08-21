@@ -14,15 +14,23 @@ namespace UiPilot.Client;
 /// </summary>
 public sealed class SessionSnapshot
 {
+    /// <summary>Stable session name used by client calls.</summary>
     public required string Name { get; init; }
     /// <summary><c>pilot</c> (MCP pipe) or <c>process</c> (launch tracking only).</summary>
     public required string Kind { get; init; }
+    /// <summary>Whether calls that omit a session currently target this session.</summary>
     public required bool IsActive { get; init; }
+    /// <summary>Operating-system process id.</summary>
     public required int Pid { get; init; }
+    /// <summary>Operating-system process name.</summary>
     public required string ProcessName { get; init; }
+    /// <summary>Current main-window title when one is available.</summary>
     public required string? MainWindowTitle { get; init; }
+    /// <summary>Detected UI framework for pilot sessions.</summary>
     public required string? UiFramework { get; init; }
+    /// <summary>Whether this client launched and therefore owns the process.</summary>
     public required bool LaunchedByCli { get; init; }
+    /// <summary>Whether enough launch information exists to restart the session.</summary>
     public required bool CanRestart { get; init; }
 }
 

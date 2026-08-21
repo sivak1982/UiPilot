@@ -10,10 +10,15 @@ namespace UiPilot.Client.Process;
 /// </summary>
 public sealed class LogWaitResult
 {
+    /// <summary>Concrete file in which the match was found.</summary>
     public required string Path { get; init; }
+    /// <summary>Regular expression supplied by the caller.</summary>
     public required string Pattern { get; init; }
+    /// <summary>Text captured by the regular-expression match.</summary>
     public required string Match { get; init; }
+    /// <summary>UTF-8 byte offset immediately after the matched content.</summary>
     public required long ByteOffset { get; init; }
+    /// <summary>Elapsed wait time in milliseconds.</summary>
     public required int ElapsedMs { get; init; }
 }
 
@@ -41,6 +46,8 @@ public static class LogWaiter
     /// (useful for “next occurrence”). When false (default), the whole file is eligible so an
     /// already-written readiness line is still found.
     /// </param>
+    /// <param name="ct">Cancellation token for the wait.</param>
+    /// <returns>Details of the first matching file content.</returns>
     public static async Task<LogWaitResult> WaitAsync(
         string pathOrGlob,
         string pattern,

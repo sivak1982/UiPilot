@@ -13,12 +13,19 @@ namespace UiPilot.Server;
 /// </summary>
 public sealed class DiscoveryInfo
 {
+    /// <summary>Operating-system process id.</summary>
     [JsonPropertyName("pid")] public int Pid { get; set; }
+    /// <summary>Operating-system process name.</summary>
     [JsonPropertyName("processName")] public string ProcessName { get; set; } = "";
+    /// <summary>Local named-pipe endpoint.</summary>
     [JsonPropertyName("pipeName")] public string PipeName { get; set; } = "";
+    /// <summary>Per-process authentication token. Do not log or persist it elsewhere.</summary>
     [JsonPropertyName("token")] public string Token { get; set; } = "";
+    /// <summary>UiPilot wire-protocol version.</summary>
     [JsonPropertyName("protocolVersion")] public string ProtocolVersion { get; set; } = "";
+    /// <summary>UTC timestamp at which the pilot host started.</summary>
     [JsonPropertyName("startedUtc")] public string StartedUtc { get; set; } = "";
+    /// <summary>Current main-window title when one is available.</summary>
     [JsonPropertyName("mainWindowTitle")] public string? MainWindowTitle { get; set; }
 
     /// <summary>UI stack hosting the in-process tools (<c>wpf</c>, <c>avalonia</c>, …).</summary>

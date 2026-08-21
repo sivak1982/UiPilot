@@ -15,4 +15,23 @@
       SkipUnchangedFiles="true"
       Condition="'@(_UiPilotHookFiles)' != ''" />
   </Target>
+
+  <!-- Explicit opt-in for NuGet-only consumers. Package restore/build never edits the repository. -->
+  <Target Name="UiPilotInstallCursorSkill">
+    <PropertyGroup>
+      <_UiPilotSkillSource>$(MSBuildThisFileDirectory)skills/uipilot-csharp-tests/SKILL.md</_UiPilotSkillSource>
+      <_UiPilotSkillDestination>$(MSBuildProjectDirectory)/.cursor/skills/uipilot-csharp-tests/SKILL.md</_UiPilotSkillDestination>
+    </PropertyGroup>
+    <Error
+      Condition="!Exists('$(_UiPilotSkillSource)')"
+      Text="The UiPilot Cursor skill is missing from the UiPilot.Client package." />
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_UiPilotSkillDestination)'))" />
+    <Copy
+      SourceFiles="$(_UiPilotSkillSource)"
+      DestinationFiles="$(_UiPilotSkillDestination)"
+      SkipUnchangedFiles="true" />
+    <Message
+      Importance="high"
+      Text="Installed the UiPilot test-writing skill at '$(_UiPilotSkillDestination)'." />
+  </Target>
 </Project>

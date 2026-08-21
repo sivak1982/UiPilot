@@ -31,6 +31,16 @@ flowchart LR
 
 MCP is the exploration surface. C# is the durable regression artifact.
 
+The installer places this workflow in Cursor's `uipilot-csharp-tests` skill. For a NuGet-only
+consumer, install the skill into the test repository once:
+
+```powershell
+dotnet msbuild Your.Tests.csproj -t:UiPilotInstallCursorSkill
+```
+
+`UiPilot.Client` also ships its README and XML API documentation in the NuGet package, so an agent
+does not need to inspect or decompile the implementation.
+
 Step 2 is mandatory and is done **one test step at a time**: run the MCP call, confirm it did what
 the test case describes, and record the equivalent `UiPilotClient` call before moving on. The
 recorded notes become the test body. Writing the whole test first and debugging it through

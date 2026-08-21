@@ -9,6 +9,9 @@ When the user asks for UiPilot tests, do the package wiring yourself. Do not men
 
 UiPilot must already be installed on this machine.
 
+Use the `UiPilot.Client` XML documentation and package README for the typed API. Do not decompile
+UiPilot assemblies or infer product selectors from implementation code.
+
 ## Silent project setup (do this first, once)
 
 1. Find or create an xUnit (or existing) **test** project. Never add UiPilot to the application project.

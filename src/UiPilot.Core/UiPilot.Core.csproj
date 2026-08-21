@@ -6,6 +6,8 @@
     <AssemblyName>UiPilot.Core</AssemblyName>
     <PackageId>UiPilot.Core</PackageId>
     <Description>Shared MCP-over-pipe protocol, discovery, and UI-backend contracts for UiPilot (WPF, Avalonia, and WinForms).</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
     <IsPackable>true</IsPackable>
   </PropertyGroup>
 

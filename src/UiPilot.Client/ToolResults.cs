@@ -63,6 +63,7 @@ public sealed class CommandResult
     [JsonPropertyName("session")] public string? Session { get; init; }
 }
 
+/// <summary>A physical screen coordinate returned by a pointer operation.</summary>
 public sealed class PointResult
 {
     [JsonPropertyName("x")] public double X { get; init; }
@@ -86,8 +87,14 @@ public sealed class ScreenshotResult
     [JsonPropertyName("height")] public int Height { get; init; }
     [JsonPropertyName("session")] public string? Session { get; init; }
 
+    /// <summary>Decodes the captured PNG payload.</summary>
+    /// <returns>The PNG file bytes.</returns>
     public byte[] GetBytes() => Convert.FromBase64String(Base64);
 
+    /// <summary>Writes the captured PNG to disk, creating its parent directory when needed.</summary>
+    /// <param name="path">Destination file path.</param>
+    /// <param name="ct">Cancellation token for the file write.</param>
+    /// <returns>A task that completes after the file is written.</returns>
     public Task SaveAsync(string path, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -97,12 +104,14 @@ public sealed class ScreenshotResult
     }
 }
 
+/// <summary>The resulting state of a top-level window.</summary>
 public sealed class WindowStateResult
 {
     [JsonPropertyName("state")] public string State { get; init; } = "";
     [JsonPropertyName("session")] public string? Session { get; init; }
 }
 
+/// <summary>The resulting bounds and state of a resized top-level window.</summary>
 public sealed class ResizeWindowResult
 {
     [JsonPropertyName("x")] public double X { get; init; }
@@ -113,6 +122,7 @@ public sealed class ResizeWindowResult
     [JsonPropertyName("session")] public string? Session { get; init; }
 }
 
+/// <summary>Binding diagnostic messages collected from a supported UI framework.</summary>
 public sealed class BindingErrorsResult
 {
     [JsonPropertyName("count")] public int Count { get; init; }
@@ -120,6 +130,7 @@ public sealed class BindingErrorsResult
     [JsonPropertyName("session")] public string? Session { get; init; }
 }
 
+/// <summary>Layout issues found in a visual-tree subtree.</summary>
 public sealed class LayoutResult
 {
     [JsonPropertyName("count")] public int Count { get; init; }
@@ -127,24 +138,28 @@ public sealed class LayoutResult
     [JsonPropertyName("session")] public string? Session { get; init; }
 }
 
+/// <summary>Whether an element highlight was displayed.</summary>
 public sealed class HighlightResult
 {
     [JsonPropertyName("highlighted")] public bool Highlighted { get; init; }
     [JsonPropertyName("session")] public string? Session { get; init; }
 }
 
+/// <summary>Health response from an application's UiPilot command channel.</summary>
 public sealed class PingResult
 {
     [JsonPropertyName("pong")] public bool Pong { get; init; }
     [JsonPropertyName("session")] public string? Session { get; init; }
 }
 
+/// <summary>Name and human-readable purpose of an in-app command.</summary>
 public sealed class ToolDescription
 {
     [JsonPropertyName("name")] public string Name { get; init; } = "";
     [JsonPropertyName("description")] public string? Description { get; init; }
 }
 
+/// <summary>Commands supported by the selected application's adapter.</summary>
 public sealed class ToolListResult
 {
     [JsonPropertyName("tools")] public IReadOnlyList<ToolDescription> Tools { get; init; } = [];
