@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace UiPilot.Tests.Status;
@@ -19,17 +20,59 @@ internal static class StatusTestSupport
         "text", "keys", "base64", "screenshot", "password", "secret", "path",
     };
 
-    public static int ReservePort()
+    private static readonly SemaphoreSlim PortReservationGate = new(1, 1);
+
+    public static PortReservation ReservePort()
     {
+        PortReservationGate.Wait();
         var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
         try
         {
-            return ((IPEndPoint)listener.LocalEndpoint).Port;
+            listener.Start();
+            return new PortReservation(listener, PortReservationGate);
         }
-        finally
+        catch
         {
-            listener.Stop();
+            listener.Dispose();
+            PortReservationGate.Release();
+            throw;
+        }
+    }
+
+    internal sealed class PortReservation : IDisposable
+    {
+        private TcpListener? _listener;
+        private SemaphoreSlim? _gate;
+
+        public PortReservation(TcpListener listener, SemaphoreSlim gate)
+        {
+            _listener = listener;
+            _gate = gate;
+            Port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        }
+
+        public int Port { get; }
+
+        public async Task StartAsync(IHostedService service, CancellationToken ct = default)
+        {
+            if (_listener == null)
+                throw new InvalidOperationException("The port reservation was already released.");
+            _listener.Stop();
+            _listener = null;
+            try
+            {
+                await service.StartAsync(ct);
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _gate, null)?.Release();
+            }
+        }
+
+        public void Dispose()
+        {
+            Interlocked.Exchange(ref _listener, null)?.Stop();
+            Interlocked.Exchange(ref _gate, null)?.Release();
         }
     }
 

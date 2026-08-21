@@ -15,12 +15,13 @@ public sealed class StatusServiceTests
     [Fact]
     public async Task HealthIsOpen_StatusRequiresBearerAndReturnsSafeSnapshot()
     {
-        var port = StatusTestSupport.ReservePort();
+        using var reservation = StatusTestSupport.ReservePort();
+        var port = reservation.Port;
         var hub = new OperationHub();
         hub.Start("list_apps", "lifecycle").Succeed();
         using var manager = new ConnectionManager();
         using var service = CreateService(port, new ConnectionManagerSnapshotSource(manager), hub);
-        await service.StartAsync(CancellationToken.None);
+        await reservation.StartAsync(service);
 
         try
         {
@@ -54,13 +55,14 @@ public sealed class StatusServiceTests
     [Fact]
     public async Task WebSocket_SendsHelloSnapshotImmediately()
     {
-        var port = StatusTestSupport.ReservePort();
+        using var reservation = StatusTestSupport.ReservePort();
+        var port = reservation.Port;
         var hub = new OperationHub();
         hub.Start("list_apps", "lifecycle").Succeed();
         var source = new FakeSnapshotSource();
         source.Set("sim", [Session("sim", isActive: true)], [App(4242, "SampleApp")]);
         using var service = CreateService(port, source, hub);
-        await service.StartAsync(CancellationToken.None);
+        await reservation.StartAsync(service);
 
         try
         {
@@ -89,11 +91,12 @@ public sealed class StatusServiceTests
     [Fact]
     public async Task WebSocket_AfterHello_SendsOperationAndSessionUpdates()
     {
-        var port = StatusTestSupport.ReservePort();
+        using var reservation = StatusTestSupport.ReservePort();
+        var port = reservation.Port;
         var hub = new OperationHub();
         var source = new FakeSnapshotSource();
         using var service = CreateService(port, source, hub);
-        await service.StartAsync(CancellationToken.None);
+        await reservation.StartAsync(service);
 
         try
         {
@@ -148,11 +151,12 @@ public sealed class StatusServiceTests
     [Fact]
     public async Task WebSocket_SendsSessionUpdateWhenAppClosesWithoutOperation()
     {
-        var port = StatusTestSupport.ReservePort();
+        using var reservation = StatusTestSupport.ReservePort();
+        var port = reservation.Port;
         var source = new FakeSnapshotSource();
         source.Set("sim", [Session("sim", isActive: true)], [App(4242, "SampleApp")]);
         using var service = CreateService(port, source, new OperationHub());
-        await service.StartAsync(CancellationToken.None);
+        await reservation.StartAsync(service);
 
         try
         {
@@ -177,9 +181,10 @@ public sealed class StatusServiceTests
     [Fact]
     public async Task WebSocket_WithoutBearerToken_IsRejected()
     {
-        var port = StatusTestSupport.ReservePort();
+        using var reservation = StatusTestSupport.ReservePort();
+        var port = reservation.Port;
         using var service = CreateService(port, new FakeSnapshotSource(), new OperationHub());
-        await service.StartAsync(CancellationToken.None);
+        await reservation.StartAsync(service);
 
         try
         {
