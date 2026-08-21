@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ModelContextProtocol.Protocol;
 using UiPilot.Client;
+using UiPilot.Tools;
 
 namespace UiPilot.Cli.Status;
 
@@ -85,8 +86,8 @@ public sealed class OperationTelemetry
     private static string ErrorCode(Exception exception) => exception switch
     {
         PilotCliException cli => cli.Code,
-        OperationCanceledException => "cancelled",
-        TimeoutException => "timeout",
+        OperationCanceledException => PilotErrorCodes.Canceled,
+        TimeoutException => PilotErrorCodes.Timeout,
         _ => "unhandled_error",
     };
 }
