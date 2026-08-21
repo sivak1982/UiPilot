@@ -33,6 +33,11 @@ public sealed class SessionSnapshot
 /// </summary>
 public sealed class ConnectionManager : IDisposable
 {
+    private static readonly TimeSpan DiscoveryTimeout = TimeSpan.FromSeconds(30);
+    private const int PipeConnectTimeoutMs = 5_000;
+    private const int DiscoveryInitialPollMs = 50;
+    private const int DiscoveryMaxPollMs = 500;
+
     private readonly DiscoveryReader _discovery = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<string, AppSession> _sessions =
@@ -227,7 +232,8 @@ public sealed class ConnectionManager : IDisposable
 
         try
         {
-            var info = await WaitForDiscoveryAsync(launched, launched.Id, TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
+            var info = await WaitForDiscoveryAsync(
+                launched, launched.Id, DiscoveryTimeout, ct).ConfigureAwait(false);
             var sessionName = ResolveSessionName(session, info.ProcessName);
             var source = LaunchSource.FromProject(project, configuration, platform, targetPath, foreground);
             var snapshot = await ConnectSessionAsync(
@@ -288,7 +294,8 @@ public sealed class ConnectionManager : IDisposable
 
         try
         {
-            var info = await WaitForDiscoveryAsync(launched, launched.Id, TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
+            var info = await WaitForDiscoveryAsync(
+                launched, launched.Id, DiscoveryTimeout, ct).ConfigureAwait(false);
             var sessionName = ResolveSessionName(session, info.ProcessName);
             var source = LaunchSource.FromExe(fullPath, workingDirectory, useStartupHook, uiFramework, foreground);
             var snapshot = await ConnectSessionAsync(
@@ -541,7 +548,7 @@ public sealed class ConnectionManager : IDisposable
         // Pipe connect, auth, and MCP initialize may each wait. None may hold the global
         // session dictionary gate, otherwise unrelated sessions and status polls stall.
         var client = await McpPipeClient.ConnectAsync(
-            info.PipeName, info.Token, 5000, ct).ConfigureAwait(false);
+            info.PipeName, info.Token, PipeConnectTimeoutMs, ct).ConfigureAwait(false);
 
         var gateHeld = false;
         try
@@ -812,6 +819,7 @@ public sealed class ConnectionManager : IDisposable
         CancellationToken ct)
     {
         var deadline = DateTime.UtcNow + timeout;
+        var pollMs = DiscoveryInitialPollMs;
         while (DateTime.UtcNow < deadline)
         {
             ct.ThrowIfCancellationRequested();
@@ -822,7 +830,8 @@ public sealed class ConnectionManager : IDisposable
                     PilotErrorCodes.NotAttached,
                     $"App process {pid} exited before publishing a discovery file.",
                     "Check the app startup failure (DOTNET_STARTUP_HOOKS / PilotHost.Start), then run start_app / build_and_start again.");
-            await Task.Delay(200, ct).ConfigureAwait(false);
+            await Task.Delay(pollMs, ct).ConfigureAwait(false);
+            pollMs = Math.Min(pollMs * 2, DiscoveryMaxPollMs);
         }
         throw new TimeoutException($"Timed out waiting for app {pid} to publish its discovery file.");
     }
