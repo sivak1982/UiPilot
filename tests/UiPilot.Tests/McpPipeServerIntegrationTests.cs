@@ -78,4 +78,29 @@ public class McpPipeServerIntegrationTests
             server.Stop();
         }
     }
+
+    [Fact]
+    public async Task Server_IsolatesMultipleClients_AndStopDisconnectsThem()
+    {
+        var pipeName = "uipilot-mcp-multi." + Guid.NewGuid().ToString("N");
+        var server = new McpPipeServer(pipeName, Token, BuildRegistry(), _ => { });
+        server.Start();
+        using var first = await McpPipeClient.ConnectAsync(pipeName, Token);
+        using var second = await McpPipeClient.ConnectAsync(pipeName, Token);
+
+        var calls = await Task.WhenAll(
+            first.CallToolAsync("echo", new { value = "one" }),
+            second.CallToolAsync("echo", new { value = "two" }));
+        Assert.Equal("one", calls[0].GetProperty("value").GetString());
+        Assert.Equal("two", calls[1].GetProperty("value").GetString());
+
+        first.Dispose();
+        var stillConnected = await second.CallToolAsync("echo", new { value = "alive" });
+        Assert.Equal("alive", stillConnected.GetProperty("value").GetString());
+
+        server.Stop();
+        await Assert.ThrowsAnyAsync<Exception>(
+            () => second.CallToolAsync("echo", new { value = "stopped" })
+                .WaitAsync(TimeSpan.FromSeconds(5)));
+    }
 }
