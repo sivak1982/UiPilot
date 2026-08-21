@@ -16,6 +16,7 @@ public static class PilotHost
     private static readonly PilotRuntime Runtime = new PilotRuntime();
     private static bool _hooksAttached;
     private static bool _startPending;
+    private static bool _starting;
 
     public static bool IsRunning => Runtime.IsRunning;
     public static ToolRegistry? Tools => Runtime.Tools;
@@ -30,13 +31,13 @@ public static class PilotHost
     public static void Start(WinFormsOptions? options)
     {
         options ??= new WinFormsOptions();
+        Form? marshalControl;
         lock (Gate)
         {
-            if (Runtime.IsRunning)
+            if (Runtime.IsRunning || _starting)
                 return;
 
-            var context = SynchronizationContext.Current;
-            var marshalControl = FirstForm();
+            marshalControl = FirstForm();
             if (marshalControl == null)
             {
                 if (!_startPending)
@@ -54,7 +55,13 @@ public static class PilotHost
                 }
                 return;
             }
+            _starting = true;
+        }
 
+        var context = SynchronizationContext.Current;
+        var backend = new WinFormsUiBackend();
+        try
+        {
             object? Invoke(Func<object?> func)
             {
                 var currentForm = FirstForm();
@@ -80,7 +87,6 @@ public static class PilotHost
                 return result;
             }
 
-            var backend = new WinFormsUiBackend();
             var pilotOptions = options.ToPilotOptions();
             var started = Runtime.Start(
                 pilotOptions,
@@ -92,19 +98,32 @@ public static class PilotHost
             if (!started)
                 return;
 
-            if (!_hooksAttached)
+            lock (Gate)
             {
-                _hooksAttached = true;
-                AppDomain.CurrentDomain.ProcessExit += (_, _) => Stop();
-                Application.ApplicationExit += (_, _) => Stop();
+                if (!_hooksAttached)
+                {
+                    _hooksAttached = true;
+                    AppDomain.CurrentDomain.ProcessExit += (_, _) => Stop();
+                    Application.ApplicationExit += (_, _) => Stop();
+                }
             }
 
             if (PilotRuntime.ResolveStartMinimized(pilotOptions))
-                marshalControl?.BeginInvoke(new Action(() =>
+                marshalControl.BeginInvoke(new Action(() =>
                 {
                     var form = FirstForm();
                     if (form != null) form.WindowState = FormWindowState.Minimized;
                 }));
+        }
+        catch
+        {
+            if (!Runtime.IsRunning)
+                try { backend.Shutdown(); } catch { /* ignore */ }
+            throw;
+        }
+        finally
+        {
+            lock (Gate) _starting = false;
         }
     }
 
