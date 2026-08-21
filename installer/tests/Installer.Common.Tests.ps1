@@ -84,6 +84,21 @@ try {
     Assert-Equal 8 $script:UiPilotRequiredRuntimeMajor "Installed CLI must accept .NET 8 or later."
     Assert-Equal "8.0.400" $script:UiPilotRequiredSdkVersion.ToString() "Build SDK floor should be 8.0.400."
 
+    $packageTemplate = Get-Content -LiteralPath (Join-Path $PSScriptRoot "..\wix\Package.wxs") -Raw
+    if ($packageTemplate -notmatch 'Id="RollbackCursor"' -or
+        $packageTemplate -notmatch 'RegisterCursor" After="InstallFiles"') {
+        throw "MSI Cursor registration must run transactionally with a rollback action."
+    }
+    if ($packageTemplate -match 'RegisterCursor" After="InstallFinalize"') {
+        throw "MSI Cursor registration must not run after InstallFinalize."
+    }
+
+    $buildScript = Get-Content -LiteralPath (Join-Path $PSScriptRoot "..\build-installer.ps1") -Raw
+    if ($buildScript -match '& powershell\.exe' -or
+        $buildScript -notmatch 'ExternalAttributes') {
+        throw "Cross-platform installer builds must use the current shell and preserve executable ZIP modes."
+    }
+
     $cursorCommand = Get-UiPilotCursorCommand
     if ($null -ne (Get-Command cursor -ErrorAction SilentlyContinue) -and
         [string]::IsNullOrWhiteSpace($cursorCommand)) {

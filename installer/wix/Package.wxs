@@ -28,8 +28,15 @@
       Id="RegisterCursor"
       Directory="INSTALLFOLDER"
       ExeCommand="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Register-Cursor.ps1&quot; -Action Register"
-      Execute="immediate"
+      Execute="deferred"
       Return="check"
+      Impersonate="yes" />
+    <CustomAction
+      Id="RollbackCursor"
+      Directory="INSTALLFOLDER"
+      ExeCommand="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Register-Cursor.ps1&quot; -Action Unregister"
+      Execute="rollback"
+      Return="ignore"
       Impersonate="yes" />
     <CustomAction
       Id="UnregisterCursor"
@@ -40,7 +47,8 @@
       Impersonate="yes" />
 
     <InstallExecuteSequence>
-      <Custom Action="RegisterCursor" After="InstallFinalize" Condition="NOT REMOVE" />
+      <Custom Action="RollbackCursor" Before="RegisterCursor" Condition="NOT Installed AND NOT REMOVE" />
+      <Custom Action="RegisterCursor" After="InstallFiles" Condition="NOT REMOVE" />
       <Custom Action="UnregisterCursor" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
     </InstallExecuteSequence>
   </Package>

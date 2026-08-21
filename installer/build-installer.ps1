@@ -93,11 +93,8 @@ if (-not $SkipTests) {
         throw "UiPilot tests failed."
     }
 
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass `
-        -File (Join-Path $PSScriptRoot "tests\Installer.Common.Tests.ps1")
-    if ($LASTEXITCODE -ne 0) {
-        throw "UiPilot installer tests failed."
-    }
+    # Run in the current PowerShell host so Linux builds do not depend on powershell.exe.
+    & (Join-Path $PSScriptRoot "tests\Installer.Common.Tests.ps1")
 }
 
 & dotnet publish (Join-Path $repoRoot "src\UiPilot.Cli\UiPilot.Cli.csproj") `
@@ -234,6 +231,24 @@ else {
         Remove-Item -LiteralPath $archivePath -Force
     }
     Compress-Archive -Path (Join-Path $bundleRoot "*") -DestinationPath $archivePath -CompressionLevel Optimal
+
+    # Compress-Archive defaults entries to non-executable DOS attributes. Mark Linux launchers
+    # and shell scripts as regular 0755 files so extraction preserves a runnable bundle.
+    $executableAttributes = [BitConverter]::ToInt32(
+        [BitConverter]::GetBytes([uint32]0x81ED0000), 0)
+    $archive = [IO.Compression.ZipFile]::Open(
+        $archivePath, [IO.Compression.ZipArchiveMode]::Update)
+    try {
+        foreach ($entry in $archive.Entries) {
+            if ($entry.FullName.EndsWith(".sh", [StringComparison]::OrdinalIgnoreCase) -or
+                $entry.FullName -eq "payload/UiPilot.Cli") {
+                $entry.ExternalAttributes = $executableAttributes
+            }
+        }
+    }
+    finally {
+        $archive.Dispose()
+    }
 
     Write-Host ""
     Write-Host "Linux installer bundle: $archivePath" -ForegroundColor Green
