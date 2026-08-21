@@ -416,15 +416,8 @@ public sealed class ConnectionManager : IDisposable
         _gate.Wait();
         try
         {
-            if (string.IsNullOrWhiteSpace(session) && _sessions.Count > 1 && _activeSession is null)
-            {
-                throw new PilotCliException(
-                    PilotErrorCodes.Ambiguous,
-                    $"Multiple sessions are attached ({_sessions.Count}). Pass session or call select_session first.",
-                    "Use list_sessions, then stop_app with an explicit session name (or stop_all).");
-            }
-
-            if (_sessions.Count == 0)
+            PruneExitedSessionsLocked();
+            if (string.IsNullOrWhiteSpace(session) && !_sessions.Values.Any(s => !s.Exited))
                 return null;
 
             var target = ResolveSessionForLifecycleLocked(session);
@@ -462,7 +455,8 @@ public sealed class ConnectionManager : IDisposable
         _gate.Wait();
         try
         {
-            if (_sessions.Count == 0)
+            PruneExitedSessionsLocked();
+            if (string.IsNullOrWhiteSpace(session) && !_sessions.Values.Any(s => !s.Exited))
                 return null;
 
             var target = ResolveSessionForLifecycleLocked(session);
@@ -619,23 +613,26 @@ public sealed class ConnectionManager : IDisposable
         if (!string.IsNullOrWhiteSpace(session))
             return RequireSessionLocked(session);
 
-        if (!string.IsNullOrWhiteSpace(_activeSession) && _sessions.TryGetValue(_activeSession, out var active))
+        if (!string.IsNullOrWhiteSpace(_activeSession) &&
+            _sessions.TryGetValue(_activeSession, out var active) &&
+            !active.Exited)
             return active;
 
-        if (_sessions.Count == 1)
-            return _sessions.Values.First();
+        var live = _sessions.Values.Where(candidate => !candidate.Exited).ToList();
+        if (live.Count == 1)
+            return live[0];
 
-        if (_sessions.Count == 0)
+        if (live.Count == 0)
         {
             throw new PilotCliException(
                 PilotErrorCodes.NotAttached,
-                "No app session exists.",
+                "No live app session exists.",
                 "Use attach, start_app, or build_and_start first.");
         }
 
         throw new PilotCliException(
             PilotErrorCodes.Ambiguous,
-            $"Multiple sessions are attached ({_sessions.Count}). Pass session or call select_session first.",
+            $"Multiple live sessions are attached ({live.Count}). Pass session or call select_session first.",
             "Use list_sessions, then pass an explicit session name.");
     }
 
