@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json;
 using UiPilot.Client;
 using UiPilot.Client.Process;
 using UiPilot.Tools;
@@ -8,6 +9,29 @@ namespace UiPilot.Tests;
 
 public class ConnectionManagerTests
 {
+    [Theory]
+    [InlineData("null")]
+    [InlineData("42")]
+    [InlineData("[1,2]")]
+    public void WrapWithSession_PreservesNonObjectResults(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+
+        var wrapped = ConnectionManager.WrapWithSession(document.RootElement, "sample");
+
+        Assert.Equal("sample", wrapped.GetProperty("session").GetString());
+        Assert.Equal(json, wrapped.GetProperty("result").GetRawText());
+    }
+
+    [Fact]
+    public void WrapWithSession_HandlesUndefinedResult()
+    {
+        var wrapped = ConnectionManager.WrapWithSession(default, "sample");
+
+        Assert.Equal("sample", wrapped.GetProperty("session").GetString());
+        Assert.Equal(JsonValueKind.Null, wrapped.GetProperty("result").ValueKind);
+    }
+
     [Fact]
     public async Task SendWithoutAttachment_DoesNotAutoAttach()
     {

@@ -162,15 +162,12 @@ public static class AppLauncher
         var job = ProcessJob.TryCreateFor(process, $"uipilot-{process.Id}");
         if (job != null)
         {
-            Jobs[process.Id] = job;
+            var pid = process.Id;
+            Jobs[pid] = job;
             try
             {
                 process.EnableRaisingEvents = true;
-                process.Exited += (_, _) =>
-                {
-                    if (Jobs.TryRemove(process.Id, out var finished))
-                        finished.Dispose();
-                };
+                process.Exited += (_, _) => _ = ReapJobWhenEmptyAsync(pid, job);
             }
             catch
             {
@@ -179,6 +176,23 @@ public static class AppLauncher
         }
 
         return process;
+    }
+
+    private static async Task ReapJobWhenEmptyAsync(int pid, ProcessJob job)
+    {
+        // The direct child may be a short-lived supervisor while descendants keep running.
+        // Keep the job handle until its last process exits; then release it without waiting for
+        // an explicit stop command.
+        while (Jobs.TryGetValue(pid, out var current) && ReferenceEquals(current, job))
+        {
+            if (!job.HasActiveProcesses())
+            {
+                if (Jobs.TryRemove(pid, out var finished))
+                    finished.Dispose();
+                return;
+            }
+            await Task.Delay(1000).ConfigureAwait(false);
+        }
     }
 
     /// <summary>Minimal argument splitter for optional <c>dotnet dll …</c> extras; keeps quoted spans intact.</summary>

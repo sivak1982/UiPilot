@@ -23,6 +23,8 @@ public sealed class ToolRegistry
 
     private readonly ToolContext _context;
     private long _nextOrder;
+    private int _activeInvocations;
+    private readonly ManualResetEventSlim _idle = new(initialState: true);
 
     internal ToolRegistry(ToolContext context) => _context = context;
 
@@ -93,6 +95,8 @@ public sealed class ToolRegistry
 
         using (_context.PushCancellation(cancellationToken))
         {
+            if (Interlocked.Increment(ref _activeInvocations) == 1)
+                _idle.Reset();
             try
             {
                 return entry.Handler(_context, args);
@@ -109,8 +113,16 @@ public sealed class ToolRegistry
             {
                 throw new PilotToolException("tool_error", ex.Message);
             }
+            finally
+            {
+                if (Interlocked.Decrement(ref _activeInvocations) == 0)
+                    _idle.Set();
+            }
         }
     }
+
+    /// <summary>Wait for handlers already executing to leave the backend.</summary>
+    internal bool WaitForIdle(TimeSpan timeout) => _idle.Wait(timeout);
 
     /// <summary>Machine-readable description of every tool (used by the CLI's <c>describe_app_tools</c>).</summary>
     public object Describe()

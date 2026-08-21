@@ -53,11 +53,9 @@ public sealed class PilotRuntime : IDisposable
                 return false;
             }
 
-            _backend = backend;
             var context = new ToolContext(backend, invokeOnUi);
             var registry = new ToolRegistry(context);
             BuiltInTools.RegisterAll(registry);
-            Tools = registry;
 
             var pid = Process.GetCurrentProcess().Id;
             var token = string.IsNullOrEmpty(options.Token) ? GenerateToken() : options.Token!;
@@ -65,25 +63,45 @@ public sealed class PilotRuntime : IDisposable
                 ? $"uipilot.{pid}.{Guid.NewGuid():N}"
                 : options.PipeName!;
 
-            _server = new McpPipeServer(pipeName, token, registry, log);
-            _server.Start();
-
-            var info = new DiscoveryInfo
+            var server = new McpPipeServer(pipeName, token, registry, log);
+            string? discoveryPath = null;
+            try
             {
-                Pid = pid,
-                ProcessName = SafeProcessName(),
-                PipeName = pipeName,
-                Token = token,
-                ProtocolVersion = ProtocolVersion,
-                StartedUtc = DateTime.UtcNow.ToString("o"),
-                MainWindowTitle = invokeOnUi(() => getMainWindowTitle()) as string,
-                UiFramework = string.IsNullOrEmpty(options.UiFramework) ? backend.Framework : options.UiFramework,
-            };
-            _discoveryPath = DiscoveryFile.Write(info, options.DiscoveryDirectory);
+                server.Start();
 
-            _started = true;
-            log($"Pilot started ({info.UiFramework}). pipe={pipeName} discovery={_discoveryPath}");
-            return true;
+                var info = new DiscoveryInfo
+                {
+                    Pid = pid,
+                    ProcessName = SafeProcessName(),
+                    PipeName = pipeName,
+                    Token = token,
+                    ProtocolVersion = ProtocolVersion,
+                    StartedUtc = DateTime.UtcNow.ToString("o"),
+                    MainWindowTitle = invokeOnUi(() => getMainWindowTitle()) as string,
+                    UiFramework = string.IsNullOrEmpty(options.UiFramework) ? backend.Framework : options.UiFramework,
+                };
+                discoveryPath = DiscoveryFile.Write(info, options.DiscoveryDirectory);
+
+                _backend = backend;
+                Tools = registry;
+                _server = server;
+                _discoveryPath = discoveryPath;
+                _started = true;
+                log($"Pilot started ({info.UiFramework}). pipe={pipeName} discovery={_discoveryPath}");
+                return true;
+            }
+            catch
+            {
+                try { server.Stop(); } catch { /* rollback is best-effort */ }
+                if (discoveryPath != null)
+                    DiscoveryFile.Delete(discoveryPath);
+                _backend = null;
+                Tools = null;
+                _server = null;
+                _discoveryPath = null;
+                _started = false;
+                throw;
+            }
         }
     }
 
@@ -93,6 +111,10 @@ public sealed class PilotRuntime : IDisposable
         {
             if (!_started) return;
             try { _server?.Stop(); } catch { /* ignore */ }
+            // The server cancellation stops new work. Let handlers already using the backend
+            // leave before adapter Shutdown tears down diagnostics and framework resources.
+            if (Tools is { } tools && !tools.WaitForIdle(TimeSpan.FromSeconds(5)))
+                log?.Invoke("Pilot stop timed out waiting for active tool calls.");
             try { _backend?.Shutdown(); } catch { /* ignore */ }
             if (_discoveryPath != null) DiscoveryFile.Delete(_discoveryPath);
             _server = null;

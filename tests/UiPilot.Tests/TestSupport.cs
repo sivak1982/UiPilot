@@ -50,6 +50,6 @@ internal static class TestSupport
         public bool Highlight(string id, int durationMs) => false;
         public ScreenPoint GetElementCentre(string id) => new ScreenPoint(0, 0);
         public void PrepareForRealInput(string? elementId) { }
-        public void Shutdown() { }
+        public virtual void Shutdown() { }
     }
 }

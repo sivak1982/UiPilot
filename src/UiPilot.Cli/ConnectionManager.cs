@@ -831,14 +831,17 @@ public sealed class ConnectionManager : IDisposable
         CanRestart = session.LaunchSource is not null,
     };
 
-    private static JsonElement WrapWithSession(JsonElement result, string sessionName)
+    internal static JsonElement WrapWithSession(JsonElement result, string sessionName)
     {
         if (result.ValueKind == JsonValueKind.Object)
         {
-            var node = JsonNode.Parse(result.GetRawText())!.AsObject();
+            var node = JsonNode.Parse(result.GetRawText())?.AsObject() ?? new JsonObject();
             node["session"] = sessionName;
             return JsonSerializer.SerializeToElement(node);
         }
+
+        if (result.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+            return JsonSerializer.SerializeToElement(new { session = sessionName, result = (object?)null });
 
         return JsonSerializer.SerializeToElement(new { session = sessionName, result });
     }
