@@ -234,13 +234,27 @@ public sealed class ForwardingTools
             try
             {
                 var result = await _connection.SendAsync(ToolCatalog.Screenshot, new { id }, session, ct).ConfigureAwait(false);
-                var base64 = result.GetProperty("base64").GetString() ?? "";
-                var width = result.GetProperty("width").GetInt32();
-                var height = result.GetProperty("height").GetInt32();
-                var sessionName = result.TryGetProperty("session", out var sessionProp)
-                    ? sessionProp.GetString()
-                    : session ?? _connection.ActiveSessionName;
-                var bytes = Convert.FromBase64String(base64);
+                var screenshot = result.Deserialize<ScreenshotResult>(Json)
+                    ?? throw new PilotCliException(
+                        "tool_error", "Target returned an empty screenshot payload.");
+                if (string.IsNullOrWhiteSpace(screenshot.Base64) ||
+                    screenshot.Width <= 0 ||
+                    screenshot.Height <= 0)
+                {
+                    throw new PilotCliException(
+                        "tool_error", "Target returned an invalid screenshot payload.");
+                }
+                var sessionName = screenshot.Session ?? session ?? _connection.ActiveSessionName;
+                byte[] bytes;
+                try
+                {
+                    bytes = screenshot.GetBytes();
+                }
+                catch (FormatException ex)
+                {
+                    throw new PilotCliException(
+                        "tool_error", "Target returned invalid screenshot bytes.", innerException: ex);
+                }
 
                 var dir = Path.Combine(Path.GetTempPath(), "uipilot", "shots");
                 System.IO.Directory.CreateDirectory(dir);
@@ -248,7 +262,13 @@ public sealed class ForwardingTools
                 var path = Path.Combine(dir, $"{Guid.NewGuid():N}.png");
                 await File.WriteAllBytesAsync(path, bytes, ct).ConfigureAwait(false);
 
-                var metadata = JsonSerializer.Serialize(new { path, width, height, session = sessionName }, Json);
+                var metadata = JsonSerializer.Serialize(new
+                {
+                    path,
+                    width = screenshot.Width,
+                    height = screenshot.Height,
+                    session = sessionName,
+                }, Json);
                 return new CallToolResult
                 {
                     Content = new List<ContentBlock>
