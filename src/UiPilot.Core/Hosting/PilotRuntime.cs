@@ -174,9 +174,7 @@ public sealed class PilotRuntime : IDisposable
     private static void ReleaseProcessLock(FileStream? processLock)
     {
         if (processLock == null) return;
-        var path = processLock.Name;
         try { processLock.Dispose(); } catch { /* ignore */ }
-        try { File.Delete(path); } catch { /* ignore */ }
     }
 
     private static string SafeProcessName()
