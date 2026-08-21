@@ -200,12 +200,12 @@ public class StartProcessTests
     public async Task StartProcess_TracksProcessSession_AndStopKillsIt()
     {
         using var manager = new ConnectionManager();
-        var shell = Environment.GetEnvironmentVariable("ComSpec") ?? @"C:\Windows\System32\cmd.exe";
+        var (shell, arguments) = LongRunningCommand();
 
         var snapshot = await manager.StartProcessAsync(
             shell,
             session: "helper",
-            arguments: "/c ping 127.0.0.1 -n 30 >nul");
+            arguments: arguments);
 
         Assert.Equal("helper", snapshot.Name);
         Assert.Equal("process", snapshot.Kind);
@@ -222,6 +222,37 @@ public class StartProcessTests
         {
             using var lingering = System.Diagnostics.Process.GetProcessById(snapshot.Pid);
             Assert.True(lingering.HasExited);
+        }
+        catch (ArgumentException)
+        {
+            // PID already gone — expected after stop.
+        }
+    }
+
+    [Fact]
+    public async Task StopApp_WithoutName_IgnoresExitedActiveSession()
+    {
+        using var manager = new ConnectionManager();
+        var (shell, longArguments) = LongRunningCommand();
+        var expiredArguments = OperatingSystem.IsWindows()
+            ? "/c ping 127.0.0.1 -n 2 >nul"
+            : "-c \"sleep 0.2\"";
+        var live = await manager.StartProcessAsync(
+            shell, session: "live", arguments: longArguments, showWindow: false);
+        var expired = await manager.StartProcessAsync(
+            shell, session: "expired", arguments: expiredArguments, showWindow: false);
+
+        using (var expiredProcess = System.Diagnostics.Process.GetProcessById(expired.Pid))
+            await expiredProcess.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+        var stopped = manager.StopApp();
+
+        Assert.Equal("live", stopped?.Name);
+        Assert.DoesNotContain(manager.ListSessions(), session => session.Name == "live");
+        try
+        {
+            using var liveProcess = System.Diagnostics.Process.GetProcessById(live.Pid);
+            Assert.True(liveProcess.HasExited);
         }
         catch (ArgumentException)
         {
@@ -248,4 +279,10 @@ public class StartProcessTests
             try { Directory.Delete(dir, recursive: true); } catch { /* ignore */ }
         }
     }
+
+    private static (string path, string arguments) LongRunningCommand() =>
+        OperatingSystem.IsWindows()
+            ? (Environment.GetEnvironmentVariable("ComSpec") ?? @"C:\Windows\System32\cmd.exe",
+                "/c ping 127.0.0.1 -n 30 >nul")
+            : ("/bin/sh", "-c \"sleep 30\"");
 }
