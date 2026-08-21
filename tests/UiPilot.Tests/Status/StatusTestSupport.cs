@@ -62,6 +62,26 @@ internal static class StatusTestSupport
             try
             {
                 await service.StartAsync(ct);
+                using var client = new HttpClient();
+                var deadline = DateTime.UtcNow.AddSeconds(5);
+                while (true)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    try
+                    {
+                        using var response = await client.GetAsync(
+                            $"http://127.0.0.1:{Port}/health", ct);
+                        if (response.IsSuccessStatusCode)
+                            break;
+                    }
+                    catch (HttpRequestException) when (DateTime.UtcNow < deadline)
+                    {
+                        // BackgroundService may not have entered ExecuteAsync yet.
+                    }
+                    if (DateTime.UtcNow >= deadline)
+                        throw new TimeoutException($"Status service did not listen on port {Port}.");
+                    await Task.Delay(10, ct);
+                }
             }
             finally
             {
