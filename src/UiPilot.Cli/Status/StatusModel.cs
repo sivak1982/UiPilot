@@ -45,6 +45,7 @@ public sealed record StatusAppInfo
     public string? ProtocolVersion { get; init; }
     public string? StartedUtc { get; init; }
     public string? UiFramework { get; init; }
+    public IReadOnlyList<string> Capabilities { get; init; } = [];
 
     public static StatusAppInfo From(DiscoveryInfo app) => new()
     {
@@ -54,6 +55,7 @@ public sealed record StatusAppInfo
         ProtocolVersion = app.ProtocolVersion,
         StartedUtc = app.StartedUtc,
         UiFramework = app.UiFramework,
+        Capabilities = app.Capabilities,
     };
 }
 

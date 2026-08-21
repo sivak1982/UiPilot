@@ -53,11 +53,16 @@ Written to `%TEMP%/uipilot/<pid>.json` on start, deleted on clean shutdown
   "protocolVersion": "2.0",
   "startedUtc": "2026-07-17T07:00:00.0000000Z",
   "mainWindowTitle": "UiPilot Sample",
-  "uiFramework": "wpf"
+  "uiFramework": "wpf",
+  "capabilities": ["invokeCommand", "bindingDiagnostics"]
 }
 ```
 
-`uiFramework` is `wpf`, `avalonia`, or `winforms`. Treat the token as a local secret (same-user ACL on `%TEMP%`).
+`uiFramework` is `wpf`, `avalonia`, or `winforms`. Optional backend behavior is advertised in
+`capabilities`; callers should check it before invoking capability-specific tools. Publication uses
+an atomic replace, and a per-PID lock prevents startup-hook and in-app hosts from publishing
+competing sessions in the same discovery directory. Treat the token as a local secret (same-user
+ACL on `%TEMP%`).
 
 ## MCP surface (in-app)
 

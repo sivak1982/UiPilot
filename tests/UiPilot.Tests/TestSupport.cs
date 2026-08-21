@@ -22,7 +22,7 @@ internal static class TestSupport
         return doc.RootElement.Clone();
     }
 
-    internal class StubBackend : IUiBackend
+    internal class StubBackend : IUiBackend, ICommandUiBackend, IBindingDiagnosticsUiBackend
     {
         public string Framework => "test";
         public ElementRegistry Elements { get; } = new ElementRegistry();

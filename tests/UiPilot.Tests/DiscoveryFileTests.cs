@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using UiPilot.Abstraction;
 using UiPilot.Server;
 using Xunit;
 
@@ -21,6 +22,7 @@ public class DiscoveryFileTests
             StartedUtc = "2026-07-17T07:00:00.0000000Z",
             MainWindowTitle = "Title",
             UiFramework = "wpf",
+            Capabilities = new[] { UiBackendCapabilities.InvokeCommand },
         };
 
         var path = DiscoveryFile.Write(info, dir);
@@ -38,6 +40,7 @@ public class DiscoveryFileTests
             Assert.Equal(info.ProtocolVersion, reloaded.ProtocolVersion);
             Assert.Equal(info.MainWindowTitle, reloaded.MainWindowTitle);
             Assert.Equal(info.UiFramework, reloaded.UiFramework);
+            Assert.Equal(info.Capabilities, reloaded.Capabilities);
             Assert.Empty(Directory.GetFiles(dir, "*.tmp"));
 
             DiscoveryFile.Delete(path);

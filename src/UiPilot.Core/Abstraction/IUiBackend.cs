@@ -50,8 +50,6 @@ public interface IUiBackend
 
     string SelectItem(string id, string? text, int? index);
 
-    string InvokeCommand(string id);
-
     ScreenshotData? Screenshot(string? id);
 
     string SetWindowState(string? id, string state, bool activate);
@@ -63,9 +61,6 @@ public interface IUiBackend
     WindowBounds ResizeWindow(string? id, double width, double height, double? x, double? y, bool activate);
 
     string BringToFront(string? id);
-
-    /// <summary>Snapshot binding diagnostics and optionally clear that exact snapshot atomically.</summary>
-    IReadOnlyList<string> GetBindingErrors(bool clear);
 
     IReadOnlyList<LayoutIssue> AnalyzeLayout(string? rootId);
 
@@ -79,6 +74,35 @@ public interface IUiBackend
 
     /// <summary>Tear down framework hooks (binding listeners, etc.).</summary>
     void Shutdown();
+}
+
+/// <summary>Optional command-model capability implemented by WPF and Avalonia backends.</summary>
+public interface ICommandUiBackend
+{
+    string InvokeCommand(string id);
+}
+
+/// <summary>Optional framework binding-diagnostic capability.</summary>
+public interface IBindingDiagnosticsUiBackend
+{
+    /// <summary>Snapshot diagnostics and optionally clear that exact snapshot atomically.</summary>
+    IReadOnlyList<string> GetBindingErrors(bool clear);
+}
+
+public static class UiBackendCapabilities
+{
+    public const string InvokeCommand = "invokeCommand";
+    public const string BindingDiagnostics = "bindingDiagnostics";
+
+    public static IReadOnlyList<string> Describe(IUiBackend backend)
+    {
+        var capabilities = new List<string>();
+        if (backend is ICommandUiBackend)
+            capabilities.Add(InvokeCommand);
+        if (backend is IBindingDiagnosticsUiBackend)
+            capabilities.Add(BindingDiagnostics);
+        return capabilities;
+    }
 }
 
 public sealed class FindPage

@@ -39,7 +39,16 @@ public sealed class LifecycleTools
         return _telemetry.Run("list_apps", "lifecycle", null, () =>
         {
             var apps = _connection.ListAlive()
-                .Select(a => new { a.Pid, a.ProcessName, a.MainWindowTitle, a.ProtocolVersion, a.StartedUtc, a.UiFramework })
+                .Select(a => new
+                {
+                    a.Pid,
+                    a.ProcessName,
+                    a.MainWindowTitle,
+                    a.ProtocolVersion,
+                    a.StartedUtc,
+                    a.UiFramework,
+                    a.Capabilities,
+                })
                 .ToList();
             return Ok(JsonSerializer.Serialize(new { count = apps.Count, apps }, Json));
         });

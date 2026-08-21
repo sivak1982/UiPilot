@@ -11,7 +11,7 @@ using UiPilot.Media;
 namespace UiPilot.Avalonia;
 
 /// <summary>Avalonia implementation of the shared <see cref="IUiBackend"/> contract.</summary>
-internal sealed class AvaloniaUiBackend : IUiBackend
+internal sealed class AvaloniaUiBackend : IUiBackend, ICommandUiBackend, IBindingDiagnosticsUiBackend
 {
     private readonly BindingDiagnostics _bindings = new BindingDiagnostics();
 

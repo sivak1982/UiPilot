@@ -88,6 +88,7 @@ public sealed class PilotRuntime : IDisposable
                     StartedUtc = DateTime.UtcNow.ToString("o"),
                     MainWindowTitle = invokeOnUi(() => getMainWindowTitle()) as string,
                     UiFramework = string.IsNullOrEmpty(options.UiFramework) ? backend.Framework : options.UiFramework,
+                    Capabilities = UiBackendCapabilities.Describe(backend),
                 };
                 discoveryPath = DiscoveryFile.Write(info, options.DiscoveryDirectory);
 

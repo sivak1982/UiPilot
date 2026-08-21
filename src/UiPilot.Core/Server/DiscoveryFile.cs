@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -22,6 +23,8 @@ public sealed class DiscoveryInfo
 
     /// <summary>UI stack hosting the in-process tools (<c>wpf</c>, <c>avalonia</c>, …).</summary>
     [JsonPropertyName("uiFramework")] public string? UiFramework { get; set; }
+    /// <summary>Optional backend features that callers can check before invoking a tool.</summary>
+    [JsonPropertyName("capabilities")] public IReadOnlyList<string> Capabilities { get; set; } = Array.Empty<string>();
 }
 
 internal static class DiscoveryFile

@@ -315,7 +315,13 @@ internal static class BuiltInTools
             (ctx, args) =>
             {
                 var id = args.GetRequiredString("id");
-                return OnUi<object>(ctx, () => new { result = ctx.Backend.InvokeCommand(id) });
+                return OnUi<object>(ctx, () =>
+                {
+                    if (ctx.Backend is not ICommandUiBackend commands)
+                        throw UnsupportedCapability(
+                            ctx.Backend, ToolCatalog.InvokeCommand, UiBackendCapabilities.InvokeCommand);
+                    return new { result = commands.InvokeCommand(id) };
+                });
             });
 
         registry.Register(ToolCatalog.Screenshot,
@@ -394,7 +400,12 @@ internal static class BuiltInTools
                 var clear = args.GetBool("clear", false);
                 return OnUi(ctx, () =>
                 {
-                    var errors = ctx.Backend.GetBindingErrors(clear);
+                    if (ctx.Backend is not IBindingDiagnosticsUiBackend diagnostics)
+                        throw UnsupportedCapability(
+                            ctx.Backend,
+                            ToolCatalog.GetBindingErrors,
+                            UiBackendCapabilities.BindingDiagnostics);
+                    var errors = diagnostics.GetBindingErrors(clear);
                     return new { count = errors.Count, errors };
                 });
             });
@@ -457,6 +468,15 @@ internal static class BuiltInTools
             throw;
         }
     }
+
+    private static PilotToolException UnsupportedCapability(
+        IUiBackend backend,
+        string tool,
+        string capability) =>
+        new(
+            PilotErrorCodes.Unsupported,
+            $"Tool '{tool}' is not supported by the {backend.Framework} backend.",
+            $"Check discovery capabilities for '{capability}' before calling this tool.");
 
     private static PilotToolException StaleElement(string id) =>
         new(
