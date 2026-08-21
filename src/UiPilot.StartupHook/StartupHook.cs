@@ -21,8 +21,8 @@ internal static class StartupHook
 
     public static void Initialize()
     {
-        // Do not let child processes inherit this hook.
-        Environment.SetEnvironmentVariable("DOTNET_STARTUP_HOOKS", null);
+        // Do not let child processes inherit UiPilot, but preserve unrelated startup hooks.
+        RemoveSelfFromStartupHooks();
 
         var thread = new Thread(WaitAndStart)
         {
@@ -32,6 +32,29 @@ internal static class StartupHook
         if (OperatingSystem.IsWindows())
             thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
+    }
+
+    private static void RemoveSelfFromStartupHooks()
+    {
+        var configured = Environment.GetEnvironmentVariable("DOTNET_STARTUP_HOOKS");
+        if (string.IsNullOrWhiteSpace(configured))
+            return;
+
+        var self = Path.GetFullPath(typeof(StartupHook).Assembly.Location);
+        var comparer = OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+        var remaining = configured
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .Where(path =>
+            {
+                try { return !comparer.Equals(Path.GetFullPath(path), self); }
+                catch { return true; }
+            })
+            .ToArray();
+        Environment.SetEnvironmentVariable(
+            "DOTNET_STARTUP_HOOKS",
+            remaining.Length == 0 ? null : string.Join(Path.PathSeparator, remaining));
     }
 
     private static void WaitAndStart()

@@ -1,5 +1,7 @@
+using System.Text.Json;
 using UiPilot;
 using UiPilot.Hosting;
+using UiPilot.Server;
 using UiPilot.Tools;
 using Xunit;
 
@@ -118,6 +120,10 @@ public class PilotRuntimeTests
         {
             Assert.True(first.Start(
                 options, new TestSupport.StubBackend(), func => func(), () => "first", _ => { }));
+            var discovery = JsonSerializer.Deserialize<DiscoveryInfo>(
+                File.ReadAllText(Path.Combine(discoveryDirectory, Environment.ProcessId + ".json")));
+            Assert.NotNull(discovery);
+            Assert.Matches("^[0-9a-f]{64}$", discovery!.Token);
             Assert.False(second.Start(
                 options, new TestSupport.StubBackend(), func => func(), () => "second", _ => { }));
             Assert.Null(second.Tools);

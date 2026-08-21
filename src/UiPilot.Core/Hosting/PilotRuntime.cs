@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Security.Cryptography;
 using UiPilot.Abstraction;
 using UiPilot.Server;
 using UiPilot.Tools;
@@ -170,7 +171,7 @@ public sealed class PilotRuntime : IDisposable
     }
 
     private static string GenerateToken() =>
-        Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
 
     private static void ReleaseProcessLock(FileStream? processLock)
     {
