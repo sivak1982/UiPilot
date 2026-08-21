@@ -38,6 +38,8 @@ if ([string]::IsNullOrWhiteSpace($version)) {
     throw "Could not read UiPilot's version from Directory.Build.props."
 }
 $fullVersion = "$version.$BuildNumber"
+# NuGet normalizes a trailing zero revision (0.1.0.0 -> 0.1.0) in package identities.
+$packageVersion = if ($BuildNumber -eq 0) { $version } else { $fullVersion }
 
 $bundleName = "UiPilot-$fullVersion-$RuntimeIdentifier"
 # Windows uses this only as MSI staging; Linux ships it as the ZIP bundle.
@@ -121,8 +123,8 @@ foreach ($projectName in @("UiPilot.Core", "UiPilot.Client")) {
         --configuration $Configuration `
         --output $packagesDirectory `
         -p:BuildNumber=$BuildNumber `
-        -p:Version=$fullVersion `
-        -p:PackageVersion=$fullVersion `
+        -p:Version=$packageVersion `
+        -p:PackageVersion=$packageVersion `
         --nologo
     if ($LASTEXITCODE -ne 0) {
         throw "$projectName pack failed."
@@ -150,8 +152,8 @@ $requiredFiles = @(
     (Join-Path $payloadDirectory "UiPilot.Cli.dll"),
     (Join-Path $payloadDirectory "hooks\UiPilot.StartupHook.dll"),
     (Join-Path $payloadDirectory "hooks\avalonia\UiPilot.Avalonia.dll"),
-    (Join-Path $payloadDirectory "packages\UiPilot.Client.$fullVersion.nupkg"),
-    (Join-Path $payloadDirectory "packages\UiPilot.Core.$fullVersion.nupkg"),
+    (Join-Path $payloadDirectory "packages\UiPilot.Client.$packageVersion.nupkg"),
+    (Join-Path $payloadDirectory "packages\UiPilot.Core.$packageVersion.nupkg"),
     (Join-Path $payloadDirectory "skills\uipilot-csharp-tests\SKILL.md"),
     $extensionVsix
 )
