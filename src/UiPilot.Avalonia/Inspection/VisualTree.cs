@@ -121,8 +121,11 @@ internal static class VisualTree
         if (obj == null) return null;
 
         var wanted = type?.Trim();
-        var current = obj.GetVisualParent();
-        for (var depth = 0; current != null && depth < maxDepth; depth++)
+        var current = NextAncestor(obj);
+        var seen = new HashSet<Visual>();
+        for (var depth = 0;
+             current != null && depth < maxDepth && seen.Add(current);
+             depth++)
         {
             if (string.IsNullOrEmpty(wanted) ||
                 string.Equals(current.GetType().Name, wanted, StringComparison.OrdinalIgnoreCase))
@@ -130,11 +133,15 @@ internal static class VisualTree
                 return BuildInfo(current, registry);
             }
 
-            current = current.GetVisualParent();
+            current = NextAncestor(current);
         }
 
         return null;
     }
+
+    private static Visual? NextAncestor(Visual current) =>
+        current.GetVisualParent()
+        ?? (current as ILogical)?.LogicalParent as Visual;
 
     private static List<ElementInfo>? BuildChildren(Visual obj, ElementRegistry registry, int depth)
     {
