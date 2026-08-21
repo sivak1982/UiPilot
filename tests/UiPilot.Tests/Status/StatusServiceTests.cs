@@ -8,6 +8,7 @@ using Xunit;
 
 namespace UiPilot.Tests.Status;
 
+[Trait("Category", "Integration")]
 public sealed class StatusServiceTests
 {
     private static readonly TimeSpan ReceiveTimeout = TimeSpan.FromSeconds(10);

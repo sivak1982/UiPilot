@@ -6,6 +6,7 @@ using Xunit;
 
 namespace UiPilot.Tests;
 
+[Trait("Category", "Integration")]
 public class McpPipeServerIntegrationTests
 {
     private const string Token = "test-token";

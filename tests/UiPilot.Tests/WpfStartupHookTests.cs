@@ -3,6 +3,7 @@ using Xunit;
 
 namespace UiPilot.Tests;
 
+[Trait("Category", "DesktopE2E")]
 public sealed class WpfStartupHookTests
 {
     [WindowsFact]

@@ -182,6 +182,7 @@ public class LogWaiterTests
     }
 }
 
+[Trait("Category", "Integration")]
 public class StartProcessTests
 {
     [Fact]
