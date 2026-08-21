@@ -15,15 +15,22 @@ export interface UiPilotConfig {
   eventsUrl: string;
 }
 
+export class UiPilotConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UiPilotConfigError";
+  }
+}
+
 export function parseConfig(raw: RawConfig): UiPilotConfig {
   if (raw.host !== LOOPBACK_HOST) {
-    throw new Error(`UiPilot status host must be ${LOOPBACK_HOST}.`);
+    throw new UiPilotConfigError(`UiPilot status host must be ${LOOPBACK_HOST}.`);
   }
   if (!Number.isInteger(raw.port) || (raw.port as number) < 1 || (raw.port as number) > 65535) {
-    throw new Error("UiPilot status port must be an integer between 1 and 65535.");
+    throw new UiPilotConfigError("UiPilot status port must be an integer between 1 and 65535.");
   }
   if (typeof raw.token !== "string" || raw.token.trim().length === 0) {
-    throw new Error("Configure uipilotStatus.token before connecting.");
+    throw new UiPilotConfigError("Configure uipilotStatus.token before connecting.");
   }
 
   const port = raw.port as number;

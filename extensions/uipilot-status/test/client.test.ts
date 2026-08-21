@@ -45,7 +45,7 @@ interface MockServer {
   port: number;
   inbound: string[];
   send(payload: unknown): void;
-  setHttpStatus(status: StatusDto): void;
+  setHttpStatus(status: StatusDto | null): void;
   waitForSocket(): Promise<void>;
   close(): Promise<void>;
 }
@@ -204,5 +204,89 @@ describe("status client against a mock loopback endpoint", () => {
     expect(snapshots.at(-1)?.activeSession).toBe("recovered");
     expect(operations[0].name).toBe("click");
     expect(mock.inbound).toEqual([]);
+  });
+
+  it("keeps a healthy WebSocket connected when manual HTTP refresh fails", async () => {
+    mock = await startMock();
+    const states: string[] = [];
+    client = new UiPilotStatusClient(
+      () => parseConfig({ host: LOOPBACK_HOST, port: mock!.port, token }),
+      {
+        onState(state) { states.push(state); },
+        onStatus() {},
+        onOperation() {},
+        log() {},
+      },
+    );
+
+    client.connect();
+    await mock.waitForSocket();
+    await waitUntil(() => states.at(-1) === "connected");
+    mock.setHttpStatus(null);
+
+    await expect(client.refresh()).rejects.toThrow("HTTP 503");
+    expect(states.at(-1)).toBe("connected");
+  });
+
+  it("uses an HTTP recovery snapshot for later partial events", async () => {
+    mock = await startMock();
+    const snapshots: StatusDto[] = [];
+    client = new UiPilotStatusClient(
+      () => parseConfig({ host: LOOPBACK_HOST, port: mock!.port, token }),
+      {
+        onState() {},
+        onStatus(status) { snapshots.push(status); },
+        onOperation() {},
+        log() {},
+      },
+    );
+
+    client.connect();
+    await mock.waitForSocket();
+    await waitUntil(() => snapshots.length > 0);
+    mock.setHttpStatus(statusSnapshot({
+      apps: [{
+        pid: 99,
+        processName: "Recovered",
+        mainWindowTitle: null,
+        protocolVersion: "2.0",
+        startedUtc: "2026-08-20T12:00:00Z",
+        uiFramework: "WPF",
+      }],
+    }));
+    mock.send({ malformed: true });
+    await waitUntil(() => snapshots.at(-1)?.apps.length === 1);
+
+    mock.send({
+      type: "sessions",
+      sessions: {
+        activeSession: "desktop",
+        sessions: statusSnapshot().sessions,
+      },
+    });
+    await waitUntil(() => snapshots.length >= 3);
+    expect(snapshots.at(-1)?.apps[0].processName).toBe("Recovered");
+  });
+
+  it("does not retry permanent configuration errors", async () => {
+    const logs: string[] = [];
+    const states: string[] = [];
+    client = new UiPilotStatusClient(
+      () => parseConfig({ host: LOOPBACK_HOST, port: 17831, token: "" }),
+      {
+        onState(state) { states.push(state); },
+        onStatus() {},
+        onOperation() {},
+        log(message) { logs.push(message); },
+      },
+      { backoff: { initialMs: 10, maximumMs: 10, factor: 1 } },
+    );
+
+    client.connect();
+    await waitUntil(() => states.includes("error"));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(logs.filter((message) => message.startsWith("Connection failed:"))).toHaveLength(1);
+    expect(logs.some((message) => message.startsWith("Reconnecting in"))).toBe(false);
   });
 });
