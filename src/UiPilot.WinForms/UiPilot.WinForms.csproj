@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="UiPilot.Tests" />
+    <InternalsVisibleTo Include="UiPilot.Desktop.Tests" />
   </ItemGroup>
 
 </Project>

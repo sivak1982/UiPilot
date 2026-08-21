@@ -38,12 +38,12 @@ public sealed class UiPilotClientTests
         while (DateTime.UtcNow < clickDeadline)
         {
             clicked = await pilot.ClickAsync(greet.Id, session: "sample");
-            if (clicked.Method == "synthetic:button-command")
+            if (clicked.Method is "synthetic:automation-invoke" or "synthetic:button-command")
                 break;
             await Task.Delay(200);
         }
         Assert.NotNull(clicked);
-        Assert.Equal("synthetic:button-command", clicked.Method);
+        Assert.Contains(clicked.Method, new[] { "synthetic:automation-invoke", "synthetic:button-command" });
 
         var greeting = await pilot.WaitForElementAsync(
             "Hello, UiPilot!", exact: true, session: "sample");

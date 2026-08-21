@@ -12,7 +12,7 @@ using UiPilot.WinForms.Media;
 namespace UiPilot.WinForms;
 
 /// <summary>Windows Forms implementation of the shared <see cref="IUiBackend"/> contract.</summary>
-internal sealed class WinFormsUiBackend : IUiBackend
+internal sealed class WinFormsUiBackend : IUiBackend, IRealInputUiBackend
 {
     public string Framework => "winforms";
     public ElementRegistry Elements { get; } = new ElementRegistry();

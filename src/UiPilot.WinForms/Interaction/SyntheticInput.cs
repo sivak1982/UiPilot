@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using UiPilot.Tools;
+using UiPilot.Interaction;
 
 namespace UiPilot.WinForms.Interaction;
 
@@ -90,9 +91,9 @@ internal static class SyntheticInput
         if (control == null || !control.IsHandleCreated)
             throw new PilotToolException(PilotErrorCodes.InvalidArgs, "Target has no window handle.");
         if (dy != 0)
-            SendMessage(control.Handle, WmMouseWheel, WheelWParam(LinesToDelta(dy)), IntPtr.Zero);
+            SendMessage(control.Handle, WmMouseWheel, WheelWParam(ScrollMetrics.ToWheelDelta(dy)), IntPtr.Zero);
         if (dx != 0)
-            SendMessage(control.Handle, WmMouseHWheel, WheelWParam(LinesToDelta(dx)), IntPtr.Zero);
+            SendMessage(control.Handle, WmMouseHWheel, WheelWParam(ScrollMetrics.ToWheelDelta(dx)), IntPtr.Zero);
         return "synthetic:scroll";
     }
 
@@ -219,12 +220,6 @@ internal static class SyntheticInput
         throw new PilotToolException(PilotErrorCodes.NotFound, $"No selectable item matching '{text}' was found.");
     }
 
-    private static int LinesToDelta(double lines)
-    {
-        if (lines == 0) return 0;
-        return (int)Math.Round(lines * 120, MidpointRounding.AwayFromZero);
-    }
-
     private static IntPtr WheelWParam(double delta)
     {
         var amount = (int)Math.Round(delta, MidpointRounding.AwayFromZero);
@@ -255,77 +250,53 @@ internal static class SyntheticInput
 
         public static KeyStroke Parse(string keys)
         {
-            if (keys.IndexOf('+', StringComparison.Ordinal) < 0)
-                return FromToken(keys, Array.Empty<byte>(), isAlt: false);
-
-            var rawParts = keys.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (rawParts.Length < 2)
-                throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Invalid key combination '{keys}'.");
+            var chord = KeyChord.Parse(keys);
+            if (chord.IsPlainText)
+                throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Unknown key '{keys}'.");
 
             var modifiers = new List<byte>(4);
-            var isAlt = false;
-            for (var i = 0; i < rawParts.Length - 1; i++)
-            {
-                switch (rawParts[i].ToUpperInvariant())
-                {
-                    case "CTRL":
-                    case "CONTROL":
-                        modifiers.Add(0x11);
-                        break;
-                    case "ALT":
-                        modifiers.Add(0x12);
-                        isAlt = true;
-                        break;
-                    case "SHIFT":
-                        modifiers.Add(0x10);
-                        break;
-                    case "WIN":
-                    case "WINDOWS":
-                    case "CMD":
-                    case "COMMAND":
-                    case "META":
-                        modifiers.Add(0x5B);
-                        break;
-                    default:
-                        throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Unknown modifier '{rawParts[i]}'.");
-                }
-            }
-
-            return FromToken(rawParts[^1], modifiers, isAlt);
+            if ((chord.Modifiers & KeyModifier.Control) != 0) modifiers.Add(0x11);
+            if ((chord.Modifiers & KeyModifier.Alt) != 0) modifiers.Add(0x12);
+            if ((chord.Modifiers & KeyModifier.Shift) != 0) modifiers.Add(0x10);
+            if ((chord.Modifiers & KeyModifier.Meta) != 0) modifiers.Add(0x5B);
+            return FromCanonical(chord.KeyToken, modifiers, (chord.Modifiers & KeyModifier.Alt) != 0);
         }
 
-        private static KeyStroke FromToken(string token, IReadOnlyList<byte> modifiers, bool isAlt)
+        private static KeyStroke FromCanonical(string canonical, IReadOnlyList<byte> modifiers, bool isAlt)
         {
-            var normalized = token.Trim();
-            if (normalized.Length == 1)
-            {
-                var ch = normalized[0];
-                var vk = (byte)VkKeyScan(ch);
-                if (vk == 0xFF)
-                    throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Unknown key '{token}'.");
-                return new KeyStroke(vk, modifiers, ch, isAlt);
-            }
+            if (canonical.Length == 1)
+                return FromChar(canonical[0], modifiers, isAlt);
+            if (canonical.Length == 2 && canonical[0] == 'D' && char.IsDigit(canonical[1]))
+                return FromChar(canonical[1], modifiers, isAlt);
 
-            var special = SpecialVk(normalized)
-                ?? throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Unknown key '{token}'.");
+            var special = SpecialVk(canonical)
+                ?? throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Unknown key '{canonical}'.");
             return new KeyStroke(special, modifiers, ch: null, isAlt);
         }
 
-        private static byte? SpecialVk(string key) => key.Trim().ToUpperInvariant() switch
+        private static KeyStroke FromChar(char ch, IReadOnlyList<byte> modifiers, bool isAlt)
         {
-            "ENTER" or "RETURN" => 0x0D,
+            var vk = (byte)VkKeyScan(ch);
+            if (vk == 0xFF)
+                throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Unknown key '{ch}'.");
+            return new KeyStroke(vk, modifiers, ch, isAlt);
+        }
+
+        private static byte? SpecialVk(string key) => key switch
+        {
+            "ENTER" => 0x0D,
             "TAB" => 0x09,
-            "ESC" or "ESCAPE" => 0x1B,
-            "BACKSPACE" or "BKSP" => 0x08,
-            "DELETE" or "DEL" => 0x2E,
+            "ESCAPE" => 0x1B,
+            "BACKSPACE" => 0x08,
+            "DELETE" => 0x2E,
             "LEFT" => 0x25,
             "RIGHT" => 0x27,
             "UP" => 0x26,
             "DOWN" => 0x28,
             "HOME" => 0x24,
             "END" => 0x23,
-            "PAGEUP" or "PGUP" => 0x21,
-            "PAGEDOWN" or "PGDN" => 0x22,
+            "PAGEUP" => 0x21,
+            "PAGEDOWN" => 0x22,
             "SPACE" => 0x20,
             var value when value.Length is 2 or 3 && value[0] == 'F' && int.TryParse(value[1..], out var fn) && fn is >= 1 and <= 12
                 => (byte)(0x70 + fn - 1),

@@ -48,8 +48,6 @@ public static class VisualTreeQuery
         var roots = ResolveRoots(registry, rootId);
         var q = query?.Trim();
         var hasQuery = !string.IsNullOrEmpty(q);
-        var safeLimit = Math.Max(0, limit);
-        var safeOffset = Math.Max(0, offset);
 
         // Ancestor containers can incidentally match on their .NET type name (e.g. a
         // 'MainLoadPort' user control matching a "load" query) and, being ancestors, are
@@ -78,24 +76,7 @@ public static class VisualTreeQuery
         }
 
         var matches = exact.Count > 0 ? exact : loose;
-        var results = new List<ElementInfo>();
-        var matched = 0;
-        foreach (var node in matches)
-        {
-            if (matched >= safeOffset && results.Count < safeLimit)
-                results.Add(BuildInfo(node, registry));
-            matched++;
-        }
-
-        return new FindPage
-        {
-            Elements = results,
-            Count = results.Count,
-            Total = matched,
-            HasMore = matched > safeOffset + results.Count,
-            Offset = safeOffset,
-            Limit = safeLimit,
-        };
+        return FindPagePaging.Slice(matches, offset, limit, node => BuildInfo(node, registry));
     }
 
     public static ElementInfo? Inspect(
@@ -279,36 +260,31 @@ public static class VisualTreeQuery
     {
         if (obj is Visual visual && obj is UIElement uiElement && uiElement.IsVisible)
         {
+            double width = 0, height = 0;
+            if (obj is FrameworkElement fe)
+            {
+                width = fe.ActualWidth;
+                height = fe.ActualHeight;
+            }
+
             try
             {
-                double width = 0, height = 0;
-                if (obj is FrameworkElement fe)
-                {
-                    width = fe.ActualWidth;
-                    height = fe.ActualHeight;
-                }
-
                 // PointToScreen returns physical pixels; convert size the same way so X/Y/W/H share one unit.
                 var origin = visual.PointToScreen(new Point(0, 0));
                 var corner = visual.PointToScreen(new Point(width, height));
-                info.X = origin.X;
-                info.Y = origin.Y;
-                info.Width = Math.Abs(corner.X - origin.X);
-                info.Height = Math.Abs(corner.Y - origin.Y);
+                PhysicalBounds.SetFromScreenCorners(info, origin.X, origin.Y, corner.X, corner.Y);
             }
             catch
             {
-                if (obj is FrameworkElement fe)
-                {
-                    info.Width = fe.ActualWidth;
-                    info.Height = fe.ActualHeight;
-                }
+                var dpi = VisualTreeHelper.GetDpi(visual);
+                PhysicalBounds.SetPhysicalSizeOnly(info, width, height, dpi.DpiScaleX, dpi.DpiScaleY);
             }
         }
-        else if (obj is FrameworkElement fe)
+        else if (obj is FrameworkElement fallback)
         {
-            info.Width = fe.ActualWidth;
-            info.Height = fe.ActualHeight;
+            var dpi = VisualTreeHelper.GetDpi(fallback);
+            PhysicalBounds.SetPhysicalSizeOnly(
+                info, fallback.ActualWidth, fallback.ActualHeight, dpi.DpiScaleX, dpi.DpiScaleY);
         }
     }
 

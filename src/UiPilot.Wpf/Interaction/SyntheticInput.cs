@@ -13,6 +13,7 @@ using System.Windows.Media;
 using UiPilot.Tools;
 using UiPilot.Inspection;
 using UiPilot.Media;
+using UiPilot.Interaction;
 
 namespace UiPilot.Wpf.Interaction;
 
@@ -149,26 +150,14 @@ public static class SyntheticInput
         if (obj != null)
             FocusElement(element);
 
-        if (keys.IndexOf("+", StringComparison.Ordinal) < 0)
+        var chord = KeyChord.Parse(keys);
+        if (chord.IsPlainText)
         {
-            if (TryParseKey(keys, out var specialKey))
-            {
-                RaiseKeyStroke(element, specialKey, ModifierKeys.None);
-                return "synthetic:keys";
-            }
-
-            RaiseText(element, keys);
+            RaiseText(element, chord.KeyToken);
             return "synthetic:keys";
         }
 
-        if (StartsWithModifier(keys))
-        {
-            var stroke = KeyStroke.Parse(keys);
-            RaiseKeyStroke(element, stroke.Key, stroke.Modifiers);
-            return "synthetic:keys";
-        }
-
-        RaiseText(element, keys);
+        RaiseKeyStroke(element, MapKey(chord.KeyToken), MapModifiers(chord.Modifiers));
         return "synthetic:keys";
     }
 
@@ -177,14 +166,19 @@ public static class SyntheticInput
         if (obj is not UIElement element)
             throw new PilotToolException(PilotErrorCodes.InvalidArgs, "Target is not a UIElement.");
 
-        var vertical = WheelDelta(dy);
-        var horizontal = WheelDelta(dx);
+        var (vertical, horizontal) = ScrollMetrics.Axes(dx, dy);
         if (vertical == 0 && horizontal == 0)
             return "synthetic:scroll";
 
-        var delta = vertical != 0 ? vertical : horizontal;
-        RaiseMouseWheel(element, UIElement.PreviewMouseWheelEvent, delta);
-        RaiseMouseWheel(element, UIElement.MouseWheelEvent, delta);
+        if (vertical != 0)
+        {
+            RaiseMouseWheel(element, UIElement.PreviewMouseWheelEvent, vertical);
+            RaiseMouseWheel(element, UIElement.MouseWheelEvent, vertical);
+        }
+
+        if (horizontal != 0)
+            ScrollHorizontally(element, horizontal);
+
         return "synthetic:scroll";
     }
 
@@ -341,11 +335,22 @@ public static class SyntheticInput
         element.RaiseEvent(args);
     }
 
-    private static int WheelDelta(double lines)
+    private static void ScrollHorizontally(DependencyObject start, int wheelDelta)
     {
-        if (lines == 0) return 0;
-        // Contract: dx/dy are scroll lines; one line = one mouse-wheel notch (WHEEL_DELTA = 120).
-        return (int)Math.Round(lines * 120, MidpointRounding.AwayFromZero);
+        var current = start;
+        while (current != null)
+        {
+            if (current is ScrollViewer viewer)
+            {
+                var lines = wheelDelta / (double)ScrollMetrics.WheelDeltaPerLine;
+                viewer.ScrollToHorizontalOffset(Math.Max(0, viewer.HorizontalOffset + (lines * 16)));
+                return;
+            }
+
+            current = current is Visual visual
+                ? VisualTreeHelper.GetParent(visual)
+                : LogicalTreeHelper.GetParent(current);
+        }
     }
 
     private static string SelectFromSelector(Selector selector, string? text, int? index)
@@ -448,139 +453,40 @@ public static class SyntheticInput
         return keys;
     }
 
-    private static bool TryParseKey(string token, out Key key)
+    private static ModifierKeys MapModifiers(KeyModifier modifiers)
     {
-        token = NormalizeKeyToken(token);
-        key = Key.None;
-        if (token.Length == 1)
-        {
-            var ch = token[0];
-            if (ch >= 'A' && ch <= 'Z')
-            {
-                key = (Key)Enum.Parse(typeof(Key), ch.ToString(CultureInfo.InvariantCulture));
-                return true;
-            }
-            if (ch >= '0' && ch <= '9')
-            {
-                key = (Key)Enum.Parse(typeof(Key), "D" + ch.ToString(CultureInfo.InvariantCulture));
-                return true;
-            }
-        }
-
-        switch (token)
-        {
-            case "ENTER": key = Key.Return; return true;
-            case "RETURN": key = Key.Return; return true;
-            case "TAB": key = Key.Tab; return true;
-            case "ESC":
-            case "ESCAPE": key = Key.Escape; return true;
-            case "BACKSPACE": key = Key.Back; return true;
-            case "BKSP": key = Key.Back; return true;
-            case "DELETE":
-            case "DEL": key = Key.Delete; return true;
-            case "LEFT": key = Key.Left; return true;
-            case "RIGHT": key = Key.Right; return true;
-            case "UP": key = Key.Up; return true;
-            case "DOWN": key = Key.Down; return true;
-            case "HOME": key = Key.Home; return true;
-            case "END": key = Key.End; return true;
-            case "PAGEUP":
-            case "PGUP": key = Key.PageUp; return true;
-            case "PAGEDOWN":
-            case "PGDN": key = Key.PageDown; return true;
-            case "SPACE": key = Key.Space; return true;
-        }
-
-        if (token.Length >= 2 && token[0] == 'F' &&
-            int.TryParse(token.Substring(1), NumberStyles.None, CultureInfo.InvariantCulture, out var fn) &&
-            fn >= 1 && fn <= 12)
-        {
-            key = (Key)((int)Key.F1 + fn - 1);
-            return true;
-        }
-
-        return Enum.TryParse(token, ignoreCase: true, out key) && key != Key.None;
+        var mapped = ModifierKeys.None;
+        if ((modifiers & KeyModifier.Control) != 0) mapped |= ModifierKeys.Control;
+        if ((modifiers & KeyModifier.Alt) != 0) mapped |= ModifierKeys.Alt;
+        if ((modifiers & KeyModifier.Shift) != 0) mapped |= ModifierKeys.Shift;
+        if ((modifiers & KeyModifier.Meta) != 0) mapped |= ModifierKeys.Windows;
+        return mapped;
     }
 
-    private static string NormalizeKeyToken(string token) =>
-        token.Trim().Replace(" ", string.Empty).ToUpperInvariant();
-
-    private static bool StartsWithModifier(string keys)
+    private static Key MapKey(string canonical)
     {
-        var first = keys.Split(new[] { '+' }, 2)[0];
-        switch (NormalizeKeyToken(first))
+        switch (canonical)
         {
-            case "CTRL":
-            case "CONTROL":
-            case "ALT":
-            case "SHIFT":
-            case "WIN":
-            case "WINDOWS":
-            case "META":
-            case "CMD":
-            case "COMMAND":
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    private readonly struct KeyStroke
-    {
-        private KeyStroke(Key key, ModifierKeys modifiers)
-        {
-            Key = key;
-            Modifiers = modifiers;
+            case "ENTER": return Key.Return;
+            case "TAB": return Key.Tab;
+            case "ESCAPE": return Key.Escape;
+            case "BACKSPACE": return Key.Back;
+            case "DELETE": return Key.Delete;
+            case "LEFT": return Key.Left;
+            case "RIGHT": return Key.Right;
+            case "UP": return Key.Up;
+            case "DOWN": return Key.Down;
+            case "HOME": return Key.Home;
+            case "END": return Key.End;
+            case "PAGEUP": return Key.PageUp;
+            case "PAGEDOWN": return Key.PageDown;
+            case "SPACE": return Key.Space;
         }
 
-        public Key Key { get; }
+        if (canonical.Length >= 2 && canonical[0] == 'F' &&
+            int.TryParse(canonical.AsSpan(1), NumberStyles.None, CultureInfo.InvariantCulture, out var fn))
+            return (Key)((int)Key.F1 + fn - 1);
 
-        public ModifierKeys Modifiers { get; }
-
-        public static KeyStroke Parse(string keys)
-        {
-            var rawParts = keys.Split(new[] { '+' }, StringSplitOptions.RemoveEmptyEntries);
-            var parts = new List<string>(rawParts.Length);
-            foreach (var part in rawParts)
-            {
-                var trimmed = part.Trim();
-                if (trimmed.Length > 0)
-                    parts.Add(trimmed);
-            }
-            if (parts.Count < 2)
-                throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Invalid key combination '{keys}'.");
-
-            var modifiers = ModifierKeys.None;
-            for (var i = 0; i < parts.Count - 1; i++)
-            {
-                switch (NormalizeKeyToken(parts[i]))
-                {
-                    case "CTRL":
-                    case "CONTROL":
-                        modifiers |= ModifierKeys.Control;
-                        break;
-                    case "ALT":
-                        modifiers |= ModifierKeys.Alt;
-                        break;
-                    case "SHIFT":
-                        modifiers |= ModifierKeys.Shift;
-                        break;
-                    case "WIN":
-                    case "WINDOWS":
-                    case "META":
-                    case "CMD":
-                    case "COMMAND":
-                        modifiers |= ModifierKeys.Windows;
-                        break;
-                    default:
-                        throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Unknown modifier '{parts[i]}'.");
-                }
-            }
-
-            if (!TryParseKey(parts[parts.Count - 1], out var key))
-                throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Unknown key '{parts[parts.Count - 1]}'.");
-
-            return new KeyStroke(key, modifiers);
-        }
+        return (Key)Enum.Parse(typeof(Key), canonical);
     }
 }

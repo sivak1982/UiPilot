@@ -22,7 +22,7 @@ public class DiscoveryFileTests
             StartedUtc = "2026-07-17T07:00:00.0000000Z",
             MainWindowTitle = "Title",
             UiFramework = "wpf",
-            Capabilities = new[] { UiBackendCapabilities.InvokeCommand },
+            Capabilities = new[] { UiBackendCapabilities.InvokeCommand, UiBackendCapabilities.RealInput },
         };
 
         var path = DiscoveryFile.Write(info, dir);

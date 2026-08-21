@@ -59,6 +59,7 @@ public sealed class PilotRuntime : IDisposable
             var context = new ToolContext(backend, invokeOnUi);
             var registry = new ToolRegistry(context);
             BuiltInTools.RegisterAll(registry);
+            PilotToolDiscovery.RegisterFrom(registry, Assembly.GetEntryAssembly());
 
             var pid = Process.GetCurrentProcess().Id;
             var processLock = DiscoveryFile.TryAcquireProcessLock(pid, options.DiscoveryDirectory);

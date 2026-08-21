@@ -3,10 +3,10 @@ using System;
 namespace UiPilot;
 
 /// <summary>
-/// Marks a static method as an opt-in custom pilot tool. Reserved for domain-specific
-/// actions; basic UI automation never requires attributes. Discovery/registration of these
-/// is not implemented yet — register handlers on <c>PilotHost.Tools</c> after <c>Start()</c>,
-/// then use <c>describe_app_tools</c> / <c>invoke_app_tool</c>.
+/// Marks a public static method as an opt-in custom pilot tool. Reserved for domain-specific
+/// actions; basic UI automation never requires attributes. After <c>PilotHost.Start()</c>,
+/// matching methods on the entry assembly are registered automatically and appear in
+/// <c>describe_app_tools</c> / <c>invoke_app_tool</c>.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class PilotToolAttribute : Attribute

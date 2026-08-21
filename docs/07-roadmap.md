@@ -56,14 +56,13 @@ Priority order, following the "thin vertical slice first" principle.
 
 ## Phase 6 - packaging / extensibility
 
-- `[PilotTool]` discovery + auto-registration.
+- `[PilotTool]` discovery + auto-registration on the entry assembly (done).
 - `services.AddUiPilot()` / Avalonia host helpers.
 - Publish `uipilot` CLI as a `dotnet tool`.
 - Debug-only MSBuild props / module initializer auto-`Start()`.
 
 ## Deferred (tracked leftovers)
 
-- `[PilotTool]` attribute auto-discovery (tools are registered manually today).
 - Publish `uipilot` CLI as a `dotnet tool`.
 - Real input injection on non-Windows (Avalonia / cross-platform).
 - WinUI / MAUI adapters sharing `UiPilot.Core`.

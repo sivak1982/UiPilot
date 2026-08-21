@@ -76,12 +76,13 @@ pipe (same-integrity clients only).
 
 ### StartupHook force path
 
-When the CLI injects `DOTNET_STARTUP_HOOKS`, the generic hook starts the matching adapter with
-`force: true` so Release builds launched by the CLI are automatable without editing app code.
-That path is intentional for the agent edit loop; shipping apps that do not set
-`UIPILOT_ENABLE` and are not started via the CLI remain gated by the normal `Start()` rules.
-Discovery files are deleted on clean shutdown; a crash can leave a stale file until the next
-`DiscoveryReader` sweep (which requires a live PID, pipe name, token, and parseable `startedUtc`).
+When the CLI injects `DOTNET_STARTUP_HOOKS`, the generic hook starts the matching adapter
+with parameterless `PilotHost.Start()`, which still honors Debug / `UIPILOT_ENABLE=1` /
+`Force`. The CLI sets `UIPILOT_ENABLE=1` so Release apps it launches are automatable
+without editing app code. A process that merely inherits the hook in a Release build,
+without that env var, does **not** open the pipe. Discovery files are deleted on clean
+shutdown; a crash can leave a stale file until the next `DiscoveryReader` sweep (which
+requires a live PID, pipe name, token, and parseable `startedUtc`).
 
 Note: a Medium-integrity agent still cannot *launch* or *kill* an elevated app, so
 `build_and_start` / `restart_app` / `stop_app` do not apply to elevated targets - run the app

@@ -134,9 +134,11 @@ Common codes: `stale_element`, `not_found`, `ambiguous`, `not_attached`, `invali
 
 ## Custom domain tools
 
-Register on the matching adapter's `PilotHost.Tools` after `Start()`, or annotate with
-`[PilotTool]` (discovery wiring is still post-MVP; use
-`describe_app_tools` + `invoke_app_tool` once registered manually).
+Register on the matching adapter's `PilotHost.Tools` after `Start()`, or annotate a public
+static method with `[PilotTool("name")]`. `PilotHost.Start()` scans the entry assembly and
+registers those methods automatically; they then appear in `describe_app_tools` /
+`invoke_app_tool`. Supported signatures: `(ToolContext, JsonElement)`, `(JsonElement)`, or
+parameterless. Built-in tool names are never overwritten.
 
 ## Dual-app example
 

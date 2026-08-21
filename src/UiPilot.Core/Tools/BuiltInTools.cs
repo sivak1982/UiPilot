@@ -194,9 +194,13 @@ internal static class BuiltInTools
 
                 var route = OnUi(ctx, () =>
                 {
+                    if (ctx.Backend is not IRealInputUiBackend real)
+                        throw UnsupportedCapability(
+                            ctx.Backend, ToolCatalog.Drag, UiBackendCapabilities.RealInput);
+
                     ScreenPoint start;
                     if (id != null)
-                        start = ctx.Backend.GetElementCentre(id);
+                        start = real.GetElementCentre(id);
                     else
                         start = new ScreenPoint(
                             fromX ?? throw new PilotToolException(PilotErrorCodes.InvalidArgs, "Provide either 'id' or 'fromX'/'fromY'."),
@@ -206,7 +210,7 @@ internal static class BuiltInTools
 
                     ScreenPoint end;
                     if (toId != null)
-                        end = ctx.Backend.GetElementCentre(toId);
+                        end = real.GetElementCentre(toId);
                     else if (toX.HasValue || toY.HasValue)
                         end = new ScreenPoint(toX ?? start.X, toY ?? start.Y);
                     else if (dx.HasValue || dy.HasValue)
@@ -214,7 +218,7 @@ internal static class BuiltInTools
                     else
                         throw new PilotToolException(PilotErrorCodes.InvalidArgs, "Provide a destination: 'toId', 'toX'/'toY', or 'dx'/'dy'.");
 
-                    ctx.Backend.PrepareForRealInput(id);
+                    real.PrepareForRealInput(id);
                     return new { start, end };
                 });
 

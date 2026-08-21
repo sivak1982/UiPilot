@@ -270,6 +270,26 @@ internal static class StartupHook
         return normalized is "avalonia" or "wpf" or "winforms" ? normalized : null;
     }
 
+    internal static MethodInfo ResolveStartMethod(Type hostType)
+    {
+        return hostType.GetMethod(
+                   "Start",
+                   BindingFlags.Public | BindingFlags.Static,
+                   binder: null,
+                   types: Type.EmptyTypes,
+                   modifiers: null)
+               ?? hostType.GetMethod(
+                   "Start",
+                   BindingFlags.Public | BindingFlags.Static,
+                   binder: null,
+                   types: new[] { typeof(bool) },
+                   modifiers: null)
+               ?? throw new MissingMethodException(hostType.FullName, "Start()");
+    }
+
+    internal static object?[]? StartInvokeArgs(MethodInfo start) =>
+        start.GetParameters().Length == 0 ? null : new object[] { false };
+
     private static void StartPilot(string framework)
     {
         try
@@ -301,16 +321,9 @@ internal static class StartupHook
             var hostType = assembly.GetType(
                 "UiPilot." + frameworkName + ".PilotHost",
                 throwOnError: true)!;
-            var start = hostType.GetMethod(
-                            "Start",
-                            BindingFlags.Public | BindingFlags.Static,
-                            binder: null,
-                            types: new[] { typeof(bool) },
-                            modifiers: null)
-                        ?? throw new MissingMethodException(hostType.FullName, "Start(bool)");
-
-            start.Invoke(null, new object[] { true });
-            Log(framework + " PilotHost.Start(force: true) invoked.");
+            var start = ResolveStartMethod(hostType);
+            start.Invoke(null, StartInvokeArgs(start));
+            Log(framework + " PilotHost.Start() invoked.");
         }
         catch (Exception ex)
         {

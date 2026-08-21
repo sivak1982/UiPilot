@@ -19,6 +19,7 @@
     <ProjectReference Include="..\..\src\UiPilot.Cli\UiPilot.Cli.csproj" />
     <ProjectReference Include="..\..\src\UiPilot.Client\UiPilot.Client.csproj" />
     <ProjectReference Include="..\..\src\UiPilot.Avalonia\UiPilot.Avalonia.csproj" />
+    <ProjectReference Include="..\..\src\UiPilot.StartupHook\UiPilot.StartupHook.csproj" />
     <ProjectReference Include="..\..\samples\AvaloniaSampleApp\AvaloniaSampleApp.csproj">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>

@@ -14,7 +14,7 @@ using UiPilot.Media;
 namespace UiPilot.Wpf;
 
 /// <summary>WPF implementation of the shared <see cref="IUiBackend"/> contract.</summary>
-internal sealed class WpfUiBackend : IUiBackend, ICommandUiBackend, IBindingDiagnosticsUiBackend
+internal sealed class WpfUiBackend : IUiBackend, ICommandUiBackend, IBindingDiagnosticsUiBackend, IRealInputUiBackend
 {
     private readonly BindingDiagnostics _bindings = new BindingDiagnostics();
 

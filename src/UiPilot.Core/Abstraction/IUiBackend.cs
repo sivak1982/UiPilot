@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using UiPilot.Inspection;
@@ -6,8 +7,8 @@ using UiPilot.Media;
 namespace UiPilot.Abstraction;
 
 /// <summary>
-/// Framework-specific automation surface. WPF and Avalonia each supply an implementation;
-/// the shared tool registry and pipe protocol stay identical.
+/// Required inspection and synthetic-input surface. WPF, Avalonia, and WinForms each
+/// supply an implementation; optional features use capability interfaces.
 /// </summary>
 public interface IUiBackend
 {
@@ -66,14 +67,18 @@ public interface IUiBackend
 
     bool Highlight(string id, int durationMs);
 
+    /// <summary>Tear down framework hooks (binding listeners, etc.).</summary>
+    void Shutdown();
+}
+
+/// <summary>Optional real-mouse capability used by <c>drag</c>.</summary>
+public interface IRealInputUiBackend
+{
     /// <summary>Screen-pixel centre of an element, for real OS mouse input.</summary>
     ScreenPoint GetElementCentre(string id);
 
     /// <summary>Raise the owning window so hit-testing works for a subsequent real drag.</summary>
     void PrepareForRealInput(string? elementId);
-
-    /// <summary>Tear down framework hooks (binding listeners, etc.).</summary>
-    void Shutdown();
 }
 
 /// <summary>Optional command-model capability implemented by WPF and Avalonia backends.</summary>
@@ -93,6 +98,7 @@ public static class UiBackendCapabilities
 {
     public const string InvokeCommand = "invokeCommand";
     public const string BindingDiagnostics = "bindingDiagnostics";
+    public const string RealInput = "realInput";
 
     public static IReadOnlyList<string> Describe(IUiBackend backend)
     {
@@ -101,7 +107,35 @@ public static class UiBackendCapabilities
             capabilities.Add(InvokeCommand);
         if (backend is IBindingDiagnosticsUiBackend)
             capabilities.Add(BindingDiagnostics);
+        if (backend is IRealInputUiBackend)
+            capabilities.Add(RealInput);
         return capabilities;
+    }
+}
+
+public static class FindPagePaging
+{
+    public static FindPage Slice<T>(
+        IReadOnlyList<T> matches,
+        int offset,
+        int limit,
+        Func<T, ElementInfo> map)
+    {
+        var safeOffset = Math.Max(0, offset);
+        var safeLimit = Math.Max(0, limit);
+        var results = new List<ElementInfo>();
+        var end = Math.Min(matches.Count, safeOffset + safeLimit);
+        for (var i = safeOffset; i < end; i++)
+            results.Add(map(matches[i]));
+        return new FindPage
+        {
+            Elements = results,
+            Count = results.Count,
+            Total = matches.Count,
+            HasMore = matches.Count > safeOffset + results.Count,
+            Offset = safeOffset,
+            Limit = safeLimit,
+        };
     }
 }
 

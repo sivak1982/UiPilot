@@ -7,6 +7,7 @@ using Avalonia.Controls;
 using global::Avalonia.Controls.Primitives;
 using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
+using Avalonia.Rendering;
 using UiPilot.Abstraction;
 using UiPilot.Inspection;
 using UiPilot.Media;
@@ -44,8 +45,6 @@ internal static class VisualTree
         var roots = ResolveRoots(registry, rootId);
         var q = query?.Trim();
         var hasQuery = !string.IsNullOrEmpty(q);
-        var safeLimit = Math.Max(0, limit);
-        var safeOffset = Math.Max(0, offset);
 
         // Ancestor containers can incidentally match on their .NET type name (e.g. a
         // 'MainLoadPort' user control matching a "load" query) and, being ancestors, are
@@ -74,24 +73,7 @@ internal static class VisualTree
         }
 
         var matches = exact.Count > 0 ? exact : loose;
-        var results = new List<ElementInfo>();
-        var matched = 0;
-        foreach (var node in matches)
-        {
-            if (matched >= safeOffset && results.Count < safeLimit)
-                results.Add(BuildInfo(node, registry));
-            matched++;
-        }
-
-        return new FindPage
-        {
-            Elements = results,
-            Count = results.Count,
-            Total = matched,
-            HasMore = matched > safeOffset + results.Count,
-            Offset = safeOffset,
-            Limit = safeLimit,
-        };
+        return FindPagePaging.Slice(matches, offset, limit, node => BuildInfo(node, registry));
     }
 
     public static ElementInfo? Inspect(
@@ -261,21 +243,20 @@ internal static class VisualTree
                 {
                     var origin = control.PointToScreen(new Point(0, 0));
                     var corner = control.PointToScreen(new Point(control.Bounds.Width, control.Bounds.Height));
-                    info.X = origin.X;
-                    info.Y = origin.Y;
-                    info.Width = Math.Abs(corner.X - origin.X);
-                    info.Height = Math.Abs(corner.Y - origin.Y);
+                    PhysicalBounds.SetFromScreenCorners(info, origin.X, origin.Y, corner.X, corner.Y);
                 }
                 catch
                 {
-                    info.Width = control.Bounds.Width;
-                    info.Height = control.Bounds.Height;
+                    var scale = RenderScale(control);
+                    PhysicalBounds.SetPhysicalSizeOnly(
+                        info, control.Bounds.Width, control.Bounds.Height, scale, scale);
                 }
             }
             else
             {
-                info.Width = control.Bounds.Width;
-                info.Height = control.Bounds.Height;
+                var scale = RenderScale(control);
+                PhysicalBounds.SetPhysicalSizeOnly(
+                    info, control.Bounds.Width, control.Bounds.Height, scale, scale);
             }
         }
 
@@ -343,4 +324,7 @@ internal static class VisualTree
         try { return prop.GetValue(obj, null)?.ToString(); }
         catch { return null; }
     }
+
+    private static double RenderScale(Visual visual) =>
+        visual.GetVisualRoot() is IRenderRoot root ? root.RenderScaling : 1.0;
 }

@@ -27,11 +27,11 @@ internal sealed class McpPipeServer
     private readonly ToolRegistry _registry;
     private readonly Action<string> _log;
 
-    private Thread? _thread;
+    private Task? _acceptTask;
     private volatile bool _running;
     private NamedPipeServerStream? _pendingAccept;
     private CancellationTokenSource? _cts;
-    private readonly List<Thread> _workers = new();
+    private readonly List<Task> _sessions = new();
     private readonly object _workersGate = new();
 
     public McpPipeServer(string pipeName, string token, ToolRegistry registry, Action<string> log)
@@ -47,12 +47,7 @@ internal sealed class McpPipeServer
         if (_running) return;
         _running = true;
         _cts = new CancellationTokenSource();
-        _thread = new Thread(AcceptLoop)
-        {
-            IsBackground = true,
-            Name = "UiPilot.McpPipe",
-        };
-        _thread.Start();
+        _acceptTask = Task.Run(() => AcceptLoopAsync(_cts.Token));
     }
 
     public void Stop()
@@ -61,101 +56,106 @@ internal sealed class McpPipeServer
         try { _cts?.Cancel(); } catch { /* ignore */ }
         try { _pendingAccept?.Dispose(); } catch { /* ignore */ }
 
-        var accept = _thread;
-        if (accept != null && accept.IsAlive && !accept.Join(TimeSpan.FromSeconds(2)))
-            _log("UiPilot MCP accept thread did not exit promptly.");
+        try { _acceptTask?.Wait(TimeSpan.FromSeconds(2)); }
+        catch (AggregateException) { /* cancelled accept is expected */ }
 
-        Thread[] workers;
+        Task[] sessions;
         lock (_workersGate)
-            workers = _workers.ToArray();
-        foreach (var worker in workers)
-        {
-            if (worker.IsAlive)
-                worker.Join(TimeSpan.FromSeconds(1));
-        }
+            sessions = _sessions.ToArray();
+        try { Task.WhenAll(sessions).Wait(TimeSpan.FromSeconds(1)); }
+        catch { /* best-effort drain */ }
 
         try { _cts?.Dispose(); } catch { /* ignore */ }
         _cts = null;
     }
 
-    private void AcceptLoop()
+    private async Task AcceptLoopAsync(CancellationToken ct)
     {
-        while (_running)
+        while (_running && !ct.IsCancellationRequested)
         {
             NamedPipeServerStream? server = null;
             try
             {
                 server = PipeIntegrity.CreateServer(_pipeName, _log);
                 _pendingAccept = server;
-                server.WaitForConnection();
+                await server.WaitForConnectionAsync(ct).ConfigureAwait(false);
                 _pendingAccept = null;
 
                 var connection = server;
                 server = null;
-                var worker = new Thread(() =>
-                {
-                    try { HandleClient(connection); }
-                    catch (Exception ex) { if (_running) _log("UiPilot MCP pipe client error: " + ex.Message); }
-                    finally
-                    {
-                        try { connection.Dispose(); } catch { /* ignore */ }
-                        lock (_workersGate)
-                            _workers.Remove(Thread.CurrentThread);
-                    }
-                })
-                {
-                    IsBackground = true,
-                    Name = "UiPilot.McpPipeClient",
-                };
+                var session = HandleClientAsync(connection);
                 lock (_workersGate)
-                    _workers.Add(worker);
-                worker.Start();
+                    _sessions.Add(session);
+                _ = session.ContinueWith(
+                    _ =>
+                    {
+                        lock (_workersGate)
+                            _sessions.Remove(session);
+                    },
+                    TaskScheduler.Default);
+            }
+            catch (OperationCanceledException) when (!_running || ct.IsCancellationRequested)
+            {
+                try { server?.Dispose(); } catch { /* ignore */ }
+                break;
             }
             catch (Exception ex)
             {
                 if (_running) _log("UiPilot MCP pipe error: " + ex.Message);
                 try { server?.Dispose(); } catch { /* ignore */ }
-                if (_running) Thread.Sleep(100);
+                if (_running)
+                    await Task.Delay(100).ConfigureAwait(false);
             }
         }
     }
 
-    private void HandleClient(NamedPipeServerStream stream)
+    private async Task HandleClientAsync(NamedPipeServerStream stream)
     {
-        if (!PipeSessionAuth.TryAuthenticateServer(stream, _token, _log))
-        {
-            _log("UiPilot rejected pipe client (auth failed).");
-            return;
-        }
-
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(_cts?.Token ?? CancellationToken.None);
-        var transport = new StreamServerTransport(stream, stream, serverName: "UiPilot");
-        var options = new McpServerOptions
-        {
-            ServerInfo = new Implementation
-            {
-                Name = "UiPilot",
-                Version = Hosting.PilotRuntime.ProtocolVersion,
-            },
-            Handlers = new McpServerHandlers
-            {
-                ListToolsHandler = ListToolsAsync,
-                CallToolHandler = CallToolAsync,
-            },
-        };
-
-        McpServer server = McpServer.Create(transport, options);
         try
         {
-            server.RunAsync(linked.Token).GetAwaiter().GetResult();
+            if (!await PipeSessionAuth.TryAuthenticateServerAsync(stream, _token, _log).ConfigureAwait(false))
+            {
+                _log("UiPilot rejected pipe client (auth failed).");
+                return;
+            }
+
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(_cts?.Token ?? CancellationToken.None);
+            var transport = new StreamServerTransport(stream, stream, serverName: "UiPilot");
+            var options = new McpServerOptions
+            {
+                ServerInfo = new Implementation
+                {
+                    Name = "UiPilot",
+                    Version = Hosting.PilotRuntime.ProtocolVersion,
+                },
+                Handlers = new McpServerHandlers
+                {
+                    ListToolsHandler = ListToolsAsync,
+                    CallToolHandler = CallToolAsync,
+                },
+            };
+
+            McpServer server = McpServer.Create(transport, options);
+            try
+            {
+                await server.RunAsync(linked.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!_running)
+            {
+                // Expected during Stop().
+            }
+            finally
+            {
+                try { await server.DisposeAsync().ConfigureAwait(false); } catch { /* ignore */ }
+            }
         }
-        catch (OperationCanceledException) when (!_running)
+        catch (Exception ex)
         {
-            // Expected during Stop().
+            if (_running) _log("UiPilot MCP pipe client error: " + ex.Message);
         }
         finally
         {
-            try { server.DisposeAsync().AsTask().GetAwaiter().GetResult(); } catch { /* ignore */ }
+            try { stream.Dispose(); } catch { /* ignore */ }
         }
     }
 

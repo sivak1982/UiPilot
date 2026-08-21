@@ -12,10 +12,10 @@ public class PipeSessionAuthTests
         var pipeName = "uipilot-auth." + Guid.NewGuid().ToString("N");
         await using var server = new NamedPipeServerStream(
             pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-        var serverTask = Task.Run(() =>
+        var serverTask = Task.Run(async () =>
         {
-            server.WaitForConnection();
-            Assert.True(PipeSessionAuth.TryAuthenticateServer(server, "secret"));
+            await server.WaitForConnectionAsync();
+            Assert.True(await PipeSessionAuth.TryAuthenticateServerAsync(server, "secret"));
         });
 
         await using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
@@ -30,10 +30,10 @@ public class PipeSessionAuthTests
         var pipeName = "uipilot-auth-bad." + Guid.NewGuid().ToString("N");
         await using var server = new NamedPipeServerStream(
             pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-        var serverTask = Task.Run(() =>
+        var serverTask = Task.Run(async () =>
         {
-            server.WaitForConnection();
-            Assert.False(PipeSessionAuth.TryAuthenticateServer(server, "secret"));
+            await server.WaitForConnectionAsync();
+            Assert.False(await PipeSessionAuth.TryAuthenticateServerAsync(server, "secret"));
         });
 
         await using var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);

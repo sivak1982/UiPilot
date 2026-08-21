@@ -41,20 +41,7 @@ internal static class ControlTree
         }
 
         var matches = exactIds.Count > 0 ? exactIds : loose;
-        var safeOffset = Math.Max(0, offset);
-        var safeLimit = Math.Max(0, limit);
-        var elements = new List<ElementInfo>();
-        for (var i = safeOffset; i < matches.Count && elements.Count < safeLimit; i++)
-            elements.Add(BuildInfo(matches[i], registry));
-        return new FindPage
-        {
-            Elements = elements,
-            Count = elements.Count,
-            Total = matches.Count,
-            HasMore = matches.Count > safeOffset + elements.Count,
-            Offset = safeOffset,
-            Limit = safeLimit,
-        };
+        return FindPagePaging.Slice(matches, offset, limit, node => BuildInfo(node, registry));
     }
 
     public static ElementInfo? Inspect(

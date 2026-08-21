@@ -7,9 +7,12 @@ using Avalonia.Controls;
 using global::Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Automation.Peers;
+using Avalonia.Automation.Provider;
 using UiPilot.Tools;
 using UiPilot.Inspection;
 using UiPilot.Media;
+using UiPilot.Interaction;
 
 namespace UiPilot.Avalonia;
 
@@ -38,6 +41,13 @@ internal static class Input
         {
             tabItem.IsSelected = true;
             return "synthetic:tabitem-select";
+        }
+
+        var peer = ControlAutomationPeer.CreatePeerForElement(control);
+        if (peer is IInvokeProvider invoke)
+        {
+            invoke.Invoke();
+            return "synthetic:automation-invoke";
         }
 
         if (obj is RadioButton radio)
@@ -113,26 +123,14 @@ internal static class Input
         if (obj != null)
             input.Focus();
 
-        if (keys.IndexOf("+", StringComparison.Ordinal) < 0)
+        var chord = KeyChord.Parse(keys);
+        if (chord.IsPlainText)
         {
-            if (TryParseKey(keys, out var specialKey))
-            {
-                RaiseKeyStroke(input, specialKey, KeyModifiers.None);
-                return "synthetic:keys";
-            }
-
-            RaiseText(input, keys);
+            RaiseText(input, chord.KeyToken);
             return "synthetic:keys";
         }
 
-        if (!StartsWithModifier(keys))
-        {
-            RaiseText(input, keys);
-            return "synthetic:keys";
-        }
-
-        var stroke = KeyStroke.Parse(keys);
-        RaiseKeyStroke(input, stroke.Key, stroke.Modifiers);
+        RaiseKeyStroke(input, MapKey(chord.KeyToken), MapModifiers(chord.Modifiers));
         return "synthetic:keys";
     }
 
@@ -356,145 +354,40 @@ internal static class Input
         return keys;
     }
 
-    private static bool TryParseKey(string token, out Key key)
+    private static KeyModifiers MapModifiers(KeyModifier modifiers)
     {
-        token = NormalizeKeyToken(token);
-        key = Key.None;
-        if (token.Length == 1)
-        {
-            var ch = token[0];
-            if (ch >= 'A' && ch <= 'Z')
-            {
-                key = (Key)Enum.Parse(typeof(Key), ch.ToString(CultureInfo.InvariantCulture));
-                return true;
-            }
-            if (ch >= '0' && ch <= '9')
-            {
-                key = (Key)Enum.Parse(typeof(Key), "D" + ch.ToString(CultureInfo.InvariantCulture));
-                return true;
-            }
-        }
-
-        switch (token)
-        {
-            case "ENTER": key = Key.Enter; return true;
-            case "RETURN": key = Key.Return; return true;
-            case "TAB": key = Key.Tab; return true;
-            case "ESC":
-            case "ESCAPE": key = Key.Escape; return true;
-            case "BACKSPACE": key = Key.Back; return true;
-            case "BKSP": key = Key.Back; return true;
-            case "DELETE":
-            case "DEL": key = Key.Delete; return true;
-            case "LEFT": key = Key.Left; return true;
-            case "RIGHT": key = Key.Right; return true;
-            case "UP": key = Key.Up; return true;
-            case "DOWN": key = Key.Down; return true;
-            case "HOME": key = Key.Home; return true;
-            case "END": key = Key.End; return true;
-            case "PAGEUP":
-            case "PGUP": key = Key.PageUp; return true;
-            case "PAGEDOWN":
-            case "PGDN": key = Key.PageDown; return true;
-            case "SPACE": key = Key.Space; return true;
-        }
-
-        if (token.Length >= 2 && token[0] == 'F' &&
-            int.TryParse(token.Substring(1), NumberStyles.None, CultureInfo.InvariantCulture, out var fn) &&
-            fn >= 1 && fn <= 12)
-        {
-            key = (Key)((int)Key.F1 + fn - 1);
-            return true;
-        }
-
-        return Enum.TryParse(token, ignoreCase: true, out key) && key != Key.None;
+        var mapped = KeyModifiers.None;
+        if ((modifiers & KeyModifier.Control) != 0) mapped |= KeyModifiers.Control;
+        if ((modifiers & KeyModifier.Alt) != 0) mapped |= KeyModifiers.Alt;
+        if ((modifiers & KeyModifier.Shift) != 0) mapped |= KeyModifiers.Shift;
+        if ((modifiers & KeyModifier.Meta) != 0) mapped |= KeyModifiers.Meta;
+        return mapped;
     }
 
-    private static string NormalizeKeyToken(string token) =>
-        token.Trim().Replace(" ", string.Empty).ToUpperInvariant();
-
-    private static bool StartsWithModifier(string keys)
+    private static Key MapKey(string canonical)
     {
-        var first = keys.Split(new[] { '+' }, 2)[0];
-        return IsModifierToken(first);
-    }
-
-    private static bool IsModifierToken(string token)
-    {
-        switch (NormalizeKeyToken(token))
+        switch (canonical)
         {
-            case "CTRL":
-            case "CONTROL":
-            case "ALT":
-            case "SHIFT":
-            case "WIN":
-            case "WINDOWS":
-            case "CMD":
-            case "COMMAND":
-            case "META":
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    private readonly struct KeyStroke
-    {
-        private KeyStroke(Key key, KeyModifiers modifiers)
-        {
-            Key = key;
-            Modifiers = modifiers;
+            case "ENTER": return Key.Enter;
+            case "TAB": return Key.Tab;
+            case "ESCAPE": return Key.Escape;
+            case "BACKSPACE": return Key.Back;
+            case "DELETE": return Key.Delete;
+            case "LEFT": return Key.Left;
+            case "RIGHT": return Key.Right;
+            case "UP": return Key.Up;
+            case "DOWN": return Key.Down;
+            case "HOME": return Key.Home;
+            case "END": return Key.End;
+            case "PAGEUP": return Key.PageUp;
+            case "PAGEDOWN": return Key.PageDown;
+            case "SPACE": return Key.Space;
         }
 
-        public Key Key { get; }
+        if (canonical.Length >= 2 && canonical[0] == 'F' &&
+            int.TryParse(canonical.AsSpan(1), NumberStyles.None, CultureInfo.InvariantCulture, out var fn))
+            return (Key)((int)Key.F1 + fn - 1);
 
-        public KeyModifiers Modifiers { get; }
-
-        public static KeyStroke Parse(string keys)
-        {
-            var rawParts = keys.Split(new[] { '+' }, StringSplitOptions.RemoveEmptyEntries);
-            var parts = new List<string>(rawParts.Length);
-            foreach (var part in rawParts)
-            {
-                var trimmed = part.Trim();
-                if (trimmed.Length > 0)
-                    parts.Add(trimmed);
-            }
-            if (parts.Count < 2)
-                throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Invalid key combination '{keys}'.");
-
-            var modifiers = KeyModifiers.None;
-            for (var i = 0; i < parts.Count - 1; i++)
-            {
-                switch (NormalizeKeyToken(parts[i]))
-                {
-                    case "CTRL":
-                    case "CONTROL":
-                        modifiers |= KeyModifiers.Control;
-                        break;
-                    case "ALT":
-                        modifiers |= KeyModifiers.Alt;
-                        break;
-                    case "SHIFT":
-                        modifiers |= KeyModifiers.Shift;
-                        break;
-                    case "WIN":
-                    case "WINDOWS":
-                    case "CMD":
-                    case "COMMAND":
-                    case "META":
-                        modifiers |= KeyModifiers.Meta;
-                        break;
-                    default:
-                        throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Unknown modifier '{parts[i]}'.");
-                }
-            }
-
-            if (!TryParseKey(parts[parts.Count - 1], out var key))
-                throw new PilotToolException(PilotErrorCodes.InvalidArgs, $"Unknown key '{parts[parts.Count - 1]}'.");
-
-            return new KeyStroke(key, modifiers);
-        }
+        return (Key)Enum.Parse(typeof(Key), canonical);
     }
-
 }

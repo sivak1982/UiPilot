@@ -10,6 +10,10 @@
     <Description>Generic DOTNET_STARTUP_HOOKS assembly that selects and starts the live UiPilot UI adapter.</Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="UiPilot.Tests" />
+  </ItemGroup>
+
   <!-- Build each adapter as a payload only; the hook itself has no UI-framework references. -->
   <ItemGroup>
     <ProjectReference Include="..\UiPilot.Avalonia\UiPilot.Avalonia.csproj">

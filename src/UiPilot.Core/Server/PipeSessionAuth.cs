@@ -40,7 +40,7 @@ internal static class PipeSessionAuth
     /// <summary>
     /// Server-side gate. Returns false when the peer sent a bad/missing token (connection should close).
     /// </summary>
-    public static bool TryAuthenticateServer(
+    public static Task<bool> TryAuthenticateServerAsync(
         Stream stream,
         string expectedToken,
         Action<string>? log = null,
@@ -48,17 +48,25 @@ internal static class PipeSessionAuth
     {
         if (stream == null) throw new ArgumentNullException(nameof(stream));
         if (string.IsNullOrEmpty(expectedToken)) throw new ArgumentException("Token required.", nameof(expectedToken));
+        return AuthenticateServerCoreAsync(stream, expectedToken, log, timeoutMs);
+    }
 
+    private static async Task<bool> AuthenticateServerCoreAsync(
+        Stream stream,
+        string expectedToken,
+        Action<string>? log,
+        int timeoutMs)
+    {
         using var cts = new CancellationTokenSource(Math.Max(1, timeoutMs));
         string? line;
         try
         {
-            line = ReadLineAsync(stream, MaxLineBytes, cts.Token).GetAwaiter().GetResult();
+            line = await ReadLineAsync(stream, MaxLineBytes, cts.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
             log?.Invoke("UiPilot pipe auth timed out waiting for token line.");
-            try { WriteLine(stream, JsonSerializer.Serialize(new { ok = false, error = "Auth timed out." })); }
+            try { await WriteLineAsync(stream, JsonSerializer.Serialize(new { ok = false, error = "Auth timed out." }), CancellationToken.None).ConfigureAwait(false); }
             catch { /* ignore */ }
             return false;
         }
@@ -70,7 +78,7 @@ internal static class PipeSessionAuth
 
         if (string.IsNullOrWhiteSpace(line))
         {
-            WriteLine(stream, JsonSerializer.Serialize(new { ok = false, error = "Missing auth line." }));
+            await WriteLineAsync(stream, JsonSerializer.Serialize(new { ok = false, error = "Missing auth line." }), CancellationToken.None).ConfigureAwait(false);
             return false;
         }
 
@@ -82,16 +90,19 @@ internal static class PipeSessionAuth
                 : null;
             if (!FixedTimeEquals(token, expectedToken))
             {
-                WriteLine(stream, JsonSerializer.Serialize(new { ok = false, error = "Invalid or missing token." }));
+                await WriteLineAsync(stream, JsonSerializer.Serialize(new { ok = false, error = "Invalid or missing token." }), CancellationToken.None).ConfigureAwait(false);
                 return false;
             }
 
-            WriteLine(stream, """{"ok":true}""");
+            await WriteLineAsync(stream, """{"ok":true}""", CancellationToken.None).ConfigureAwait(false);
             return true;
         }
         catch (Exception ex)
         {
-            WriteLine(stream, JsonSerializer.Serialize(new { ok = false, error = "Invalid auth JSON: " + ex.Message }));
+            await WriteLineAsync(
+                stream,
+                JsonSerializer.Serialize(new { ok = false, error = "Invalid auth JSON: " + ex.Message }),
+                CancellationToken.None).ConfigureAwait(false);
             return false;
         }
     }
@@ -114,13 +125,6 @@ internal static class PipeSessionAuth
         var bytes = Utf8.GetBytes(line + "\n");
         await stream.WriteAsync(bytes, ct).ConfigureAwait(false);
         await stream.FlushAsync(ct).ConfigureAwait(false);
-    }
-
-    private static void WriteLine(Stream stream, string line)
-    {
-        var bytes = Utf8.GetBytes(line + "\n");
-        stream.Write(bytes, 0, bytes.Length);
-        stream.Flush();
     }
 
     private static async Task<string?> ReadLineAsync(Stream stream, int maxBytes, CancellationToken ct)
