@@ -17,6 +17,7 @@
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <InternalsVisibleTo Include="UiPilot.Tests" />
   </ItemGroup>
 
   <ItemGroup>
