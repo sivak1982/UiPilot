@@ -14,8 +14,21 @@ trap 'rm -rf "$TMP"' EXIT
 MCP="$TMP/mcp.json"
 SETTINGS="$TMP/settings.json"
 
-printf '%s\n' '{"mcpServers":{"other":{"command":"other"}},"unrelated":true}' > "$MCP"
-printf '%s\n' '{"editor.fontSize":15}' > "$SETTINGS"
+cat > "$MCP" <<'JSONC'
+{
+  // Cursor accepts comments and trailing commas.
+  "mcpServers": {
+    "other": { "command": "other" },
+  },
+  "unrelated": true,
+}
+JSONC
+cat > "$SETTINGS" <<'JSONC'
+{
+  /* Preserve unrelated JSONC settings. */
+  "editor.fontSize": 15,
+}
+JSONC
 
 TOKEN="$(uipilot_new_status_token)"
 [[ ${#TOKEN} -eq 64 ]] || uipilot_die "generated token must be 64 hex characters"

@@ -74,7 +74,7 @@ def loads_jsonc(text):
     text = re.sub(r"/\*[\s\S]*?\*/", "", text)
     text = re.sub(r"(?<!:)//.*?$", "", text, flags=re.M)
     text = re.sub(r",(\s*[}\]])", r"\1", text)
-    return loads_jsonc(text)
+    return json.loads(text)
 path, command, token, version, port = sys.argv[1:]
 parts = version.split(".")
 if len(parts) != 4 or not all(part.isdigit() for part in parts):
@@ -122,7 +122,7 @@ def loads_jsonc(text):
     text = re.sub(r"/\*[\s\S]*?\*/", "", text)
     text = re.sub(r"(?<!:)//.*?$", "", text, flags=re.M)
     text = re.sub(r",(\s*[}\]])", r"\1", text)
-    return loads_jsonc(text)
+    return json.loads(text)
 path = sys.argv[1]
 if not os.path.isfile(path):
     sys.exit(0)
@@ -153,7 +153,7 @@ def loads_jsonc(text):
     text = re.sub(r"/\*[\s\S]*?\*/", "", text)
     text = re.sub(r"(?<!:)//.*?$", "", text, flags=re.M)
     text = re.sub(r",(\s*[}\]])", r"\1", text)
-    return loads_jsonc(text)
+    return json.loads(text)
 path, token, port = sys.argv[1:]
 data = {}
 if os.path.isfile(path):
@@ -184,7 +184,7 @@ def loads_jsonc(text):
     text = re.sub(r"/\*[\s\S]*?\*/", "", text)
     text = re.sub(r"(?<!:)//.*?$", "", text, flags=re.M)
     text = re.sub(r",(\s*[}\]])", r"\1", text)
-    return loads_jsonc(text)
+    return json.loads(text)
 path, installed = sys.argv[1:]
 if not os.path.isfile(path):
     sys.exit(1)
