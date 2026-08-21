@@ -98,9 +98,7 @@ internal sealed class WpfUiBackend : IUiBackend
         return WindowControl.Foreground(window);
     }
 
-    public IReadOnlyList<string> GetBindingErrors() => _bindings.Snapshot();
-
-    public void ClearBindingErrors() => _bindings.Clear();
+    public IReadOnlyList<string> GetBindingErrors(bool clear) => _bindings.Snapshot(clear);
 
     public IReadOnlyList<LayoutIssue> AnalyzeLayout(string? rootId) =>
         LayoutAnalyzer.Analyze(Elements, rootId);

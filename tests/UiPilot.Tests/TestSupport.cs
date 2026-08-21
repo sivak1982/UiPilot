@@ -44,8 +44,7 @@ internal static class TestSupport
         public virtual WindowBounds ResizeWindow(string? id, double width, double height, double? x, double? y, bool activate) =>
             new WindowBounds { X = x ?? 0, Y = y ?? 0, Width = width, Height = height, State = "normal" };
         public string BringToFront(string? id) => "normal";
-        public IReadOnlyList<string> GetBindingErrors() => System.Array.Empty<string>();
-        public void ClearBindingErrors() { }
+        public virtual IReadOnlyList<string> GetBindingErrors(bool clear) => System.Array.Empty<string>();
         public IReadOnlyList<LayoutIssue> AnalyzeLayout(string? rootId) => System.Array.Empty<LayoutIssue>();
         public bool Highlight(string id, int durationMs) => false;
         public ScreenPoint GetElementCentre(string id) => new ScreenPoint(0, 0);

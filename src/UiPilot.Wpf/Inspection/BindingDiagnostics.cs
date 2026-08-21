@@ -38,16 +38,15 @@ public sealed class BindingDiagnostics
         _listener = null;
     }
 
-    public IReadOnlyList<string> Snapshot()
+    public IReadOnlyList<string> Snapshot(bool clear)
     {
         lock (_gate)
-            return new List<string>(_messages);
-    }
-
-    public void Clear()
-    {
-        lock (_gate)
-            _messages.Clear();
+        {
+            var snapshot = new List<string>(_messages);
+            if (clear)
+                _messages.Clear();
+            return snapshot;
+        }
     }
 
     private void Add(string message)

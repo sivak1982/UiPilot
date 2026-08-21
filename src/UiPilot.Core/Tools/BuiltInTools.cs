@@ -394,8 +394,7 @@ internal static class BuiltInTools
                 var clear = args.GetBool("clear", false);
                 return OnUi(ctx, () =>
                 {
-                    var errors = ctx.Backend.GetBindingErrors();
-                    if (clear) ctx.Backend.ClearBindingErrors();
+                    var errors = ctx.Backend.GetBindingErrors(clear);
                     return new { count = errors.Count, errors };
                 });
             });

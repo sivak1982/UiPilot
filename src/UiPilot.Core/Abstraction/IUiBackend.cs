@@ -64,9 +64,8 @@ public interface IUiBackend
 
     string BringToFront(string? id);
 
-    IReadOnlyList<string> GetBindingErrors();
-
-    void ClearBindingErrors();
+    /// <summary>Snapshot binding diagnostics and optionally clear that exact snapshot atomically.</summary>
+    IReadOnlyList<string> GetBindingErrors(bool clear);
 
     IReadOnlyList<LayoutIssue> AnalyzeLayout(string? rootId);
 
