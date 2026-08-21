@@ -112,12 +112,13 @@ public sealed record StatusMessage
 /// </summary>
 public interface IStatusSnapshotSource
 {
-    string? ActiveSession { get; }
-
-    IReadOnlyList<StatusSessionInfo> ListSessions();
-
-    IReadOnlyList<StatusAppInfo> ListApps();
+    StatusConnectionSnapshot GetSnapshot();
 }
+
+public sealed record StatusConnectionSnapshot(
+    string? ActiveSession,
+    IReadOnlyList<StatusSessionInfo> Sessions,
+    IReadOnlyList<StatusAppInfo> Apps);
 
 public sealed class ConnectionManagerSnapshotSource : IStatusSnapshotSource
 {
@@ -125,11 +126,12 @@ public sealed class ConnectionManagerSnapshotSource : IStatusSnapshotSource
 
     public ConnectionManagerSnapshotSource(ConnectionManager connection) => _connection = connection;
 
-    public string? ActiveSession => _connection.ActiveSessionName;
-
-    public IReadOnlyList<StatusSessionInfo> ListSessions() =>
-        _connection.ListSessions().Select(StatusSessionInfo.From).ToArray();
-
-    public IReadOnlyList<StatusAppInfo> ListApps() =>
-        _connection.ListAlive().Select(StatusAppInfo.From).ToArray();
+    public StatusConnectionSnapshot GetSnapshot()
+    {
+        var snapshot = _connection.CaptureSnapshot();
+        return new StatusConnectionSnapshot(
+            snapshot.ActiveSession,
+            snapshot.Sessions.Select(StatusSessionInfo.From).ToArray(),
+            snapshot.Apps.Select(StatusAppInfo.From).ToArray());
+    }
 }

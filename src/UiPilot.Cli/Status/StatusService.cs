@@ -140,13 +140,17 @@ public sealed class StatusService : BackgroundService
             .ConfigureAwait(false);
     }
 
-    private StatusSnapshotPayload BuildSnapshot() => new()
+    private StatusSnapshotPayload BuildSnapshot()
     {
-        ActiveSession = _source.ActiveSession,
-        Sessions = _source.ListSessions(),
-        Apps = _source.ListApps(),
-        Operations = _hub.Snapshot(),
-    };
+        var connection = _source.GetSnapshot();
+        return new StatusSnapshotPayload
+        {
+            ActiveSession = connection.ActiveSession,
+            Sessions = connection.Sessions,
+            Apps = connection.Apps,
+            Operations = _hub.Snapshot(),
+        };
+    }
 
     private async Task StreamEventsAsync(HttpListenerContext context, CancellationToken ct)
     {
@@ -195,8 +199,9 @@ public sealed class StatusService : BackgroundService
                 if (socket.State != WebSocketState.Open)
                     break;
 
-                var sessions = _source.ListSessions();
-                var activeSession = _source.ActiveSession;
+                var connection = _source.GetSnapshot();
+                var sessions = connection.Sessions;
+                var activeSession = connection.ActiveSession;
                 if (SessionsChanged(lastSessions, lastActiveSession, sessions, activeSession))
                 {
                     lastSessions = sessions;

@@ -50,7 +50,6 @@ public sealed class ConnectionManager : IDisposable
             _gate.Wait();
             try
             {
-                PruneExitedSessionsLocked();
                 return _activeSession;
             }
             finally { _gate.Release(); }
@@ -68,6 +67,28 @@ public sealed class ConnectionManager : IDisposable
                 .Select(s => ToSnapshot(s, string.Equals(s.Name, _activeSession, StringComparison.OrdinalIgnoreCase)))
                 .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+        }
+        finally { _gate.Release(); }
+    }
+
+    internal ConnectionStateSnapshot CaptureSnapshot()
+    {
+        // Discovery is filesystem I/O. Read it once and outside the session gate, then use that
+        // same view both to prune attach-only sessions and to project status apps.
+        var apps = _discovery.ListAlive();
+        var alivePids = apps.Select(app => app.Pid).ToHashSet();
+        _gate.Wait();
+        try
+        {
+            PruneExitedSessionsLocked(alivePids);
+            var sessions = _sessions.Values
+                .Where(session => !session.Exited)
+                .Select(session => ToSnapshot(
+                    session,
+                    string.Equals(session.Name, _activeSession, StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(session => session.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            return new ConnectionStateSnapshot(_activeSession, sessions, apps);
         }
         finally { _gate.Release(); }
     }
@@ -683,13 +704,16 @@ public sealed class ConnectionManager : IDisposable
             _activeSession = _sessions.Keys.FirstOrDefault();
     }
 
-    private void PruneExitedSessionsLocked()
+    private void PruneExitedSessionsLocked(IReadOnlySet<int>? alivePids = null)
     {
         foreach (var session in _sessions.Values.ToList())
         {
             var exited = session.Launched is not null
                 ? HasExited(session.Launched)
-                : session.AttachedPid is int pid && _discovery.FindByPid(pid) is null;
+                : session.AttachedPid is int pid &&
+                  (alivePids != null
+                      ? !alivePids.Contains(pid)
+                      : _discovery.FindByPid(pid) is null);
             if (!exited)
                 continue;
 
@@ -920,3 +944,8 @@ public sealed class ConnectionManager : IDisposable
         public bool Exited { get; set; }
     }
 }
+
+internal sealed record ConnectionStateSnapshot(
+    string? ActiveSession,
+    IReadOnlyList<SessionSnapshot> Sessions,
+    IReadOnlyList<DiscoveryInfo> Apps);

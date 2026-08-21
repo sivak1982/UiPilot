@@ -248,11 +248,6 @@ public sealed class StatusServiceTests
         private IReadOnlyList<StatusSessionInfo> _sessions = [];
         private IReadOnlyList<StatusAppInfo> _apps = [];
 
-        public string? ActiveSession
-        {
-            get { lock (_gate) return _activeSession; }
-        }
-
         public void Set(
             string? activeSession,
             IReadOnlyList<StatusSessionInfo> sessions,
@@ -266,14 +261,10 @@ public sealed class StatusServiceTests
             }
         }
 
-        public IReadOnlyList<StatusSessionInfo> ListSessions()
+        public StatusConnectionSnapshot GetSnapshot()
         {
-            lock (_gate) return _sessions;
-        }
-
-        public IReadOnlyList<StatusAppInfo> ListApps()
-        {
-            lock (_gate) return _apps;
+            lock (_gate)
+                return new StatusConnectionSnapshot(_activeSession, _sessions, _apps);
         }
     }
 }
